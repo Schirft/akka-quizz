@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+/* Akka design system custom theme */
+@theme {
+  --font-sans: "Plus Jakarta Sans", "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  /* Akka brand colors */
+  --color-akka-dark: #1B3D2F;
+  --color-akka-green: #2ECC71;
+  --color-akka-red: #E74C3C;
+  --color-akka-bg: #FFFFFF;
+  --color-akka-bg-feedback: #F7F9F8;
+  --color-akka-news-bg: #0B1A14;
+  --color-akka-news-surface: #132A1F;
+  --color-akka-text: #1A1A1A;
+  --color-akka-text-secondary: #6B7280;
+  --color-akka-border: #EBEBEB;
+}
+
+/* Base body styles */
+body {
+  font-family: var(--font-sans);
+  color: var(--color-akka-text);
+  background-color: var(--color-akka-bg);
+  margin: 0;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Prevent iOS zoom on input focus */
+input,
+select,
+textarea {
+  font-size: 16px;
+}
+
+/* Safe area insets for notched devices */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
