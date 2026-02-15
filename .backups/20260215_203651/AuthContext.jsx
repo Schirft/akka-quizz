@@ -71,19 +71,16 @@ export function AuthProvider({ children }) {
     return data
   }
 
-  // Sign up with email/password (no displayName — trigger uses email prefix)
-  async function signUp(email, password) {
+  // Sign up with email/password
+  async function signUp(email, password, displayName) {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
+      options: {
+        data: { display_name: displayName },
+      },
     })
     if (error) throw error
-
-    // If user created but no session = email confirmation still on
-    if (data.user && !data.session) {
-      return { ...data, needsConfirmation: true }
-    }
-
     return data
   }
 

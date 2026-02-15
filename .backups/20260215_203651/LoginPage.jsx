@@ -5,38 +5,41 @@ import { ArrowRight, Eye, EyeOff } from 'lucide-react'
 
 /**
  * LoginPage — clean, centered, mobile-first login screen.
- * No display_name field — the DB trigger uses the email prefix automatically.
+ * Features: Sign In / Sign Up tabs, demo login, language picker.
  */
 export default function LoginPage() {
   const { signIn, signUp, signInDemo } = useAuth()
 
-  const [mode, setMode] = useState('signin')
+  const [mode, setMode] = useState('signin') // 'signin' | 'signup'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [displayName, setDisplayName] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
-  const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
   const [lang, setLang] = useState(
     () => localStorage.getItem('akka_lang') || 'en'
   )
 
+  // Save language preference
   function handleLangChange(code) {
     setLang(code)
     localStorage.setItem('akka_lang', code)
   }
 
+  // Validate form fields
   function validate() {
     if (!email.trim()) return 'Email is required'
     if (!/\S+@\S+\.\S+/.test(email)) return 'Please enter a valid email'
     if (password.length < 6) return 'Password must be at least 6 characters'
+    if (mode === 'signup' && !displayName.trim()) return 'Display name is required'
     return null
   }
 
+  // Handle form submit
   async function handleSubmit(e) {
     e.preventDefault()
     setError('')
-    setMessage('')
 
     const validationError = validate()
     if (validationError) {
@@ -49,11 +52,7 @@ export default function LoginPage() {
       if (mode === 'signin') {
         await signIn(email, password)
       } else {
-        const result = await signUp(email, password)
-        if (result?.needsConfirmation) {
-          setMessage('Account created! Check your email to confirm, then sign in.')
-          setMode('signin')
-        }
+        await signUp(email, password, displayName)
       }
     } catch (err) {
       setError(err.message || 'An error occurred')
@@ -62,9 +61,9 @@ export default function LoginPage() {
     }
   }
 
+  // Handle demo login
   async function handleDemo() {
     setError('')
-    setMessage('')
     setLoading(true)
     try {
       await signInDemo()
@@ -91,7 +90,7 @@ export default function LoginPage() {
         {/* Mode tabs */}
         <div className="flex bg-gray-100 rounded-xl p-1 mb-6">
           <button
-            onClick={() => { setMode('signin'); setError(''); setMessage('') }}
+            onClick={() => { setMode('signin'); setError('') }}
             className={`flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all ${
               mode === 'signin'
                 ? 'bg-white text-akka-text shadow-sm'
@@ -101,7 +100,7 @@ export default function LoginPage() {
             Sign In
           </button>
           <button
-            onClick={() => { setMode('signup'); setError(''); setMessage('') }}
+            onClick={() => { setMode('signup'); setError('') }}
             className={`flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all ${
               mode === 'signup'
                 ? 'bg-white text-akka-text shadow-sm'
@@ -114,6 +113,22 @@ export default function LoginPage() {
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Display name — only on signup */}
+          {mode === 'signup' && (
+            <div>
+              <label className="block text-xs font-semibold text-akka-text-secondary uppercase tracking-wide mb-1.5">
+                Display Name
+              </label>
+              <input
+                type="text"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="John Doe"
+                className="w-full px-4 py-3 rounded-xl border border-akka-border bg-white text-akka-text placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-akka-green/30 focus:border-akka-green transition-all"
+              />
+            </div>
+          )}
+
           {/* Email */}
           <div>
             <label className="block text-xs font-semibold text-akka-text-secondary uppercase tracking-wide mb-1.5">
@@ -125,7 +140,7 @@ export default function LoginPage() {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
               autoComplete="email"
-              className="w-full px-4 py-3 rounded-xl border border-akka-border bg-white text-[#1A1A1A] placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-akka-green/30 focus:border-akka-green transition-all"
+              className="w-full px-4 py-3 rounded-xl border border-akka-border bg-white text-akka-text placeholder:text-gray-300 focus:outline-none focus:ring-2 focus:ring-akka-green/30 focus:border-akka-green transition-all"
             />
           </div>
 
@@ -141,7 +156,7 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Min. 6 characters"
                 autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-                className="w-full px-4 py-3 pr-12 rounded-xl border border-akka-border bg-white text-[#1A1A1A] placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-akka-green/30 focus:border-akka-green transition-all"
+                className="w-full px-4 py-3 pr-12 rounded-xl border border-akka-border bg-white text-akka-text placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-akka-green/30 focus:border-akka-green transition-all"
               />
               <button
                 type="button"
@@ -158,13 +173,6 @@ export default function LoginPage() {
           {error && (
             <p className="text-sm text-akka-red bg-red-50 px-3 py-2 rounded-lg">
               {error}
-            </p>
-          )}
-
-          {/* Success message */}
-          {message && (
-            <p className="text-sm text-akka-green bg-emerald-50 px-3 py-2 rounded-lg">
-              {message}
             </p>
           )}
 
