@@ -49,7 +49,7 @@ export default function HomePage() {
       // Fetch recent badges (last 3)
       const { data: earnedBadges } = await supabase
         .from('badges_earned')
-        .select('badge_id, earned_at')
+        .select('badge_key, earned_at')
         .eq('user_id', user.id)
         .order('earned_at', { ascending: false })
         .limit(3)
@@ -57,7 +57,7 @@ export default function HomePage() {
       if (earnedBadges) {
         const badgeDetails = earnedBadges
           .map((eb) => {
-            const badge = BADGES.find((b) => b.id === eb.badge_id)
+            const badge = BADGES.find((b) => b.id === eb.badge_key)
             return badge ? { ...badge, earned_at: eb.earned_at } : null
           })
           .filter(Boolean)
@@ -107,7 +107,7 @@ export default function HomePage() {
 
   const displayName = profile.display_name || 'Player'
   const totalXP = profile.total_xp || 0
-  const streakDays = profile.streak_days || 0
+  const streakDays = profile.current_streak || 0
   const nextLevel = level?.level < 10 ? LEVELS[level.level] : null
 
   return (

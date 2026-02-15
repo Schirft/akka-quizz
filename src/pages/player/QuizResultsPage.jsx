@@ -212,7 +212,7 @@ export default function QuizResultsPage() {
           </Card>
           <Card className="flex-1 flex flex-col items-center py-3">
             <Flame size={18} className="text-orange-500 mb-1" />
-            <p className="text-lg font-bold text-akka-text">{profile?.streak_days || 0}</p>
+            <p className="text-lg font-bold text-akka-text">{profile?.current_streak || 0}</p>
             <p className="text-[10px] text-akka-text-secondary">Streak</p>
           </Card>
         </div>

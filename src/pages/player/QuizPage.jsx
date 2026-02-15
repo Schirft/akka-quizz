@@ -31,6 +31,13 @@ import {
  * QuizPage — the full quiz experience with timer, feedback, and transitions.
  * Loads today's daily_quiz, presents 5 questions with 15s timer each,
  * shows feedback after each answer, then navigates to results.
+ *
+ * Schema notes:
+ * - daily_quizzes: question_1_id..question_5_id (individual FK columns, no array)
+ * - questions.answers_en: jsonb array ["A","B","C","D"], correct_answer_index 1-4
+ * - quiz_sessions: total_xp_earned, duration_seconds, speed_bonuses, is_perfect
+ * - quiz_answers: question_order, response_time_ms, speed_bonus (no user_id)
+ * - profiles: current_streak, total_quizzes, total_correct, total_questions
  */
 export default function QuizPage() {
   const { user } = useAuth()
@@ -43,12 +50,12 @@ export default function QuizPage() {
   const [selectedAnswer, setSelectedAnswer] = useState(null)
   const [isCorrect, setIsCorrect] = useState(null)
   const [timeLeft, setTimeLeft] = useState(QUESTION_TIMER_SECONDS)
-  const [timeSpent, setTimeSpent] = useState(0)
-  const [answers, setAnswers] = useState([]) // { questionId, selectedIndex, correct, timeSpent, xpEarned }
+  const [timeSpentMs, setTimeSpentMs] = useState(0) // milliseconds
+  const [answers, setAnswers] = useState([]) // { questionId, selectedIndex, correct, timeMs, xpEarned, speedBonus }
   const [quizId, setQuizId] = useState(null)
   const [errorMsg, setErrorMsg] = useState('')
-  const [xpFloat, setXpFloat] = useState(null) // { amount, key } for floating XP animation
-  const [communityStats, setCommunityStats] = useState(null) // { answer_1: %, answer_2: %, ... }
+  const [xpFloat, setXpFloat] = useState(null)
+  const [communityStats, setCommunityStats] = useState(null)
 
   const timerRef = useRef(null)
   const startTimeRef = useRef(null)
@@ -73,12 +80,11 @@ export default function QuizPage() {
           return
         }
 
-        // Find today's daily quiz
+        // Find today's daily quiz (question_1_id..question_5_id, no status column)
         const { data: dailyQuiz, error: dqError } = await supabase
           .from('daily_quizzes')
-          .select('id, question_ids')
+          .select('id, question_1_id, question_2_id, question_3_id, question_4_id, question_5_id')
           .eq('quiz_date', today)
-          .eq('status', 'active')
           .single()
 
         if (dqError || !dailyQuiz) {
@@ -89,11 +95,20 @@ export default function QuizPage() {
 
         setQuizId(dailyQuiz.id)
 
+        // Collect question IDs from individual columns
+        const questionIds = [
+          dailyQuiz.question_1_id,
+          dailyQuiz.question_2_id,
+          dailyQuiz.question_3_id,
+          dailyQuiz.question_4_id,
+          dailyQuiz.question_5_id,
+        ].filter(Boolean)
+
         // Fetch questions by IDs
         const { data: questionData, error: qError } = await supabase
           .from('questions')
           .select('*')
-          .in('id', dailyQuiz.question_ids)
+          .in('id', questionIds)
 
         if (qError || !questionData || questionData.length === 0) {
           setErrorMsg('Could not load quiz questions.')
@@ -101,8 +116,8 @@ export default function QuizPage() {
           return
         }
 
-        // Order questions to match question_ids order
-        const ordered = dailyQuiz.question_ids
+        // Order questions to match 1→5 order
+        const ordered = questionIds
           .map((id) => questionData.find((q) => q.id === id))
           .filter(Boolean)
 
@@ -151,7 +166,7 @@ export default function QuizPage() {
   // Time expired — auto-submit as incorrect
   function handleTimeUp() {
     if (quizState !== 'question') return
-    processAnswer(null, QUESTION_TIMER_SECONDS)
+    processAnswer(null, QUESTION_TIMER_SECONDS * 1000)
   }
 
   // Player selects an answer
@@ -159,30 +174,33 @@ export default function QuizPage() {
     if (selectedAnswer !== null) return // prevent double-tap
     clearInterval(timerRef.current)
 
-    const elapsed = Math.round((Date.now() - startTimeRef.current) / 1000)
-    processAnswer(answerIndex, elapsed)
+    const elapsedMs = Date.now() - startTimeRef.current
+    processAnswer(answerIndex, elapsedMs)
   }
 
   // Process the selected answer
-  function processAnswer(answerIndex, elapsed) {
+  function processAnswer(answerIndex, elapsedMs) {
     const question = questions[currentIndex]
     const correct = answerIndex === question.correct_answer_index
-    const clamped = Math.min(elapsed, QUESTION_TIMER_SECONDS)
+    const clampedMs = Math.min(elapsedMs, QUESTION_TIMER_SECONDS * 1000)
+    const elapsedSec = Math.round(clampedMs / 1000)
 
-    // Calculate XP
+    // Calculate XP + speed bonus
     let xpEarned = 0
+    let speedBonus = 0
     if (correct) {
       xpEarned += XP_CORRECT_ANSWER
-      if (clamped <= SPEED_FAST_THRESHOLD) {
-        xpEarned += XP_SPEED_BONUS_FAST
-      } else if (clamped <= SPEED_MEDIUM_THRESHOLD) {
-        xpEarned += XP_SPEED_BONUS_MEDIUM
+      if (elapsedSec <= SPEED_FAST_THRESHOLD) {
+        speedBonus = XP_SPEED_BONUS_FAST
+      } else if (elapsedSec <= SPEED_MEDIUM_THRESHOLD) {
+        speedBonus = XP_SPEED_BONUS_MEDIUM
       }
+      xpEarned += speedBonus
     }
 
     setSelectedAnswer(answerIndex)
     setIsCorrect(correct)
-    setTimeSpent(clamped)
+    setTimeSpentMs(clampedMs)
 
     // Show floating XP
     if (xpEarned > 0) {
@@ -196,8 +214,9 @@ export default function QuizPage() {
         questionId: question.id,
         selectedIndex: answerIndex,
         correct,
-        timeSpent: clamped,
+        timeMs: clampedMs,
         xpEarned,
+        speedBonus,
       },
     ])
 
@@ -252,7 +271,6 @@ export default function QuizPage() {
       setQuizState('question')
       startTimer()
     } else {
-      // Quiz finished — navigate to results
       finishQuiz()
     }
   }
@@ -260,19 +278,43 @@ export default function QuizPage() {
   // Save quiz session and navigate to results
   async function finishQuiz() {
     const score = answers.filter((a) => a.correct).length
+    const isPerfect = score === QUESTIONS_PER_QUIZ
+    const totalSpeedBonuses = answers.filter((a) => a.speedBonus > 0).length
     const totalXP =
       XP_QUIZ_STARTED +
       answers.reduce((sum, a) => sum + a.xpEarned, 0) +
-      (score === QUESTIONS_PER_QUIZ ? XP_PERFECT_QUIZ : 0)
+      (isPerfect ? XP_PERFECT_QUIZ : 0)
+    const totalDurationSec = Math.round(
+      answers.reduce((sum, a) => sum + a.timeMs, 0) / 1000
+    )
     const avgTime =
-      answers.length > 0
-        ? Math.round(answers.reduce((sum, a) => sum + a.timeSpent, 0) / answers.length)
-        : 0
+      answers.length > 0 ? Math.round(totalDurationSec / answers.length) : 0
 
     const today = new Date().toISOString().split('T')[0]
 
     try {
-      // Save quiz session
+      // Fetch current profile for streak calculation
+      const { data: currentProfile } = await supabase
+        .from('profiles')
+        .select('total_xp, current_streak, longest_streak, last_quiz_date, total_quizzes, total_correct, total_questions')
+        .eq('id', user.id)
+        .single()
+
+      // Calculate new streak
+      let newStreak = 1
+      if (currentProfile) {
+        const yesterday = new Date()
+        yesterday.setDate(yesterday.getDate() - 1)
+        const yesterdayStr = yesterday.toISOString().split('T')[0]
+
+        if (currentProfile.last_quiz_date === yesterdayStr) {
+          newStreak = (currentProfile.current_streak || 0) + 1
+        } else if (currentProfile.last_quiz_date === today) {
+          newStreak = currentProfile.current_streak || 1
+        }
+      }
+
+      // Save quiz session (matches quiz_sessions schema)
       const { data: session, error: sError } = await supabase
         .from('quiz_sessions')
         .insert({
@@ -280,59 +322,50 @@ export default function QuizPage() {
           daily_quiz_id: quizId,
           quiz_date: today,
           score,
-          total_questions: questions.length,
-          xp_earned: totalXP,
-          time_seconds: answers.reduce((sum, a) => sum + a.timeSpent, 0),
-          completed_at: new Date().toISOString(),
+          total_xp_earned: totalXP,
+          duration_seconds: totalDurationSec,
+          speed_bonuses: totalSpeedBonuses,
+          is_perfect: isPerfect,
+          streak_day: newStreak,
+          streak_multiplier: 1.0,
+          language: 'en',
         })
         .select('id')
         .single()
 
       if (sError) console.error('Session save error:', sError)
 
-      // Save individual answers
+      // Save individual answers (matches quiz_answers schema)
       if (session) {
-        const answerRows = answers.map((a) => ({
+        const answerRows = answers.map((a, idx) => ({
           session_id: session.id,
           question_id: a.questionId,
-          user_id: user.id,
-          selected_answer: a.selectedIndex,
+          question_order: idx + 1,
+          selected_answer: a.selectedIndex ?? 1, // default to 1 if timeout (null)
           is_correct: a.correct,
-          time_seconds: a.timeSpent,
+          response_time_ms: Math.round(a.timeMs),
+          speed_bonus: a.speedBonus,
           xp_earned: a.xpEarned,
         }))
 
         const { error: aError } = await supabase.from('quiz_answers').insert(answerRows)
-
         if (aError) console.error('Answers save error:', aError)
       }
 
-      // Update profile XP + streak
-      const { data: currentProfile } = await supabase
-        .from('profiles')
-        .select('total_xp, streak_days, last_quiz_date, quizzes_completed')
-        .eq('id', user.id)
-        .single()
-
+      // Update profile (matches profiles schema)
       if (currentProfile) {
-        const yesterday = new Date()
-        yesterday.setDate(yesterday.getDate() - 1)
-        const yesterdayStr = yesterday.toISOString().split('T')[0]
-
-        let newStreak = 1
-        if (currentProfile.last_quiz_date === yesterdayStr) {
-          newStreak = (currentProfile.streak_days || 0) + 1
-        } else if (currentProfile.last_quiz_date === today) {
-          newStreak = currentProfile.streak_days || 1
-        }
+        const newLongest = Math.max(currentProfile.longest_streak || 0, newStreak)
 
         await supabase
           .from('profiles')
           .update({
             total_xp: (currentProfile.total_xp || 0) + totalXP,
-            streak_days: newStreak,
+            current_streak: newStreak,
+            longest_streak: newLongest,
             last_quiz_date: today,
-            quizzes_completed: (currentProfile.quizzes_completed || 0) + 1,
+            total_quizzes: (currentProfile.total_quizzes || 0) + 1,
+            total_correct: (currentProfile.total_correct || 0) + score,
+            total_questions: (currentProfile.total_questions || 0) + questions.length,
           })
           .eq('id', user.id)
       }
@@ -359,6 +392,9 @@ export default function QuizPage() {
   const question = questions[currentIndex]
   const lang = 'en' // TODO: dynamic language support
 
+  // Get answers array from jsonb column: answers_en, answers_fr, etc.
+  const answersArr = question ? (question[`answers_${lang}`] || question.answers_en || []) : []
+
   // Timer color
   const timerColor =
     timeLeft <= TIMER_CRITICAL_SECONDS
@@ -373,6 +409,8 @@ export default function QuizPage() {
       : timeLeft <= TIMER_WARNING_SECONDS
         ? 'bg-amber-50'
         : 'bg-emerald-50'
+
+  const timeSpentSec = Math.round(timeSpentMs / 1000)
 
   // Loading state
   if (quizState === 'loading') {
@@ -480,10 +518,10 @@ export default function QuizPage() {
         </h2>
       </div>
 
-      {/* Answer cards */}
+      {/* Answer cards — answers from jsonb array, index 0-3 maps to answer_index 1-4 */}
       <div className="px-4 flex-1 flex flex-col gap-2.5">
-        {[1, 2, 3, 4].map((num) => {
-          const answerText = question[`answer_${num}_${lang}`] || question[`answer_${num}_en`]
+        {answersArr.map((answerText, idx) => {
+          const num = idx + 1 // 1-based answer index matching correct_answer_index
           const isSelected = selectedAnswer === num
           const isCorrectAnswer = question.correct_answer_index === num
           const showResult = quizState === 'feedback'
@@ -586,8 +624,8 @@ export default function QuizPage() {
               {question[`explanation_${lang}`] || question.explanation_en}
             </p>
             <p className="text-xs text-akka-text-secondary mt-2">
-              Answered in {timeSpent}s
-              {answers[answers.length - 1]?.xpEarned > XP_CORRECT_ANSWER && ' · Speed bonus!'}
+              Answered in {timeSpentSec}s
+              {answers[answers.length - 1]?.speedBonus > 0 && ' · Speed bonus!'}
             </p>
           </Card>
 
