@@ -2,6 +2,8 @@ import { supabase } from './supabase'
 
 /**
  * 5 seed questions covering each macro_category — for testing without the Edge Function.
+ * Answers use jsonb array format: answers_en: ["A","B","C","D"]
+ * correct_answer_index is 1-based (1–4).
  */
 const SEED_QUESTIONS = [
   {
@@ -117,11 +119,24 @@ const SEED_QUESTIONS = [
 ]
 
 /**
+ * Fisher-Yates shuffle — in-place, returns the same array reference.
+ */
+function fisherYatesShuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]]
+  }
+  return arr
+}
+
+/**
  * Seeds 5 test questions and creates a daily_quiz for today.
+ * daily_quizzes uses question_1_id..question_5_id (not an array).
  * Returns { success, error, quizId }
  */
 export async function seedTestQuiz() {
   try {
+    // 1. Insert seed questions
     const { data: questions, error: qError } = await supabase
       .from('questions')
       .insert(SEED_QUESTIONS)
@@ -130,15 +145,19 @@ export async function seedTestQuiz() {
     if (qError) throw qError
 
     const ids = questions.map((q) => q.id)
+
+    // 2. Get today's date
     const today = new Date().toISOString().split('T')[0]
 
+    // 3. Check if a daily quiz already exists for today
     const { data: existing } = await supabase
       .from('daily_quizzes')
       .select('id')
       .eq('quiz_date', today)
-      .maybeSingle()
+      .single()
 
     if (existing) {
+      // Update existing quiz with new question IDs
       const { error: uError } = await supabase
         .from('daily_quizzes')
         .update({
@@ -154,6 +173,7 @@ export async function seedTestQuiz() {
       return { success: true, quizId: existing.id }
     }
 
+    // 4. Create new daily quiz for today
     const { data: quiz, error: dqError } = await supabase
       .from('daily_quizzes')
       .insert({
@@ -178,31 +198,15 @@ export async function seedTestQuiz() {
 }
 
 /**
- * Replay quiz — deletes user session/answers for today, picks 5 random
- * approved questions from the DB (no new inserts), updates daily_quiz,
- * and resets last_quiz_date. Returns { success, error }
+ * Replay quiz — picks 5 UNIQUE random approved questions from the DB,
+ * creates/updates today's daily_quiz. No duplicates guaranteed via Fisher-Yates.
+ * Returns { success, error, quizId }
  */
-export async function replayQuiz(userId) {
+export async function replayQuiz() {
   try {
     const today = new Date().toISOString().split('T')[0]
 
-    // 1. Delete today's quiz_answers for this user
-    const { data: sessions } = await supabase
-      .from('quiz_sessions')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('quiz_date', today)
-
-    if (sessions && sessions.length > 0) {
-      const sessionIds = sessions.map((s) => s.id)
-      await supabase.from('quiz_answers').delete().in('session_id', sessionIds)
-      await supabase.from('quiz_sessions').delete().eq('user_id', userId).eq('quiz_date', today)
-    }
-
-    // 2. Reset last_quiz_date
-    await supabase.from('profiles').update({ last_quiz_date: null }).eq('id', userId)
-
-    // 3. Pick 5 random approved questions
+    // 1. Fetch all approved question IDs
     const { data: allQ, error: qErr } = await supabase
       .from('questions')
       .select('id')
@@ -211,18 +215,24 @@ export async function replayQuiz(userId) {
     if (qErr) throw qErr
     if (!allQ || allQ.length < 5) throw new Error('Not enough approved questions (need 5)')
 
-    const shuffled = allQ.sort(() => Math.random() - 0.5)
-    const picked = shuffled.slice(0, 5).map((q) => q.id)
+    // 2. Fisher-Yates shuffle for true randomness
+    const arr = [...allQ]
+    fisherYatesShuffle(arr)
+    const picked = arr.slice(0, 5).map((q) => q.id)
 
-    // 4. Update or create daily_quiz
+    // 3. Safety check — no duplicates
+    const uniquePicked = [...new Set(picked)]
+    if (uniquePicked.length < 5) throw new Error('Duplicate questions detected, retry')
+
+    // 4. Check if a daily quiz already exists for today
     const { data: existing } = await supabase
       .from('daily_quizzes')
       .select('id')
       .eq('quiz_date', today)
-      .maybeSingle()
+      .single()
 
     if (existing) {
-      const { error: uErr } = await supabase
+      const { error: uError } = await supabase
         .from('daily_quizzes')
         .update({
           question_1_id: picked[0],
@@ -232,23 +242,29 @@ export async function replayQuiz(userId) {
           question_5_id: picked[4],
         })
         .eq('id', existing.id)
-      if (uErr) throw uErr
-    } else {
-      const { error: iErr } = await supabase
-        .from('daily_quizzes')
-        .insert({
-          quiz_date: today,
-          question_1_id: picked[0],
-          question_2_id: picked[1],
-          question_3_id: picked[2],
-          question_4_id: picked[3],
-          question_5_id: picked[4],
-          auto_generated: false,
-        })
-      if (iErr) throw iErr
+
+      if (uError) throw uError
+      return { success: true, quizId: existing.id }
     }
 
-    return { success: true }
+    // 5. Create new daily quiz
+    const { data: quiz, error: dqError } = await supabase
+      .from('daily_quizzes')
+      .insert({
+        quiz_date: today,
+        question_1_id: picked[0],
+        question_2_id: picked[1],
+        question_3_id: picked[2],
+        question_4_id: picked[3],
+        question_5_id: picked[4],
+        auto_generated: false,
+      })
+      .select('id')
+      .single()
+
+    if (dqError) throw dqError
+
+    return { success: true, quizId: quiz.id }
   } catch (err) {
     console.error('Replay quiz error:', err)
     return { success: false, error: err.message }

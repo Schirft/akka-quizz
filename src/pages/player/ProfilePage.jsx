@@ -24,8 +24,14 @@ export default function ProfilePage() {
     .slice(0, 2)
 
   async function handleSignOut() {
-    await signOut()
-    navigate('/login')
+    try {
+      await signOut()
+      navigate('/login', { replace: true })
+    } catch (err) {
+      console.error('Logout error:', err)
+      // Force redirect even on error to avoid stale state
+      navigate('/login', { replace: true })
+    }
   }
 
   return (
