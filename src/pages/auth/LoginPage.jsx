@@ -124,7 +124,7 @@ export default function LoginPage() {
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 placeholder="John Doe"
-                className="w-full px-4 py-3 rounded-xl border border-akka-border bg-white text-akka-text placeholder:text-gray-300 focus:outline-none focus:ring-2 focus:ring-akka-green/30 focus:border-akka-green transition-all"
+                className="w-full px-4 py-3 rounded-xl border border-akka-border bg-white text-akka-text placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-akka-green/30 focus:border-akka-green transition-all"
               />
             </div>
           )}
@@ -156,7 +156,7 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Min. 6 characters"
                 autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-                className="w-full px-4 py-3 pr-12 rounded-xl border border-akka-border bg-white text-akka-text placeholder:text-gray-300 focus:outline-none focus:ring-2 focus:ring-akka-green/30 focus:border-akka-green transition-all"
+                className="w-full px-4 py-3 pr-12 rounded-xl border border-akka-border bg-white text-akka-text placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-akka-green/30 focus:border-akka-green transition-all"
               />
               <button
                 type="button"

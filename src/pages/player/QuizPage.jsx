@@ -15,6 +15,14 @@ import {
   SPEED_MEDIUM_THRESHOLD,
   QUESTIONS_PER_QUIZ,
 } from '../../config/constants'
+import {
+  playCorrect,
+  playWrong,
+  playTimerTick,
+  playTap,
+  isMuted,
+  toggleMute,
+} from '../../lib/sounds'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
 import {
@@ -25,15 +33,15 @@ import {
   ChevronRight,
   Loader2,
   AlertTriangle,
+  Volume2,
+  VolumeX,
 } from 'lucide-react'
 
 /**
- * QuizPage — the full quiz experience with timer, feedback, and transitions.
- * Loads today's daily_quiz, presents 5 questions with 15s timer each,
- * shows feedback after each answer, then navigates to results.
+ * QuizPage — the full quiz experience with timer, feedback, sounds, and transitions.
  *
  * Schema notes:
- * - daily_quizzes: question_1_id..question_5_id (individual FK columns, no array)
+ * - daily_quizzes: question_1_id..question_5_id (individual FK columns)
  * - questions.answers_en: jsonb array ["A","B","C","D"], correct_answer_index 1-4
  * - quiz_sessions: total_xp_earned, duration_seconds, speed_bonuses, is_perfect
  * - quiz_answers: question_order, response_time_ms, speed_bonus (no user_id)
@@ -50,15 +58,24 @@ export default function QuizPage() {
   const [selectedAnswer, setSelectedAnswer] = useState(null)
   const [isCorrect, setIsCorrect] = useState(null)
   const [timeLeft, setTimeLeft] = useState(QUESTION_TIMER_SECONDS)
-  const [timeSpentMs, setTimeSpentMs] = useState(0) // milliseconds
-  const [answers, setAnswers] = useState([]) // { questionId, selectedIndex, correct, timeMs, xpEarned, speedBonus }
+  const [timeSpentMs, setTimeSpentMs] = useState(0)
+  const [answers, setAnswers] = useState([])
   const [quizId, setQuizId] = useState(null)
   const [errorMsg, setErrorMsg] = useState('')
   const [xpFloat, setXpFloat] = useState(null)
   const [communityStats, setCommunityStats] = useState(null)
+  const [muted, setMutedState] = useState(isMuted)
+  const [shakeAnswer, setShakeAnswer] = useState(false)
 
   const timerRef = useRef(null)
   const startTimeRef = useRef(null)
+  const lastTickRef = useRef(null) // track last tick sound to avoid repeats
+
+  // Handle mute toggle
+  function handleToggleMute() {
+    const next = toggleMute()
+    setMutedState(next)
+  }
 
   // Load daily quiz
   useEffect(() => {
@@ -80,7 +97,7 @@ export default function QuizPage() {
           return
         }
 
-        // Find today's daily quiz (question_1_id..question_5_id, no status column)
+        // Find today's daily quiz
         const { data: dailyQuiz, error: dqError } = await supabase
           .from('daily_quizzes')
           .select('id, question_1_id, question_2_id, question_3_id, question_4_id, question_5_id')
@@ -95,7 +112,6 @@ export default function QuizPage() {
 
         setQuizId(dailyQuiz.id)
 
-        // Collect question IDs from individual columns
         const questionIds = [
           dailyQuiz.question_1_id,
           dailyQuiz.question_2_id,
@@ -104,7 +120,6 @@ export default function QuizPage() {
           dailyQuiz.question_5_id,
         ].filter(Boolean)
 
-        // Fetch questions by IDs
         const { data: questionData, error: qError } = await supabase
           .from('questions')
           .select('*')
@@ -116,7 +131,6 @@ export default function QuizPage() {
           return
         }
 
-        // Order questions to match 1→5 order
         const ordered = questionIds
           .map((id) => questionData.find((q) => q.id === id))
           .filter(Boolean)
@@ -133,15 +147,22 @@ export default function QuizPage() {
     if (user) loadQuiz()
   }, [user])
 
-  // Start the timer when entering question state
+  // Start the timer
   const startTimer = useCallback(() => {
     setTimeLeft(QUESTION_TIMER_SECONDS)
     startTimeRef.current = Date.now()
+    lastTickRef.current = null
 
     timerRef.current = setInterval(() => {
       const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000)
       const remaining = Math.max(QUESTION_TIMER_SECONDS - elapsed, 0)
       setTimeLeft(remaining)
+
+      // Play tick sound at critical threshold
+      if (remaining <= TIMER_CRITICAL_SECONDS && remaining > 0 && remaining !== lastTickRef.current) {
+        lastTickRef.current = remaining
+        playTimerTick()
+      }
 
       if (remaining <= 0) {
         clearInterval(timerRef.current)
@@ -157,35 +178,30 @@ export default function QuizPage() {
     }
   }, [])
 
-  // Start quiz
   function handleStart() {
+    playTap()
     setQuizState('question')
     startTimer()
   }
 
-  // Time expired — auto-submit as incorrect
   function handleTimeUp() {
     if (quizState !== 'question') return
     processAnswer(null, QUESTION_TIMER_SECONDS * 1000)
   }
 
-  // Player selects an answer
   function handleAnswer(answerIndex) {
-    if (selectedAnswer !== null) return // prevent double-tap
+    if (selectedAnswer !== null) return
     clearInterval(timerRef.current)
-
     const elapsedMs = Date.now() - startTimeRef.current
     processAnswer(answerIndex, elapsedMs)
   }
 
-  // Process the selected answer
   function processAnswer(answerIndex, elapsedMs) {
     const question = questions[currentIndex]
     const correct = answerIndex === question.correct_answer_index
     const clampedMs = Math.min(elapsedMs, QUESTION_TIMER_SECONDS * 1000)
     const elapsedSec = Math.round(clampedMs / 1000)
 
-    // Calculate XP + speed bonus
     let xpEarned = 0
     let speedBonus = 0
     if (correct) {
@@ -202,12 +218,19 @@ export default function QuizPage() {
     setIsCorrect(correct)
     setTimeSpentMs(clampedMs)
 
-    // Show floating XP
+    // Sound effects
+    if (correct) {
+      playCorrect()
+    } else {
+      playWrong()
+      setShakeAnswer(true)
+      setTimeout(() => setShakeAnswer(false), 500)
+    }
+
     if (xpEarned > 0) {
       setXpFloat({ amount: xpEarned, key: Date.now() })
     }
 
-    // Record answer
     setAnswers((prev) => [
       ...prev,
       {
@@ -220,13 +243,10 @@ export default function QuizPage() {
       },
     ])
 
-    // Load community stats for this question
     loadCommunityStats(question.id)
-
     setQuizState('feedback')
   }
 
-  // Load how other players answered
   async function loadCommunityStats(questionId) {
     try {
       const { data, error } = await supabase
@@ -259,12 +279,13 @@ export default function QuizPage() {
     }
   }
 
-  // Move to next question or finish
   function handleNext() {
+    playTap()
     setSelectedAnswer(null)
     setIsCorrect(null)
     setXpFloat(null)
     setCommunityStats(null)
+    setShakeAnswer(false)
 
     if (currentIndex + 1 < questions.length) {
       setCurrentIndex((i) => i + 1)
@@ -275,7 +296,6 @@ export default function QuizPage() {
     }
   }
 
-  // Save quiz session and navigate to results
   async function finishQuiz() {
     const score = answers.filter((a) => a.correct).length
     const isPerfect = score === QUESTIONS_PER_QUIZ
@@ -293,14 +313,12 @@ export default function QuizPage() {
     const today = new Date().toISOString().split('T')[0]
 
     try {
-      // Fetch current profile for streak calculation
       const { data: currentProfile } = await supabase
         .from('profiles')
         .select('total_xp, current_streak, longest_streak, last_quiz_date, total_quizzes, total_correct, total_questions')
         .eq('id', user.id)
         .single()
 
-      // Calculate new streak
       let newStreak = 1
       if (currentProfile) {
         const yesterday = new Date()
@@ -314,7 +332,6 @@ export default function QuizPage() {
         }
       }
 
-      // Save quiz session (matches quiz_sessions schema)
       const { data: session, error: sError } = await supabase
         .from('quiz_sessions')
         .insert({
@@ -335,13 +352,12 @@ export default function QuizPage() {
 
       if (sError) console.error('Session save error:', sError)
 
-      // Save individual answers (matches quiz_answers schema)
       if (session) {
         const answerRows = answers.map((a, idx) => ({
           session_id: session.id,
           question_id: a.questionId,
           question_order: idx + 1,
-          selected_answer: a.selectedIndex ?? 1, // default to 1 if timeout (null)
+          selected_answer: a.selectedIndex ?? 1,
           is_correct: a.correct,
           response_time_ms: Math.round(a.timeMs),
           speed_bonus: a.speedBonus,
@@ -352,7 +368,6 @@ export default function QuizPage() {
         if (aError) console.error('Answers save error:', aError)
       }
 
-      // Update profile (matches profiles schema)
       if (currentProfile) {
         const newLongest = Math.max(currentProfile.longest_streak || 0, newStreak)
 
@@ -373,7 +388,6 @@ export default function QuizPage() {
       console.error('Quiz finish error:', err)
     }
 
-    // Navigate to results
     navigate('/quiz/results', {
       state: {
         score,
@@ -390,12 +404,14 @@ export default function QuizPage() {
   // --- RENDER ---
 
   const question = questions[currentIndex]
-  const lang = 'en' // TODO: dynamic language support
+  const lang = 'en'
 
-  // Get answers array from jsonb column: answers_en, answers_fr, etc.
   const answersArr = question ? (question[`answers_${lang}`] || question.answers_en || []) : []
 
-  // Timer color
+  // Timer progress (0 → 1)
+  const timerProgress = timeLeft / QUESTION_TIMER_SECONDS
+
+  // Timer colors
   const timerColor =
     timeLeft <= TIMER_CRITICAL_SECONDS
       ? 'text-akka-red'
@@ -403,12 +419,21 @@ export default function QuizPage() {
         ? 'text-amber-500'
         : 'text-akka-green'
 
+  const timerBarColor =
+    timeLeft <= TIMER_CRITICAL_SECONDS
+      ? 'bg-akka-red'
+      : timeLeft <= TIMER_WARNING_SECONDS
+        ? 'bg-amber-500'
+        : 'bg-akka-green'
+
   const timerBg =
     timeLeft <= TIMER_CRITICAL_SECONDS
       ? 'bg-red-50'
       : timeLeft <= TIMER_WARNING_SECONDS
         ? 'bg-amber-50'
         : 'bg-emerald-50'
+
+  const isCritical = timeLeft <= TIMER_CRITICAL_SECONDS && timeLeft > 0 && quizState === 'question'
 
   const timeSpentSec = Math.round(timeSpentMs / 1000)
 
@@ -426,7 +451,7 @@ export default function QuizPage() {
   if (quizState === 'error') {
     return (
       <div className="min-h-screen bg-akka-bg flex flex-col">
-        <QuizHeader onBack={() => navigate('/')} />
+        <QuizHeader onBack={() => navigate('/')} muted={muted} onToggleMute={handleToggleMute} />
         <div className="flex-1 flex flex-col items-center justify-center px-6">
           <div className="w-16 h-16 rounded-2xl bg-amber-50 flex items-center justify-center mb-4">
             <AlertTriangle size={32} className="text-amber-500" />
@@ -441,11 +466,11 @@ export default function QuizPage() {
     )
   }
 
-  // Ready state — show start screen
+  // Ready state
   if (quizState === 'ready') {
     return (
       <div className="min-h-screen bg-akka-bg flex flex-col">
-        <QuizHeader onBack={() => navigate('/')} />
+        <QuizHeader onBack={() => navigate('/')} muted={muted} onToggleMute={handleToggleMute} />
         <div className="flex-1 flex flex-col items-center justify-center px-6">
           <div className="w-20 h-20 rounded-3xl bg-emerald-50 flex items-center justify-center mb-6">
             <span className="text-4xl">🧠</span>
@@ -468,7 +493,7 @@ export default function QuizPage() {
   // Question + Feedback states
   return (
     <div className="min-h-screen bg-akka-bg flex flex-col">
-      {/* Header with progress */}
+      {/* Header with progress + mute */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-akka-border">
         <button
           onClick={() => navigate('/')}
@@ -495,14 +520,33 @@ export default function QuizPage() {
             />
           ))}
         </div>
-        {/* Timer */}
+        {/* Timer badge */}
         <div
-          className={`min-w-[52px] h-9 rounded-full flex items-center justify-center gap-1 px-2.5 ${timerBg}`}
+          className={`min-w-[52px] h-9 rounded-full flex items-center justify-center gap-1 px-2.5 ${timerBg} ${
+            isCritical ? 'animate-timer-pulse' : ''
+          }`}
         >
           <Clock size={14} className={timerColor} />
           <span className={`text-sm font-bold tabular-nums ${timerColor}`}>{timeLeft}s</span>
         </div>
+        {/* Mute toggle */}
+        <button
+          onClick={handleToggleMute}
+          className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl hover:bg-gray-50 transition-colors"
+        >
+          {muted ? <VolumeX size={18} className="text-gray-400" /> : <Volume2 size={18} className="text-akka-text-secondary" />}
+        </button>
       </div>
+
+      {/* Timer progress bar */}
+      {quizState === 'question' && (
+        <div className="w-full h-2 bg-gray-100">
+          <div
+            className={`h-full rounded-r-full transition-all duration-200 ease-linear ${timerBarColor}`}
+            style={{ width: `${timerProgress * 100}%` }}
+          />
+        </div>
+      )}
 
       {/* Question counter */}
       <div className="px-4 pt-4">
@@ -518,27 +562,37 @@ export default function QuizPage() {
         </h2>
       </div>
 
-      {/* Answer cards — answers from jsonb array, index 0-3 maps to answer_index 1-4 */}
+      {/* Answer cards */}
       <div className="px-4 flex-1 flex flex-col gap-2.5">
         {answersArr.map((answerText, idx) => {
-          const num = idx + 1 // 1-based answer index matching correct_answer_index
+          const num = idx + 1
           const isSelected = selectedAnswer === num
           const isCorrectAnswer = question.correct_answer_index === num
           const showResult = quizState === 'feedback'
 
+          // Enhanced feedback styles
           let cardStyle = 'bg-white border-akka-border'
+          let textColor = 'text-akka-text'
+          let fontWeight = 'font-medium'
           if (showResult) {
             if (isCorrectAnswer) {
-              cardStyle = 'bg-emerald-50 border-akka-green'
+              cardStyle = 'bg-[#ECFDF5] border-[#2ECC71] border-[3px]'
+              textColor = 'text-[#166534]'
+              fontWeight = 'font-bold'
             } else if (isSelected && !isCorrect) {
-              cardStyle = 'bg-red-50 border-akka-red'
+              cardStyle = 'bg-[#FEF2F2] border-[#E74C3C] border-[3px]'
+              textColor = 'text-[#991B1B]'
+              fontWeight = 'font-bold'
             } else {
-              cardStyle = 'bg-white border-akka-border opacity-50'
+              cardStyle = 'bg-gray-50 border-gray-200 opacity-40'
+              textColor = 'text-gray-400'
             }
           } else if (isSelected) {
-            cardStyle = 'bg-akka-dark border-akka-dark text-white'
+            cardStyle = 'bg-akka-dark border-akka-dark'
+            textColor = 'text-white'
           }
 
+          const shouldShake = showResult && isSelected && !isCorrect && shakeAnswer
           const communityPct = communityStats ? communityStats[num] : null
 
           return (
@@ -546,15 +600,17 @@ export default function QuizPage() {
               key={num}
               onClick={() => quizState === 'question' && handleAnswer(num)}
               disabled={quizState === 'feedback'}
-              className={`relative w-full text-left p-4 rounded-2xl border-2 transition-all duration-200 active:scale-[0.98] ${cardStyle}`}
+              className={`relative w-full text-left p-4 rounded-2xl border-2 transition-all duration-200 active:scale-[0.98] ${cardStyle} ${
+                shouldShake ? 'animate-shake' : ''
+              }`}
             >
               <div className="flex items-center gap-3">
                 <div
                   className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
                     showResult && isCorrectAnswer
-                      ? 'bg-akka-green text-white'
+                      ? 'bg-[#2ECC71] text-white'
                       : showResult && isSelected && !isCorrect
-                        ? 'bg-akka-red text-white'
+                        ? 'bg-[#E74C3C] text-white'
                         : isSelected && !showResult
                           ? 'bg-white text-akka-dark'
                           : 'bg-gray-100 text-akka-text-secondary'
@@ -568,16 +624,12 @@ export default function QuizPage() {
                     String.fromCharCode(64 + num)
                   )}
                 </div>
-                <span
-                  className={`text-sm font-medium flex-1 ${
-                    isSelected && !showResult ? 'text-white' : 'text-akka-text'
-                  }`}
-                >
+                <span className={`text-sm flex-1 ${textColor} ${fontWeight}`}>
                   {answerText}
                 </span>
               </div>
 
-              {/* Community stats bar (feedback only) */}
+              {/* Community stats bar */}
               {showResult && communityPct !== null && (
                 <div className="mt-2 flex items-center gap-2">
                   <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
@@ -603,7 +655,7 @@ export default function QuizPage() {
         <div className="px-4 pt-4 pb-6">
           {/* XP Float animation */}
           {xpFloat && (
-            <div key={xpFloat.key} className="flex justify-center mb-3 animate-bounce">
+            <div key={xpFloat.key} className="flex justify-center mb-3 animate-float-up">
               <span className="text-akka-green font-bold text-lg">+{xpFloat.amount} XP</span>
             </div>
           )}
@@ -612,11 +664,11 @@ export default function QuizPage() {
           <Card className="mb-4">
             <div className="flex items-start gap-2 mb-2">
               {isCorrect ? (
-                <CheckCircle size={18} className="text-akka-green shrink-0 mt-0.5" />
+                <CheckCircle size={18} className="text-[#2ECC71] shrink-0 mt-0.5" />
               ) : (
-                <XCircle size={18} className="text-akka-red shrink-0 mt-0.5" />
+                <XCircle size={18} className="text-[#E74C3C] shrink-0 mt-0.5" />
               )}
-              <p className="text-sm font-semibold text-akka-text">
+              <p className={`text-sm font-semibold ${isCorrect ? 'text-[#166534]' : 'text-[#991B1B]'}`}>
                 {isCorrect ? 'Correct!' : 'Incorrect'}
               </p>
             </div>
@@ -647,11 +699,11 @@ export default function QuizPage() {
 }
 
 /**
- * QuizHeader — simple back-button header.
+ * QuizHeader — back button + optional mute toggle.
  */
-function QuizHeader({ onBack }) {
+function QuizHeader({ onBack, muted, onToggleMute }) {
   return (
-    <div className="flex items-center gap-3 px-4 py-3 border-b border-akka-border">
+    <div className="flex items-center justify-between px-4 py-3 border-b border-akka-border">
       <button
         onClick={onBack}
         className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl hover:bg-gray-50 transition-colors"
@@ -659,6 +711,12 @@ function QuizHeader({ onBack }) {
         <ArrowLeft size={20} />
       </button>
       <h1 className="text-lg font-bold text-akka-text">Quiz of the Day</h1>
+      <button
+        onClick={onToggleMute}
+        className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl hover:bg-gray-50 transition-colors"
+      >
+        {muted ? <VolumeX size={18} className="text-gray-400" /> : <Volume2 size={18} className="text-akka-text-secondary" />}
+      </button>
     </div>
   )
 }

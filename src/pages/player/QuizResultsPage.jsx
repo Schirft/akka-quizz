@@ -14,6 +14,7 @@ import Card from '../../components/ui/Card'
 import Confetti from '../../components/Confetti'
 import LevelUpModal from '../../components/LevelUpModal'
 import { Home, RotateCcw, Share2, Flame, Trophy, Zap, Target } from 'lucide-react'
+import { playQuizComplete, playPerfect } from '../../lib/sounds'
 
 /**
  * QuizResultsPage — shows quiz results with score circle, XP breakdown,
@@ -101,6 +102,16 @@ export default function QuizResultsPage() {
 
     // Start animations after a brief delay
     setTimeout(() => animateNext(0), 600)
+
+    // Play quiz complete sound
+    setTimeout(() => {
+      if (!mounted) return
+      if (isPerfect) {
+        playPerfect()
+      } else {
+        playQuizComplete()
+      }
+    }, 400)
 
     // Show confetti for perfect score
     if (isPerfect) {

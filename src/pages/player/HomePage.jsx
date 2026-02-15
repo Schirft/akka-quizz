@@ -9,7 +9,7 @@ import { seedTestQuiz } from '../../lib/seedQuiz'
 import Card from '../../components/ui/Card'
 import ProgressBar from '../../components/ui/ProgressBar'
 import Button from '../../components/ui/Button'
-import { Flame, Play, CheckCircle, Trophy, Sparkles, Loader2 } from 'lucide-react'
+import { Flame, Play, CheckCircle, Trophy, Sparkles, Loader2, RotateCcw } from 'lucide-react'
 
 const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
 
@@ -28,6 +28,8 @@ export default function HomePage() {
   const [streakHistory, setStreakHistory] = useState([])
   const [seeding, setSeeding] = useState(false)
   const [seedResult, setSeedResult] = useState(null)
+  const [replaying, setReplaying] = useState(false)
+  const [replayResult, setReplayResult] = useState(null)
 
   // Check if quiz already played today + fetch recent badges + streak history
   useEffect(() => {
@@ -101,6 +103,54 @@ export default function HomePage() {
     const result = await seedTestQuiz()
     setSeedResult(result)
     setSeeding(false)
+  }
+
+  // Replay quiz handler — delete today's session/answers, re-seed, navigate to quiz
+  async function handleReplay() {
+    if (!user) return
+    setReplaying(true)
+    setReplayResult(null)
+    try {
+      const today = new Date().toISOString().split('T')[0]
+
+      // 1. Delete today's quiz_answers for this user
+      const { data: sessions } = await supabase
+        .from('quiz_sessions')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('quiz_date', today)
+
+      if (sessions && sessions.length > 0) {
+        const sessionIds = sessions.map((s) => s.id)
+        await supabase
+          .from('quiz_answers')
+          .delete()
+          .in('session_id', sessionIds)
+
+        // 2. Delete today's quiz_sessions for this user
+        await supabase
+          .from('quiz_sessions')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('quiz_date', today)
+      }
+
+      // 3. Re-seed quiz with new questions
+      const result = await seedTestQuiz()
+      if (!result.success) throw new Error(result.error)
+
+      // 4. Update state and navigate
+      setQuizPlayedToday(false)
+      setReplayResult({ success: true })
+
+      // Navigate to quiz after short delay
+      setTimeout(() => navigate('/quiz'), 300)
+    } catch (err) {
+      console.error('Replay error:', err)
+      setReplayResult({ success: false, error: err.message })
+    } finally {
+      setReplaying(false)
+    }
   }
 
   if (!profile) return null
@@ -220,13 +270,34 @@ export default function HomePage() {
         </Button>
       )}
 
-      {/* Seed Test Quiz — dev helper */}
-      <div className="mt-6 pt-4 border-t border-akka-border">
+      {/* Dev tools */}
+      <div className="mt-6 pt-4 border-t border-akka-border space-y-3">
+        {/* Replay Quiz — deletes today's session, reseeds, navigates to quiz */}
+        <Button
+          variant="outline"
+          className="w-full gap-2 text-sm"
+          onClick={handleReplay}
+          disabled={replaying || seeding}
+        >
+          {replaying ? (
+            <Loader2 size={16} className="animate-spin" />
+          ) : (
+            <RotateCcw size={16} />
+          )}
+          {replaying ? 'Resetting...' : 'Replay Quiz (Dev)'}
+        </Button>
+        {replayResult && !replayResult.success && (
+          <p className="text-xs text-center text-akka-red">
+            Error: {replayResult.error}
+          </p>
+        )}
+
+        {/* Seed Test Quiz — creates quiz without deleting session */}
         <Button
           variant="outline"
           className="w-full gap-2 text-sm"
           onClick={handleSeed}
-          disabled={seeding}
+          disabled={seeding || replaying}
         >
           {seeding ? (
             <Loader2 size={16} className="animate-spin" />
@@ -237,7 +308,7 @@ export default function HomePage() {
         </Button>
         {seedResult && (
           <p
-            className={`text-xs mt-2 text-center ${
+            className={`text-xs text-center ${
               seedResult.success ? 'text-akka-green' : 'text-akka-red'
             }`}
           >

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import Button from './ui/Button'
 import { Trophy, ArrowUp, Sparkles } from 'lucide-react'
+import { playLevelUp } from '../lib/sounds'
 
 /**
  * LevelUpModal — celebration overlay when player levels up.
@@ -12,6 +13,8 @@ export default function LevelUpModal({ oldLevel, newLevel, onClose }) {
   useEffect(() => {
     // Animate in
     requestAnimationFrame(() => setVisible(true))
+    // Play level up sound
+    playLevelUp()
   }, [])
 
   function handleClose() {
