@@ -1,6 +1,6 @@
 # Akka Quiz — PRD (Product Requirements Document)
 
-> Version 1.0 — 15 février 2025
+> Version 1.1 — 15 février 2025
 > Projet HD Conseils × Akka.app
 
 ---
@@ -31,9 +31,21 @@
 
 ---
 
-## 3. Pages de l'application
+## 3. Responsive — Mobile-First
 
-### 3.1 Player (10 pages)
+L'app est conçue **mobile-first** (iPhone 375px). Les fondateurs la testeront principalement sur téléphone. Le design Tailwind part du mobile et s'adapte vers le desktop (max-width 480px pour le player, plus large pour l'admin).
+
+| Device | Priorité | Layout |
+|--------|----------|--------|
+| iPhone / Android (375-430px) | **P0 — Principal** | Full mobile, bottom tab bar, touch targets 44px min |
+| Tablette (768px) | P2 | Centré, max-width container |
+| Desktop (1024px+) | P2 — Admin surtout | Sidebar nav pour admin, quiz centré 480px max |
+
+---
+
+## 4. Pages de l'application
+
+### 4.1 Player (10 pages)
 
 **P1 — Login / Signup**
 - Email + password (Supabase Auth)
@@ -105,9 +117,9 @@
 - Articles dans la langue du profil user
 
 **P10 — Admin (bouton visible pour tous)**
-- Voir section 3.2
+- Voir section 4.2
 
-### 3.2 Admin / Back-office (7 pages)
+### 4.2 Admin / Back-office (7 pages)
 
 **A1 — Dashboard Admin**
 - Stats : nb questions total, par statut, par catégorie, par source
@@ -153,9 +165,9 @@
 
 ---
 
-## 4. Design
+## 5. Design
 
-### 4.1 Deux thèmes dans l'app
+### 5.1 Deux thèmes dans l'app
 
 **Quiz & Admin = LIGHT (blanc)**
 - Background : #FFFFFF (exception feedback : #F7F9F8)
@@ -172,16 +184,16 @@
 - Accent : #2ECC71
 - Texte : #FFFFFF (primary), rgba(255,255,255,0.5) (secondary)
 
-### 4.2 Typographie
+### 5.2 Typographie
 - Font : Plus Jakarta Sans (ou Inter fallback)
 - Moderne, clean, fintech
 
-### 4.3 Navigation
+### 5.3 Navigation
 - 5 onglets : Home, Quiz, News, Leaderboard, Profile
 - Tab bar masquée pendant le quiz
 - Bouton "Admin" dans le Profile ou header
 
-### 4.4 Animations
+### 5.4 Animations
 - Slide transitions entre questions
 - Shake + couleur sur feedback correct/incorrect
 - XP counter incrémental
@@ -192,9 +204,9 @@
 
 ---
 
-## 5. Gamification
+## 6. Gamification
 
-### 5.1 XP
+### 6.1 XP
 
 | Action | XP |
 |--------|-----|
@@ -206,13 +218,13 @@
 | Objectif quotidien | +100 |
 | Streak maintenu | +10 × multiplier |
 
-### 5.2 Streak
+### 6.2 Streak
 - Multiplier : min(1 + streak_days/50, 2.0)
 - Cap 2.0× au jour 50
 - 3 freezes/mois
 - Reset à 04:00 CET
 
-### 5.3 Niveaux (10)
+### 6.3 Niveaux (10)
 
 | Niveau | Nom | XP requis |
 |--------|-----|-----------|
@@ -227,18 +239,18 @@
 | 9 | Legend | 200000 |
 | 10 | Whale | 500000 |
 
-### 5.4 Timer
+### 6.4 Timer
 - 15 secondes par question
 - Vert → Jaune (5s) → Rouge (3s)
 - Speed bonus : ≤3s = +15 XP, 4-7s = +5 XP, >7s = 0
 
-### 5.5 Badges (15 total, 3 tiers)
+### 6.5 Badges (15 total, 3 tiers)
 
 **Common (5) :** First Steps, Week One, Rising Flame, Ten Percenter, Consistent
 **Uncommon (6) :** Hot Streak, Centurion, Speed Demon, Scholar, Diversified, Night Owl
 **Rare (4) :** Perfectionist, Marathon, Grandmaster, OG
 
-### 5.6 Leaderboard
+### 6.6 Leaderboard
 - Cohortes de 30 users
 - Classement hebdomadaire par XP
 - 7 ligues : Bronze → Silver → Gold → Platinum → Diamond → Emerald → Sapphire
@@ -246,38 +258,38 @@
 
 ---
 
-## 6. Génération IA
+## 7. Génération IA
 
-### 6.1 Architecture
+### 7.1 Architecture
 - Modèle : Claude Sonnet 4.5
 - Appel : Supabase Edge Function `generate-questions`
 - Batch : 5 questions par appel API
 - Parallélisation : max 3 appels simultanés
 - Exemples : 3 questions dynamiques piochées en DB par catégorie
 
-### 6.2 Taxonomie (5 macro-catégories)
+### 7.2 Taxonomie (5 macro-catégories)
 1. Ecosystem & Culture
 2. Foundational Knowledge
 3. KPIs / Expert Knowledge
 4. Trends & Tech
 5. Startups vs. Other Asset Classes
 
-### 6.3 Coûts
+### 7.3 Coûts
 - ~1.4¢ par question
 - Budget mensuel estimé : $2-7/mois
 
-### 6.4 Prompt
+### 7.4 Prompt
 Voir document séparé `AI_GENERATION_PROMPTS.md`
 
 ---
 
-## 7. News
+## 8. News
 
-### 7.1 Source
+### 8.1 Source
 - GNews API, free tier (100 req/jour)
 - Clé : `53798e3ace1583384a27a73cdfb2bd19`
 
-### 7.2 Architecture
+### 8.2 Architecture
 - Cron 2x/jour (8h + 18h CET) via Edge Function `fetch-news`
 - Search endpoint avec requêtes booléennes par catégorie
 - 4 langues : EN/FR/IT/ES
@@ -285,7 +297,7 @@ Voir document séparé `AI_GENERATION_PROMPTS.md`
 - Le user charge depuis Supabase = instantané
 - Délai free tier : 12h (acceptable)
 
-### 7.3 Requêtes par catégorie
+### 8.3 Requêtes par catégorie
 - Funding : `startup AND (funding OR "series A" OR "seed round")`
 - AI & Tech : `(AI OR "artificial intelligence") AND startup`
 - IPOs & Exits : `startup AND (IPO OR acquisition OR exit)`
@@ -293,46 +305,46 @@ Voir document séparé `AI_GENERATION_PROMPTS.md`
 - VC & PE : `"venture capital" OR "private equity"`
 - + Top Headlines technology (en fallback)
 
-### 7.4 Affichage
+### 8.4 Affichage
 - Feed : featured article (image large) + liste (thumbnail + titre + snippet)
 - Tap → preview in-app (image + titre + description + bouton "Read full article")
 - Filtres : All, Funding, AI & Tech, IPOs & Exits, European Tech, VC & PE
 
 ---
 
-## 8. Base de données Supabase
+## 9. Base de données Supabase
 
-### 8.1 Tables (11)
+### 9.1 Tables (11)
 `profiles`, `questions`, `daily_quizzes`, `quiz_sessions`, `quiz_answers`, `badges_earned`, `leaderboard_weekly`, `streak_history`, `ai_generation_batches`, `news_articles`, `app_settings`
 
-### 8.2 Statut
+### 9.2 Statut
 - Base créée et configurée ✅
 - RLS activé avec policies simplifiées (démo) ✅
 - 9 app_settings seedés ✅
 - Trigger auto-création profil à l'inscription ✅
 
-### 8.3 Schéma détaillé
+### 9.3 Schéma détaillé
 Voir document séparé `SUPABASE_SCHEMA.md`
 
 ---
 
-## 9. Onboarding & Mode Démo
+## 10. Onboarding & Mode Démo
 
-### 9.1 Compte Démo
+### 10.1 Compte Démo
 - Email : `demo@akka.app`
 - Profil : Level 5 Angel, 12 350 XP, streak 35j, 42 quizzes, 80% accuracy
 - 6 badges, investor score 847/1000, position 4ème leaderboard
 
-### 9.2 Comptes CEO (pré-créés)
+### 10.2 Comptes CEO (pré-créés)
 - Level 2 Learner, 800 XP, streak 5j, 7 quizzes
 - 3 badges : First Steps, Week One, Rising Flame
 
-### 9.3 Seed Leaderboard
+### 10.3 Seed Leaderboard
 - 8 users fictifs créés côté code au premier lancement
 
 ---
 
-## 10. Edge Functions Supabase
+## 11. Edge Functions Supabase
 
 | Function | Déclencheur | Rôle |
 |----------|-------------|------|
@@ -344,7 +356,7 @@ Voir document séparé `SUPABASE_SCHEMA.md`
 
 ---
 
-## 11. Priorités
+## 12. Priorités
 
 | Priorité | Features |
 |----------|---------|
@@ -356,14 +368,15 @@ Voir document séparé `SUPABASE_SCHEMA.md`
 
 ---
 
-## 12. Contraintes
+## 13. Contraintes
 
+- **Mobile-first obligatoire** : les fondateurs testeront principalement sur iPhone. Touch targets 44px min, bottom tab bar, pas de hover-only interactions
+- Responsive mobile-first (375px) mais fonctionnel desktop
 - Validation requise avant chaque étape de dev
 - Jamais écraser ou supprimer des données sans confirmation
 - Code commenté et structuré
-- Responsive mobile-first (375px) mais fonctionnel desktop
 - Performance : quiz doit être fluide, pas de lag sur les transitions
 
 ---
 
-*PRD v1.0 — Projet HD Conseils × Akka.app — 15 février 2025*
+*PRD v1.1 — Projet HD Conseils × Akka.app — 15 février 2025*
