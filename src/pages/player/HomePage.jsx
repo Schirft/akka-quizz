@@ -5,7 +5,7 @@ import { useAuth } from '../../hooks/useAuth'
 import { supabase } from '../../lib/supabase'
 import { LEVELS } from '../../config/levels'
 import { BADGES, TIER_COLORS } from '../../config/badges'
-import { seedTestQuiz } from '../../lib/seedQuiz'
+import { seedTestQuiz, replayQuiz } from '../../lib/seedQuiz'
 import Card from '../../components/ui/Card'
 import ProgressBar from '../../components/ui/ProgressBar'
 import Button from '../../components/ui/Button'
@@ -135,8 +135,8 @@ export default function HomePage() {
           .eq('quiz_date', today)
       }
 
-      // 3. Re-seed quiz with new questions
-      const result = await seedTestQuiz()
+      // 3. Re-seed quiz with random unique approved questions
+      const result = await replayQuiz()
       if (!result.success) throw new Error(result.error)
 
       // 4. Update state and navigate

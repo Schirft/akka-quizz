@@ -135,7 +135,40 @@ export default function QuizPage() {
           .map((id) => questionData.find((q) => q.id === id))
           .filter(Boolean)
 
-        setQuestions(ordered)
+        // Shuffle answer order so correct answer isn't always first
+        const shuffledQuestions = ordered.map((q) => {
+          const answers = q.answers_en || []
+          const correctIdx = q.correct_answer_index // 1-based
+
+          // Create indexed array: [{text, originalIndex}]
+          const indexed = answers.map((text, i) => ({ text, originalIndex: i + 1 }))
+
+          // Fisher-Yates shuffle
+          for (let i = indexed.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [indexed[i], indexed[j]] = [indexed[j], indexed[i]]
+          }
+
+          // Find new position of correct answer (1-based)
+          const newCorrectIndex = indexed.findIndex((a) => a.originalIndex === correctIdx) + 1
+
+          // Build shuffled answers for each language
+          const shuffledEn = indexed.map((a) => a.text)
+          const shuffledFr = q.answers_fr ? indexed.map((a) => q.answers_fr[a.originalIndex - 1]) : null
+          const shuffledEs = q.answers_es ? indexed.map((a) => q.answers_es[a.originalIndex - 1]) : null
+          const shuffledIt = q.answers_it ? indexed.map((a) => q.answers_it[a.originalIndex - 1]) : null
+
+          return {
+            ...q,
+            answers_en: shuffledEn,
+            answers_fr: shuffledFr,
+            answers_es: shuffledEs,
+            answers_it: shuffledIt,
+            correct_answer_index: newCorrectIndex,
+          }
+        })
+
+        setQuestions(shuffledQuestions)
         setQuizState('ready')
       } catch (err) {
         console.error('Quiz load error:', err)
@@ -447,7 +480,28 @@ export default function QuizPage() {
     )
   }
 
-  // Error state
+  // Already completed state — friendly screen instead of error
+  if (quizState === 'error' && errorMsg.includes('already completed')) {
+    return (
+      <div className="min-h-screen bg-akka-bg flex flex-col">
+        <QuizHeader onBack={() => navigate('/')} muted={muted} onToggleMute={handleToggleMute} />
+        <div className="flex-1 flex flex-col items-center justify-center px-6">
+          <div className="w-20 h-20 rounded-3xl bg-emerald-50 flex items-center justify-center mb-4">
+            <CheckCircle size={40} className="text-akka-green" />
+          </div>
+          <h2 className="text-xl font-bold text-akka-text mb-2">Quiz Completed!</h2>
+          <p className="text-akka-text-secondary text-center text-sm mb-6">
+            You've already completed today's quiz. Come back tomorrow for new questions!
+          </p>
+          <Button variant="primary" onClick={() => navigate('/')}>
+            Back to Home
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  // Generic error state
   if (quizState === 'error') {
     return (
       <div className="min-h-screen bg-akka-bg flex flex-col">
@@ -660,26 +714,32 @@ export default function QuizPage() {
             </div>
           )}
 
-          {/* Explanation card */}
-          <Card className="mb-4">
+          {/* Explanation card — enhanced readability */}
+          <div
+            className={`mb-4 p-4 rounded-2xl border border-l-4 ${
+              isCorrect
+                ? 'bg-[#F0FDF4] border-[#BBF7D0] border-l-[#2ECC71]'
+                : 'bg-[#FEF2F2] border-[#FECACA] border-l-[#E74C3C]'
+            }`}
+          >
             <div className="flex items-start gap-2 mb-2">
               {isCorrect ? (
                 <CheckCircle size={18} className="text-[#2ECC71] shrink-0 mt-0.5" />
               ) : (
                 <XCircle size={18} className="text-[#E74C3C] shrink-0 mt-0.5" />
               )}
-              <p className={`text-sm font-semibold ${isCorrect ? 'text-[#166534]' : 'text-[#991B1B]'}`}>
+              <p className={`text-sm font-bold ${isCorrect ? 'text-[#166534]' : 'text-[#991B1B]'}`}>
                 {isCorrect ? 'Correct!' : 'Incorrect'}
               </p>
             </div>
-            <p className="text-sm text-akka-text-secondary leading-relaxed">
+            <p className="text-sm text-[#1A1A1A] leading-relaxed font-medium">
               {question[`explanation_${lang}`] || question.explanation_en}
             </p>
-            <p className="text-xs text-akka-text-secondary mt-2">
+            <p className={`text-xs mt-2 font-semibold ${isCorrect ? 'text-[#166534]' : 'text-[#991B1B]'}`}>
               Answered in {timeSpentSec}s
-              {answers[answers.length - 1]?.speedBonus > 0 && ' · Speed bonus!'}
+              {answers[answers.length - 1]?.speedBonus > 0 && ' · ⚡ Speed bonus!'}
             </p>
-          </Card>
+          </div>
 
           {/* Next button */}
           <Button variant="primary" className="w-full gap-2" onClick={handleNext}>

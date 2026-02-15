@@ -274,12 +274,15 @@ export default function QuizResultsPage() {
             variant="outline"
             className="w-full gap-2"
             onClick={() => {
-              // Share functionality placeholder
+              const shareText = score === totalQuestions
+                ? `🏆 Score parfait ${score}/${totalQuestions} sur le Quiz Akka !\nViens tester tes connaissances en investissement startup et découvre Akka, le club d'investissement de référence en Europe.\n👉 akka.app`
+                : `💡 J'ai scoré ${score}/${totalQuestions} au Quiz Akka sur l'investissement startup !\nPense-tu pouvoir faire mieux ? Teste tes connaissances et rejoins Akka.\n👉 akka.app`
+
               if (navigator.share) {
-                navigator.share({
-                  title: 'Akka Quiz',
-                  text: `I scored ${score}/${totalQuestions} on today's Akka Quiz! ${message.emoji}`,
-                })
+                navigator.share({ title: 'Akka Quiz', text: shareText })
+              } else {
+                // Fallback: copy to clipboard
+                navigator.clipboard?.writeText(shareText)
               }
             }}
           >

@@ -119,6 +119,17 @@ const SEED_QUESTIONS = [
 ]
 
 /**
+ * Fisher-Yates shuffle — in-place, returns the same array reference.
+ */
+function fisherYatesShuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]]
+  }
+  return arr
+}
+
+/**
  * Seeds 5 test questions and creates a daily_quiz for today.
  * daily_quizzes uses question_1_id..question_5_id (not an array).
  * Returns { success, error, quizId }
@@ -182,6 +193,80 @@ export async function seedTestQuiz() {
     return { success: true, quizId: quiz.id }
   } catch (err) {
     console.error('Seed quiz error:', err)
+    return { success: false, error: err.message }
+  }
+}
+
+/**
+ * Replay quiz — picks 5 UNIQUE random approved questions from the DB,
+ * creates/updates today's daily_quiz. No duplicates guaranteed via Fisher-Yates.
+ * Returns { success, error, quizId }
+ */
+export async function replayQuiz() {
+  try {
+    const today = new Date().toISOString().split('T')[0]
+
+    // 1. Fetch all approved question IDs
+    const { data: allQ, error: qErr } = await supabase
+      .from('questions')
+      .select('id')
+      .eq('status', 'approved')
+
+    if (qErr) throw qErr
+    if (!allQ || allQ.length < 5) throw new Error('Not enough approved questions (need 5)')
+
+    // 2. Fisher-Yates shuffle for true randomness
+    const arr = [...allQ]
+    fisherYatesShuffle(arr)
+    const picked = arr.slice(0, 5).map((q) => q.id)
+
+    // 3. Safety check — no duplicates
+    const uniquePicked = [...new Set(picked)]
+    if (uniquePicked.length < 5) throw new Error('Duplicate questions detected, retry')
+
+    // 4. Check if a daily quiz already exists for today
+    const { data: existing } = await supabase
+      .from('daily_quizzes')
+      .select('id')
+      .eq('quiz_date', today)
+      .single()
+
+    if (existing) {
+      const { error: uError } = await supabase
+        .from('daily_quizzes')
+        .update({
+          question_1_id: picked[0],
+          question_2_id: picked[1],
+          question_3_id: picked[2],
+          question_4_id: picked[3],
+          question_5_id: picked[4],
+        })
+        .eq('id', existing.id)
+
+      if (uError) throw uError
+      return { success: true, quizId: existing.id }
+    }
+
+    // 5. Create new daily quiz
+    const { data: quiz, error: dqError } = await supabase
+      .from('daily_quizzes')
+      .insert({
+        quiz_date: today,
+        question_1_id: picked[0],
+        question_2_id: picked[1],
+        question_3_id: picked[2],
+        question_4_id: picked[3],
+        question_5_id: picked[4],
+        auto_generated: false,
+      })
+      .select('id')
+      .single()
+
+    if (dqError) throw dqError
+
+    return { success: true, quizId: quiz.id }
+  } catch (err) {
+    console.error('Replay quiz error:', err)
     return { success: false, error: err.message }
   }
 }
