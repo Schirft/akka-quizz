@@ -8,6 +8,7 @@ import QuizPage from './pages/player/QuizPage'
 import NewsPage from './pages/player/NewsPage'
 import LeaderboardPage from './pages/player/LeaderboardPage'
 import ProfilePage from './pages/player/ProfilePage'
+import QuizResultsPage from './pages/player/QuizResultsPage'
 import DashboardPage from './pages/admin/DashboardPage'
 
 /**
@@ -71,6 +72,16 @@ export default function App() {
         element={
           <ProtectedRoute>
             <QuizPage />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Quiz results route — no TabBar */}
+      <Route
+        path="/quiz/results"
+        element={
+          <ProtectedRoute>
+            <QuizResultsPage />
           </ProtectedRoute>
         }
       />

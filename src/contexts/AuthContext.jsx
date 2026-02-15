@@ -97,6 +97,16 @@ export function AuthProvider({ children }) {
     return signIn(DEMO_EMAIL, DEMO_PASSWORD)
   }
 
+  // Refresh profile data (call after quiz completion, XP changes, etc.)
+  async function refreshProfile() {
+    if (user) {
+      const profileData = await fetchProfile(user.id)
+      setProfile(profileData)
+      return profileData
+    }
+    return null
+  }
+
   const value = {
     user,
     profile,
@@ -105,6 +115,7 @@ export function AuthProvider({ children }) {
     signUp,
     signOut,
     signInDemo,
+    refreshProfile,
   }
 
   return (
