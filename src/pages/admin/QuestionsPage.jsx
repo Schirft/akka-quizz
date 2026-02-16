@@ -15,6 +15,11 @@ import {
   Upload,
   Download,
   Loader2,
+  Trash2,
+  Copy,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react'
 
 const PAGE_SIZE = 20
@@ -23,6 +28,12 @@ const STATUS_BADGE = {
   approved: 'bg-green-100 text-green-700',
   pending_review: 'bg-amber-100 text-amber-700',
   rejected: 'bg-red-100 text-red-700',
+}
+
+const DIFF_COLORS = {
+  easy: 'text-green-600',
+  medium: 'text-amber-600',
+  hard: 'text-red-600',
 }
 
 export default function QuestionsPage() {
@@ -39,7 +50,25 @@ export default function QuestionsPage() {
   const [approvingAll, setApprovingAll] = useState(false)
   const [exporting, setExporting] = useState(false)
 
-  // Debounce search input
+  // FIX 8e: Sortable columns
+  const [sortCol, setSortCol] = useState('created_at')
+  const [sortDir, setSortDir] = useState('desc')
+
+  // FIX 8d: Bulk select
+  const [selected, setSelected] = useState(new Set())
+  const [bulkLoading, setBulkLoading] = useState(false)
+
+  // FIX 8c: Stats counts
+  const [stats, setStats] = useState({ approved: 0, pending: 0, rejected: 0, total: 0 })
+
+  // FIX 6: Duplicates
+  const [findingDupes, setFindingDupes] = useState(false)
+  const [duplicates, setDuplicates] = useState(null) // array of {original, duplicate} pairs
+
+  // FIX 8a: Scheduled questions
+  const [scheduledIds, setScheduledIds] = useState(new Set())
+
+  // Debounce search
   const searchTimeoutRef = useRef(null)
   const [debouncedSearch, setDebouncedSearch] = useState('')
 
@@ -51,13 +80,63 @@ export default function QuestionsPage() {
     return () => clearTimeout(searchTimeoutRef.current)
   }, [search])
 
+  // Load stats on mount
+  useEffect(() => {
+    async function loadStats() {
+      const [
+        { count: approved },
+        { count: pending },
+        { count: rejected },
+        { count: total },
+      ] = await Promise.all([
+        supabase.from('questions').select('*', { count: 'exact', head: true }).eq('status', 'approved'),
+        supabase.from('questions').select('*', { count: 'exact', head: true }).eq('status', 'pending_review'),
+        supabase.from('questions').select('*', { count: 'exact', head: true }).eq('status', 'rejected'),
+        supabase.from('questions').select('*', { count: 'exact', head: true }),
+      ])
+      setStats({ approved: approved || 0, pending: pending || 0, rejected: rejected || 0, total: total || 0 })
+    }
+    loadStats()
+  }, [questions]) // refresh when questions change
+
+  // FIX 8a: Load scheduled question IDs (next 7 days)
+  useEffect(() => {
+    async function loadScheduled() {
+      const now = new Date()
+      const in7 = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+      const { data } = await supabase
+        .from('daily_quizzes')
+        .select('question_ids, quiz_date')
+        .gte('quiz_date', now.toISOString().split('T')[0])
+        .lte('quiz_date', in7.toISOString().split('T')[0])
+      if (data) {
+        const ids = new Set()
+        const dateMap = {}
+        for (const dq of data) {
+          if (Array.isArray(dq.question_ids)) {
+            for (const qid of dq.question_ids) {
+              ids.add(qid)
+              dateMap[qid] = dq.quiz_date
+            }
+          }
+        }
+        setScheduledIds(ids)
+        window.__akka_scheduledMap = dateMap
+      }
+    }
+    loadScheduled()
+  }, [])
+
   const loadQuestions = useCallback(async () => {
     setLoading(true)
+    setSelected(new Set())
     try {
+      // FIX 8e: Dynamic sort
+      const sortColumn = sortCol === 'question' ? 'question_en' : sortCol
       let query = supabase
         .from('questions')
         .select('*', { count: 'exact' })
-        .order('created_at', { ascending: false })
+        .order(sortColumn, { ascending: sortDir === 'asc' })
         .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
 
       if (filterStatus !== 'all') query = query.eq('status', filterStatus)
@@ -75,16 +154,32 @@ export default function QuestionsPage() {
     } finally {
       setLoading(false)
     }
-  }, [page, filterStatus, filterCategory, filterSource, debouncedSearch])
+  }, [page, filterStatus, filterCategory, filterSource, debouncedSearch, sortCol, sortDir])
 
   useEffect(() => {
     loadQuestions()
   }, [loadQuestions])
 
-  // Reset page on filter change (use functional update to avoid race)
   useEffect(() => {
     setPage(0)
-  }, [filterStatus, filterCategory, filterSource, debouncedSearch])
+  }, [filterStatus, filterCategory, filterSource, debouncedSearch, sortCol, sortDir])
+
+  // FIX 8e: Toggle sort
+  function toggleSort(col) {
+    if (sortCol === col) {
+      setSortDir((d) => d === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortCol(col)
+      setSortDir(col === 'created_at' ? 'desc' : 'asc')
+    }
+  }
+
+  function SortIcon({ col }) {
+    if (sortCol !== col) return <ArrowUpDown size={12} className="text-gray-300" />
+    return sortDir === 'asc'
+      ? <ArrowUp size={12} className="text-[#1B3D2F]" />
+      : <ArrowDown size={12} className="text-[#1B3D2F]" />
+  }
 
   async function quickStatusChange(id, newStatus) {
     try {
@@ -101,7 +196,6 @@ export default function QuestionsPage() {
     }
   }
 
-  // BUG 7: Approve All Pending (filtered by current source)
   async function approveAllPending() {
     setApprovingAll(true)
     try {
@@ -123,7 +217,47 @@ export default function QuestionsPage() {
     }
   }
 
-  // FEATURE 10: Export CSV
+  // FIX 8d: Bulk actions
+  function toggleSelect(id) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleSelectAll() {
+    if (selected.size === questions.length) {
+      setSelected(new Set())
+    } else {
+      setSelected(new Set(questions.map((q) => q.id)))
+    }
+  }
+
+  async function bulkAction(action) {
+    const ids = Array.from(selected)
+    if (ids.length === 0) return
+    setBulkLoading(true)
+    try {
+      if (action === 'delete') {
+        await supabase.from('questions').delete().in('id', ids)
+      } else {
+        await supabase
+          .from('questions')
+          .update({ status: action, updated_at: new Date().toISOString() })
+          .in('id', ids)
+      }
+      setSelected(new Set())
+      await loadQuestions()
+    } catch (err) {
+      console.error('Bulk action error:', err)
+    } finally {
+      setBulkLoading(false)
+    }
+  }
+
+  // FIX 6: Export CSV with dedup
   async function handleExport() {
     setExporting(true)
     try {
@@ -140,7 +274,15 @@ export default function QuestionsPage() {
         return
       }
 
-      // Build CSV
+      // FIX 6: Dedup — remove questions with duplicate first 50 chars
+      const seen = new Set()
+      const dedupData = data.filter((q) => {
+        const prefix = (q.question_en || '').slice(0, 50).toLowerCase()
+        if (seen.has(prefix)) return false
+        seen.add(prefix)
+        return true
+      })
+
       const headers = [
         'question_en', 'question_fr', 'question_it', 'question_es',
         'answers_en', 'answers_fr', 'answers_it', 'answers_es',
@@ -150,7 +292,7 @@ export default function QuestionsPage() {
       ]
 
       const csvRows = [headers.join(',')]
-      for (const q of data) {
+      for (const q of dedupData) {
         const row = headers.map((h) => {
           const val = q[h]
           if (val === null || val === undefined) return ''
@@ -169,11 +311,94 @@ export default function QuestionsPage() {
       a.download = `akka_questions_${new Date().toISOString().split('T')[0]}.csv`
       a.click()
       URL.revokeObjectURL(url)
+
+      if (dedupData.length < data.length) {
+        alert(`Exported ${dedupData.length} questions (${data.length - dedupData.length} duplicates removed)`)
+      }
     } catch (err) {
       console.error('Export error:', err)
     } finally {
       setExporting(false)
     }
+  }
+
+  // FIX 6: Find duplicates
+  async function findDuplicates() {
+    setFindingDupes(true)
+    setDuplicates(null)
+    try {
+      const { data, error } = await supabase
+        .from('questions')
+        .select('id, question_en, created_at')
+        .order('created_at', { ascending: true })
+
+      if (error) throw error
+
+      // Group by first 50 chars
+      const groups = {}
+      for (const q of data) {
+        const prefix = (q.question_en || '').slice(0, 50).toLowerCase()
+        if (!prefix) continue
+        if (!groups[prefix]) groups[prefix] = []
+        groups[prefix].push(q)
+      }
+
+      // Find groups with >1 entry
+      const dupeList = []
+      for (const [prefix, items] of Object.entries(groups)) {
+        if (items.length > 1) {
+          // Keep first (original), rest are duplicates
+          for (let i = 1; i < items.length; i++) {
+            dupeList.push({ original: items[0], duplicate: items[i] })
+          }
+        }
+      }
+
+      setDuplicates(dupeList)
+    } catch (err) {
+      console.error('Find duplicates error:', err)
+    } finally {
+      setFindingDupes(false)
+    }
+  }
+
+  async function deleteDuplicate(id) {
+    try {
+      await supabase.from('questions').delete().eq('id', id)
+      setDuplicates((prev) => prev.filter((d) => d.duplicate.id !== id))
+      await loadQuestions()
+    } catch (err) {
+      console.error('Delete duplicate error:', err)
+    }
+  }
+
+  async function deleteAllDuplicates() {
+    if (!duplicates || duplicates.length === 0) return
+    const ids = duplicates.map((d) => d.duplicate.id)
+    try {
+      await supabase.from('questions').delete().in('id', ids)
+      setDuplicates([])
+      await loadQuestions()
+    } catch (err) {
+      console.error('Delete all duplicates error:', err)
+    }
+  }
+
+  // FIX 5: Format date
+  function formatDate(dateStr) {
+    if (!dateStr) return '—'
+    const d = new Date(dateStr)
+    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
+  }
+
+  // FIX 8a: Get scheduled date for question
+  function getScheduledDate(qId) {
+    const dateStr = window.__akka_scheduledMap?.[qId]
+    if (!dateStr) return null
+    const d = new Date(dateStr + 'T00:00:00')
+    const day = d.toLocaleDateString('en-US', { weekday: 'short' })
+    const num = d.getDate()
+    return `📅 ${day} ${num}`
   }
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE)
@@ -183,12 +408,21 @@ export default function QuestionsPage() {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-2xl font-bold text-[#1A1A1A]">Questions</h1>
           <p className="text-sm text-[#6B7280] mt-1">{totalCount} questions total</p>
         </div>
         <div className="flex items-center gap-2">
+          {/* FIX 6: Find duplicates */}
+          <button
+            onClick={findDuplicates}
+            disabled={findingDupes}
+            className="flex items-center gap-1.5 px-3 py-2.5 border border-[#D1D5DB] text-[#1A1A1A] text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors"
+          >
+            {findingDupes ? <Loader2 size={16} className="animate-spin" /> : <Copy size={16} />}
+            Find Duplicates
+          </button>
           <button
             onClick={handleExport}
             disabled={exporting}
@@ -214,10 +448,85 @@ export default function QuestionsPage() {
         </div>
       </div>
 
-      {/* Filters + Approve All */}
+      {/* FIX 8c: Stats bar */}
+      <div className="flex items-center gap-4 mb-4 px-1">
+        <button
+          onClick={() => setFilterStatus('approved')}
+          className={`text-sm font-medium transition-colors ${filterStatus === 'approved' ? 'text-green-700 underline' : 'text-[#6B7280] hover:text-green-700'}`}
+        >
+          🟢 {stats.approved} Approved
+        </button>
+        <button
+          onClick={() => setFilterStatus('pending_review')}
+          className={`text-sm font-medium transition-colors ${filterStatus === 'pending_review' ? 'text-amber-700 underline' : 'text-[#6B7280] hover:text-amber-700'}`}
+        >
+          🟡 {stats.pending} Pending
+        </button>
+        <button
+          onClick={() => setFilterStatus('rejected')}
+          className={`text-sm font-medium transition-colors ${filterStatus === 'rejected' ? 'text-red-700 underline' : 'text-[#6B7280] hover:text-red-700'}`}
+        >
+          🔴 {stats.rejected} Rejected
+        </button>
+        <button
+          onClick={() => setFilterStatus('all')}
+          className={`text-sm font-medium transition-colors ${filterStatus === 'all' ? 'text-[#1A1A1A] underline' : 'text-[#6B7280] hover:text-[#1A1A1A]'}`}
+        >
+          📊 {stats.total} Total
+        </button>
+      </div>
+
+      {/* FIX 6: Duplicates panel */}
+      {duplicates !== null && (
+        <Card className="mb-4">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-semibold text-[#1A1A1A]">
+              🔍 Found {duplicates.length} duplicate{duplicates.length !== 1 ? 's' : ''}
+            </p>
+            <div className="flex gap-2">
+              {duplicates.length > 0 && (
+                <button
+                  onClick={deleteAllDuplicates}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-red-50 text-red-700 text-xs font-medium rounded-lg hover:bg-red-100 transition-colors"
+                >
+                  <Trash2 size={12} />
+                  Delete All Duplicates
+                </button>
+              )}
+              <button
+                onClick={() => setDuplicates(null)}
+                className="text-xs text-[#6B7280] hover:text-[#1A1A1A] px-2"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+          {duplicates.length === 0 ? (
+            <p className="text-sm text-green-600">✅ No duplicates found!</p>
+          ) : (
+            <div className="space-y-2 max-h-[200px] overflow-y-auto">
+              {duplicates.map((d) => (
+                <div key={d.duplicate.id} className="flex items-center justify-between bg-amber-50 rounded-lg px-3 py-2">
+                  <p className="text-xs text-[#1A1A1A] truncate flex-1 mr-2">
+                    {d.duplicate.question_en?.slice(0, 80)}
+                  </p>
+                  <button
+                    onClick={() => deleteDuplicate(d.duplicate.id)}
+                    className="flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 text-xs font-medium rounded hover:bg-red-200 transition-colors shrink-0"
+                  >
+                    <Trash2 size={11} />
+                    Delete
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* Filters */}
       <Card className="mb-4">
         <div className="flex flex-wrap items-center gap-3">
-          {/* Search */}
           <div className="relative flex-1 min-w-[200px]">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280] pointer-events-none" />
             <input
@@ -229,7 +538,6 @@ export default function QuestionsPage() {
             />
           </div>
 
-          {/* Status filter */}
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
@@ -241,7 +549,6 @@ export default function QuestionsPage() {
             <option value="rejected">Rejected</option>
           </select>
 
-          {/* Category filter */}
           <select
             value={filterCategory}
             onChange={(e) => setFilterCategory(e.target.value)}
@@ -253,7 +560,6 @@ export default function QuestionsPage() {
             ))}
           </select>
 
-          {/* Source filter */}
           <select
             value={filterSource}
             onChange={(e) => setFilterSource(e.target.value)}
@@ -265,7 +571,6 @@ export default function QuestionsPage() {
             <option value="ai">AI</option>
           </select>
 
-          {/* Approve All Pending button */}
           {showApproveAll && (
             <button
               onClick={approveAllPending}
@@ -278,6 +583,39 @@ export default function QuestionsPage() {
           )}
         </div>
       </Card>
+
+      {/* FIX 8d: Bulk action bar */}
+      {selected.size > 0 && (
+        <div className="mb-4 flex items-center gap-3 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl">
+          <span className="text-sm font-medium text-blue-700">
+            {selected.size} selected
+          </span>
+          <div className="flex items-center gap-2 ml-auto">
+            <button
+              onClick={() => bulkAction('approved')}
+              disabled={bulkLoading}
+              className="flex items-center gap-1 px-3 py-1.5 bg-green-100 text-green-700 text-xs font-medium rounded-lg hover:bg-green-200 transition-colors"
+            >
+              <CheckCircle size={12} /> Approve All
+            </button>
+            <button
+              onClick={() => bulkAction('rejected')}
+              disabled={bulkLoading}
+              className="flex items-center gap-1 px-3 py-1.5 bg-red-100 text-red-700 text-xs font-medium rounded-lg hover:bg-red-200 transition-colors"
+            >
+              <XCircle size={12} /> Reject All
+            </button>
+            <button
+              onClick={() => bulkAction('delete')}
+              disabled={bulkLoading}
+              className="flex items-center gap-1 px-3 py-1.5 bg-red-100 text-red-700 text-xs font-medium rounded-lg hover:bg-red-200 transition-colors"
+            >
+              <Trash2 size={12} /> Delete All
+            </button>
+            {bulkLoading && <Loader2 size={14} className="animate-spin text-blue-500" />}
+          </div>
+        </div>
+      )}
 
       {/* Table */}
       <Card className="p-0 overflow-hidden">
@@ -295,87 +633,129 @@ export default function QuestionsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[#D1D5DB] bg-gray-50/50">
-                  <th className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">#</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Question</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Category</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Diff.</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Status</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Lang</th>
+                  {/* FIX 8d: Select all checkbox */}
+                  <th className="py-3 px-3 w-8">
+                    <input
+                      type="checkbox"
+                      checked={selected.size === questions.length && questions.length > 0}
+                      onChange={toggleSelectAll}
+                      className="accent-[#1B3D2F] cursor-pointer"
+                    />
+                  </th>
+                  <th className="text-left py-3 px-2 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">#</th>
+                  {/* FIX 8e: Sortable question */}
+                  <th
+                    className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wide text-[#6B7280] cursor-pointer select-none"
+                    onClick={() => toggleSort('question')}
+                  >
+                    <span className="flex items-center gap-1">Question <SortIcon col="question" /></span>
+                  </th>
+                  <th
+                    className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wide text-[#6B7280] cursor-pointer select-none"
+                    onClick={() => toggleSort('macro_category')}
+                  >
+                    <span className="flex items-center gap-1">Category <SortIcon col="macro_category" /></span>
+                  </th>
+                  <th
+                    className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wide text-[#6B7280] cursor-pointer select-none"
+                    onClick={() => toggleSort('difficulty')}
+                  >
+                    <span className="flex items-center gap-1">Diff. <SortIcon col="difficulty" /></span>
+                  </th>
+                  <th
+                    className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wide text-[#6B7280] cursor-pointer select-none"
+                    onClick={() => toggleSort('status')}
+                  >
+                    <span className="flex items-center gap-1">Status <SortIcon col="status" /></span>
+                  </th>
                   <th className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Source</th>
+                  {/* FIX 5: Created date column */}
+                  <th
+                    className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wide text-[#6B7280] cursor-pointer select-none"
+                    onClick={() => toggleSort('created_at')}
+                  >
+                    <span className="flex items-center gap-1">Created <SortIcon col="created_at" /></span>
+                  </th>
                   <th className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {questions.map((q, idx) => (
-                  <tr
-                    key={q.id}
-                    onClick={() => setModalQuestion(q)}
-                    className="border-b border-gray-100 last:border-0 hover:bg-gray-50/50 cursor-pointer transition-colors"
-                  >
-                    <td className="py-3 px-4 text-[#6B7280] font-mono text-xs">
-                      {page * PAGE_SIZE + idx + 1}
-                    </td>
-                    <td className="py-3 px-4 max-w-[300px]">
-                      <p className="text-[#1A1A1A] truncate">{q.question_en?.slice(0, 60)}{q.question_en?.length > 60 ? '...' : ''}</p>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="text-xs text-[#6B7280] truncate block max-w-[140px]">
-                        {q.macro_category}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className={`text-xs font-medium capitalize ${
-                        q.difficulty === 'hard' ? 'text-red-600' : q.difficulty === 'medium' ? 'text-amber-600' : 'text-green-600'
-                      }`}>
-                        {q.difficulty}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[q.status] || 'bg-gray-100 text-gray-700'}`}>
-                        {(q.status || '').replace('_', ' ')}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="flex gap-0.5 text-sm">
-                        <span title="English">🇬🇧</span>
-                        {q.question_fr && <span title="French">🇫🇷</span>}
-                        {q.question_it && <span title="Italian">🇮🇹</span>}
-                        {q.question_es && <span title="Spanish">🇪🇸</span>}
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="text-xs text-[#6B7280] capitalize">{q.source}</span>
-                    </td>
-                    <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center gap-1">
-                        {q.status === 'pending_review' && (
-                          <>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                quickStatusChange(q.id, 'approved')
-                              }}
-                              className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 cursor-pointer transition-colors"
-                              title="Approve"
-                            >
-                              <CheckCircle size={16} className="pointer-events-none" />
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                quickStatusChange(q.id, 'rejected')
-                              }}
-                              className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 cursor-pointer transition-colors"
-                              title="Reject"
-                            >
-                              <XCircle size={16} className="pointer-events-none" />
-                            </button>
-                          </>
+                {questions.map((q, idx) => {
+                  const schedBadge = getScheduledDate(q.id)
+                  return (
+                    <tr
+                      key={q.id}
+                      onClick={() => setModalQuestion(q)}
+                      className={`border-b border-gray-100 last:border-0 hover:bg-gray-50/50 cursor-pointer transition-colors ${
+                        selected.has(q.id) ? 'bg-blue-50/50' : ''
+                      }`}
+                    >
+                      {/* FIX 8d: Individual checkbox */}
+                      <td className="py-3 px-3" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selected.has(q.id)}
+                          onChange={() => toggleSelect(q.id)}
+                          className="accent-[#1B3D2F] cursor-pointer"
+                        />
+                      </td>
+                      <td className="py-3 px-2 text-[#6B7280] font-mono text-xs">
+                        {page * PAGE_SIZE + idx + 1}
+                      </td>
+                      <td className="py-3 px-4 max-w-[260px]">
+                        <p className="text-[#1A1A1A] truncate">{q.question_en?.slice(0, 55)}{q.question_en?.length > 55 ? '...' : ''}</p>
+                        {/* FIX 8a: Scheduled badge */}
+                        {schedBadge && (
+                          <span className="text-[10px] text-blue-600 font-medium">{schedBadge}</span>
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="text-xs text-[#6B7280] truncate block max-w-[120px]">
+                          {q.macro_category}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className={`text-xs font-medium capitalize ${DIFF_COLORS[q.difficulty] || 'text-gray-600'}`}>
+                          {q.difficulty}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[q.status] || 'bg-gray-100 text-gray-700'}`}>
+                          {(q.status || '').replace('_', ' ')}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="text-xs text-[#6B7280] capitalize">{q.source}</span>
+                      </td>
+                      {/* FIX 5: Created date */}
+                      <td className="py-3 px-4">
+                        <span className="text-xs text-[#6B7280]">{formatDate(q.created_at)}</span>
+                      </td>
+                      <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-1">
+                          {q.status === 'pending_review' && (
+                            <>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); quickStatusChange(q.id, 'approved') }}
+                                className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 cursor-pointer transition-colors"
+                                title="Approve"
+                              >
+                                <CheckCircle size={16} className="pointer-events-none" />
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); quickStatusChange(q.id, 'rejected') }}
+                                className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 cursor-pointer transition-colors"
+                                title="Reject"
+                              >
+                                <XCircle size={16} className="pointer-events-none" />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

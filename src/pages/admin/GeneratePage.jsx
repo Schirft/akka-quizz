@@ -1,10 +1,12 @@
-import { useState, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import { supabase } from '../../lib/supabase'
 import { CATEGORIES } from '../../config/constants'
 import { AI_SYSTEM_PROMPT, buildUserPrompt, estimateCost } from '../../config/aiPrompts'
 import Card from '../../components/ui/Card'
+import QuestionModal from '../../components/admin/QuestionModal'
+import AISettingsPanel from '../../components/admin/AISettingsPanel'
 import {
   Sparkles,
   Loader2,
@@ -14,9 +16,24 @@ import {
   ArrowRight,
   Clock,
   DollarSign,
+  Trash2,
+  Settings,
+  Pencil,
 } from 'lucide-react'
 
-const MAX_PER_CALL = 5 // Max questions per API call for JSON reliability
+const STORAGE_KEY = 'akka_last_generation'
+
+// FIX 2: Streaming UX — animated status messages
+const GENERATION_STEPS = [
+  { icon: '🧠', text: 'Analyzing startup ecosystem knowledge...' },
+  { icon: '📚', text: 'Reviewing VC terminology database...' },
+  { icon: '✍️', text: 'Crafting questions with real-world examples...' },
+  { icon: '🔍', text: 'Validating answer plausibility...' },
+  { icon: '🌍', text: 'Generating multilingual translations...' },
+  { icon: '⚡', text: 'Quality checking explanations...' },
+  { icon: '🎯', text: 'Ensuring difficulty calibration...' },
+  { icon: '🔄', text: 'Finalizing question set...' },
+]
 
 export default function GeneratePage() {
   const navigate = useNavigate()
@@ -32,19 +49,117 @@ export default function GeneratePage() {
 
   // Generation state
   const [generating, setGenerating] = useState(false)
-  const [progress, setProgress] = useState({ done: 0, total: 0, chunk: 0, totalChunks: 0 })
+  const [progress, setProgress] = useState({ done: 0, total: 0 })
   const [generated, setGenerated] = useState([])
-  const [visibleCount, setVisibleCount] = useState(0) // for staggered animation
+  const [visibleCount, setVisibleCount] = useState(0)
   const [batchId, setBatchId] = useState(null)
   const [summary, setSummary] = useState(null)
   const [error, setError] = useState(null)
   const abortRef = useRef(false)
 
+  // FIX 2: Streaming UX state
+  const [stepIndex, setStepIndex] = useState(0)
+  const [elapsed, setElapsed] = useState(0)
+  const stepTimerRef = useRef(null)
+  const elapsedTimerRef = useRef(null)
+
+  // FIX 3: Edit modal for generated questions
+  const [editQuestion, setEditQuestion] = useState(null)
+
+  // FIX 10: AI Settings
+  const [showSettings, setShowSettings] = useState(false)
+  const [customPrompt, setCustomPrompt] = useState(null) // null = not loaded yet
+  const [promptLoaded, setPromptLoaded] = useState(false)
+
+  // FIX 1: Restore from localStorage on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY)
+      if (saved) {
+        const data = JSON.parse(saved)
+        if (data.generated?.length > 0) {
+          setGenerated(data.generated)
+          setVisibleCount(data.generated.length)
+          setSummary(data.summary || null)
+          setBatchId(data.batchId || null)
+        }
+      }
+    } catch {}
+  }, [])
+
+  // FIX 1: Persist to localStorage whenever generated changes
+  useEffect(() => {
+    if (generated.length > 0) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          generated,
+          summary,
+          batchId,
+          savedAt: Date.now(),
+        }))
+      } catch {}
+    }
+  }, [generated, summary, batchId])
+
+  // FIX 10: Load custom prompt on mount
+  useEffect(() => {
+    async function loadPrompt() {
+      try {
+        const { data } = await supabase
+          .from('app_settings')
+          .select('value')
+          .eq('key', 'custom_system_prompt')
+          .single()
+        if (data?.value) setCustomPrompt(data.value)
+      } catch {}
+      setPromptLoaded(true)
+    }
+    loadPrompt()
+  }, [])
+
+  // Export generating state for AdminLayout nav indicator
+  useEffect(() => {
+    if (generating) {
+      window.__akka_generating = true
+    } else {
+      window.__akka_generating = false
+    }
+    // Dispatch a custom event so AdminLayout can react
+    window.dispatchEvent(new Event('akka-gen-state'))
+    return () => { window.__akka_generating = false }
+  }, [generating])
+
   function toggleLang(code) {
-    if (code === 'en') return // EN always required
+    if (code === 'en') return
     setLanguages((prev) =>
       prev.includes(code) ? prev.filter((l) => l !== code) : [...prev, code]
     )
+  }
+
+  function clearResults() {
+    setGenerated([])
+    setVisibleCount(0)
+    setSummary(null)
+    setBatchId(null)
+    setError(null)
+    localStorage.removeItem(STORAGE_KEY)
+  }
+
+  // FIX 2: Start/stop animated status messages
+  function startStreamingUX() {
+    setStepIndex(0)
+    setElapsed(0)
+    stepTimerRef.current = setInterval(() => {
+      setStepIndex((prev) => (prev + 1) % GENERATION_STEPS.length)
+    }, 3000)
+    elapsedTimerRef.current = setInterval(() => {
+      setElapsed((prev) => prev + 1)
+    }, 1000)
+  }
+
+  function stopStreamingUX() {
+    clearInterval(stepTimerRef.current)
+    clearInterval(elapsedTimerRef.current)
   }
 
   async function handleGenerate() {
@@ -58,18 +173,26 @@ export default function GeneratePage() {
     setGenerated([])
     setSummary(null)
     abortRef.current = false
+    setVisibleCount(0)
+    startStreamingUX()
 
     const startTime = Date.now()
+
+    // FIX 10: Use custom prompt if available
+    const systemPrompt = customPrompt || AI_SYSTEM_PROMPT
+
+    // FIX 2: Performance — single call for ≤10, parallel 2 calls for >10
+    const MAX_PER_CALL = 10
     const chunks = []
-    let remaining = count
-    while (remaining > 0) {
-      const chunkSize = Math.min(remaining, MAX_PER_CALL)
-      chunks.push(chunkSize)
-      remaining -= chunkSize
+    if (count <= MAX_PER_CALL) {
+      chunks.push(count)
+    } else {
+      const half = Math.ceil(count / 2)
+      chunks.push(half)
+      chunks.push(count - half)
     }
 
-    setProgress({ done: 0, total: count, chunk: 0, totalChunks: chunks.length })
-    setVisibleCount(0)
+    setProgress({ done: 0, total: count })
 
     // Create batch record
     let batchRecord = null
@@ -96,6 +219,7 @@ export default function GeneratePage() {
     } catch (err) {
       setError('Failed to create batch: ' + err.message)
       setGenerating(false)
+      stopStreamingUX()
       return
     }
 
@@ -103,12 +227,8 @@ export default function GeneratePage() {
     let totalInputTokens = 0
     let totalOutputTokens = 0
 
-    for (let i = 0; i < chunks.length; i++) {
-      if (abortRef.current) break
-
-      setProgress((prev) => ({ ...prev, chunk: i + 1, totalChunks: chunks.length }))
-
-      const chunkCount = chunks[i]
+    // FIX 2: Build prompts for each chunk
+    const chunkPromises = chunks.map((chunkCount) => {
       const userPrompt = buildUserPrompt({
         count: chunkCount,
         mode,
@@ -117,23 +237,31 @@ export default function GeneratePage() {
         difficulty,
         languages,
       })
+      // Reduce max_tokens for small counts
+      const maxTokens = chunkCount <= 5 ? 4096 : 8000
+      return fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': import.meta.env.VITE_ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-5-20250929',
+          max_tokens: maxTokens,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: userPrompt }],
+        }),
+      })
+    })
 
-      try {
-        const response = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': import.meta.env.VITE_ANTHROPIC_API_KEY,
-            'anthropic-version': '2023-06-01',
-            'anthropic-dangerous-direct-browser-access': 'true',
-          },
-          body: JSON.stringify({
-            model: 'claude-sonnet-4-5-20250929',
-            max_tokens: 8000,
-            system: AI_SYSTEM_PROMPT,
-            messages: [{ role: 'user', content: userPrompt }],
-          }),
-        })
+    try {
+      // FIX 2: For ≤10 single call, for >10 parallel 2 calls
+      const responses = await Promise.all(chunkPromises)
+
+      for (const response of responses) {
+        if (abortRef.current) break
 
         if (!response.ok) {
           const errData = await response.json().catch(() => ({}))
@@ -143,7 +271,6 @@ export default function GeneratePage() {
         const data = await response.json()
         const text = data.content?.[0]?.text || ''
 
-        // Track tokens
         totalInputTokens += data.usage?.input_tokens || 0
         totalOutputTokens += data.usage?.output_tokens || 0
 
@@ -154,27 +281,14 @@ export default function GeneratePage() {
         const parsed = JSON.parse(jsonMatch[0])
         if (!Array.isArray(parsed)) throw new Error('Parsed result is not an array')
 
-        // Insert each question into Supabase with staggered reveal + duplicate check
-        for (let qi = 0; qi < parsed.length; qi++) {
-          if (abortRef.current) break
-          const q = parsed[qi]
+        // FIX 2: Parallel Supabase inserts — build all payloads, then batch insert
+        const insertPayloads = []
+        const prefixes = []
 
-          // FEATURE 9: Duplicate detection — check first 50 chars
+        for (const q of parsed) {
           const prefix = (q.question_en || '').slice(0, 50)
-          if (prefix) {
-            const { data: dupes } = await supabase
-              .from('questions')
-              .select('id')
-              .ilike('question_en', `${prefix}%`)
-              .limit(1)
-            if (dupes && dupes.length > 0) {
-              // Skip duplicate, still count progress
-              setProgress((prev) => ({ ...prev, done: prev.done + 1 }))
-              continue
-            }
-          }
-
-          const insertData = {
+          prefixes.push(prefix)
+          insertPayloads.push({
             question_en: q.question_en,
             question_fr: q.question_fr || null,
             question_it: q.question_it || null,
@@ -195,29 +309,54 @@ export default function GeneratePage() {
             status: 'pending_review',
             source: 'ai',
             generation_batch_id: batchRecord.id,
-          }
+          })
+        }
 
+        // Duplicate check — batch query all prefixes at once
+        const dupeSet = new Set()
+        if (prefixes.filter(Boolean).length > 0) {
+          // Check each prefix (Supabase doesn't support OR ilike natively in batch)
+          const dupeChecks = await Promise.all(
+            prefixes.filter(Boolean).map((p) =>
+              supabase.from('questions').select('id').ilike('question_en', `${p}%`).limit(1)
+            )
+          )
+          dupeChecks.forEach((res, idx) => {
+            if (res.data?.length > 0) dupeSet.add(idx)
+          })
+        }
+
+        // Filter out duplicates and insert remaining
+        const toInsert = insertPayloads.filter((_, idx) => !dupeSet.has(idx))
+
+        if (toInsert.length > 0) {
           const { data: inserted, error: iErr } = await supabase
             .from('questions')
-            .insert(insertData)
+            .insert(toInsert)
             .select()
-            .single()
 
           if (!iErr && inserted) {
-            allGenerated.push(inserted)
-            setGenerated((prev) => [...prev, inserted])
-            setProgress((prev) => ({ ...prev, done: prev.done + 1 }))
-            // Staggered animation: reveal each question with 200ms delay
-            setTimeout(() => {
-              setVisibleCount((v) => v + 1)
-            }, qi * 200)
+            allGenerated = [...allGenerated, ...inserted]
+            setGenerated((prev) => [...prev, ...inserted])
+            setProgress({ done: allGenerated.length, total: count })
+            // FIX 2: Staggered 300ms slide-in for results
+            inserted.forEach((_, qi) => {
+              setTimeout(() => {
+                setVisibleCount((v) => v + 1)
+              }, qi * 300)
+            })
           }
         }
-      } catch (err) {
-        console.error('Generation chunk error:', err)
-        setError((prev) => (prev ? prev + '\n' : '') + `Chunk ${i + 1}: ${err.message}`)
+
+        // Update progress for skipped dupes
+        setProgress({ done: allGenerated.length + dupeSet.size, total: count })
       }
+    } catch (err) {
+      console.error('Generation error:', err)
+      setError(err.message)
     }
+
+    stopStreamingUX()
 
     // Update batch record
     const duration = Math.round((Date.now() - startTime) / 1000)
@@ -248,7 +387,6 @@ export default function GeneratePage() {
       outputTokens: totalOutputTokens,
     })
 
-    // Make all items visible after generation completes
     setVisibleCount(allGenerated.length)
     setGenerating(false)
   }
@@ -267,7 +405,6 @@ export default function GeneratePage() {
         prev.map((q) => (ids.includes(q.id) ? { ...q, status: 'approved' } : q))
       )
 
-      // Update batch counts
       if (batchId) {
         await supabase
           .from('ai_generation_batches')
@@ -294,16 +431,64 @@ export default function GeneratePage() {
     }
   }
 
+  // FIX 3: After editing a generated question, update in the list
+  function handleQuestionSaved() {
+    // Reload the question from supabase
+    if (editQuestion?.id) {
+      supabase
+        .from('questions')
+        .select('*')
+        .eq('id', editQuestion.id)
+        .single()
+        .then(({ data }) => {
+          if (data) {
+            setGenerated((prev) =>
+              prev.map((q) => (q.id === data.id ? data : q))
+            )
+          }
+        })
+    }
+  }
+
   const pendingCount = generated.filter((q) => q.status === 'pending_review').length
+  const currentStep = GENERATION_STEPS[stepIndex]
+
+  // FIX 2: Format elapsed time
+  function formatElapsed(secs) {
+    const m = Math.floor(secs / 60)
+    const s = secs % 60
+    return m > 0 ? `${m}m ${s}s` : `${s}s`
+  }
 
   return (
     <div>
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-[#1A1A1A]">AI Generator</h1>
-        <p className="text-sm text-[#6B7280] mt-1">
-          Generate quiz questions using Claude AI
-        </p>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-[#1A1A1A]">AI Generator</h1>
+          <p className="text-sm text-[#6B7280] mt-1">
+            Generate quiz questions using Claude AI
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {/* FIX 10: Custom prompt badge */}
+          {promptLoaded && (
+            <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
+              customPrompt
+                ? 'bg-amber-100 text-amber-700'
+                : 'bg-green-100 text-green-700'
+            }`}>
+              {customPrompt ? '✏️ Custom Prompt' : '✅ Default Prompt'}
+            </span>
+          )}
+          <button
+            onClick={() => setShowSettings(true)}
+            className="flex items-center gap-1.5 px-3 py-2 border border-[#D1D5DB] text-[#6B7280] text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors"
+          >
+            <Settings size={16} />
+            AI Settings
+          </button>
+        </div>
       </div>
 
       <div className="grid lg:grid-cols-3 gap-6">
@@ -456,28 +641,42 @@ export default function GeneratePage() {
               Cancel
             </button>
           )}
+
+          {/* FIX 1: Clear results button */}
+          {!generating && generated.length > 0 && (
+            <button
+              onClick={clearResults}
+              className="w-full mt-2 flex items-center justify-center gap-1.5 px-4 py-2 text-sm text-[#6B7280] font-medium hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <Trash2 size={14} />
+              Clear Results
+            </button>
+          )}
         </Card>
 
         {/* Right: Results */}
         <div className="lg:col-span-2 space-y-4">
-          {/* Progress */}
+          {/* FIX 2: Streaming progress with animated messages */}
           {generating && (
-            <Card>
-              <div className="flex items-center justify-between mb-2">
-                <div>
-                  <p className="text-sm font-medium text-[#1A1A1A]">
-                    Batch {progress.chunk}/{progress.totalChunks} — Generating {Math.min(MAX_PER_CALL, count - (progress.chunk - 1) * MAX_PER_CALL)} questions...
+            <Card className="overflow-hidden">
+              {/* Animated status message */}
+              <div className="flex items-center gap-3 mb-4">
+                <div className="text-2xl animate-bounce">{currentStep.icon}</div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-[#1A1A1A] transition-all">
+                    {currentStep.text}
                   </p>
                   <p className="text-xs text-[#6B7280] mt-0.5">
-                    {progress.done}/{progress.total} total questions inserted
+                    {progress.done}/{progress.total} questions ready · {formatElapsed(elapsed)}
                   </p>
                 </div>
                 <Loader2 size={16} className="text-[#2ECC71] animate-spin" />
               </div>
-              <div className="w-full bg-gray-100 rounded-full h-3">
+              {/* Smooth progress bar */}
+              <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
                 <div
-                  className="bg-[#2ECC71] h-3 rounded-full transition-all duration-500"
-                  style={{ width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%` }}
+                  className="bg-gradient-to-r from-[#2ECC71] to-[#27AE60] h-2.5 rounded-full transition-all duration-700 ease-out"
+                  style={{ width: `${progress.total ? Math.max(5, (progress.done / progress.total) * 100) : 5}%` }}
                 />
               </div>
             </Card>
@@ -553,7 +752,8 @@ export default function GeneratePage() {
                 {generated.map((q, idx) => (
                   <div
                     key={q.id}
-                    className={`flex items-center justify-between px-4 py-3 hover:bg-gray-50/50 transition-all duration-300 ${
+                    onClick={() => setEditQuestion(q)}
+                    className={`flex items-center justify-between px-4 py-3 hover:bg-gray-50/50 cursor-pointer transition-all duration-300 ${
                       idx < visibleCount ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'
                     }`}
                   >
@@ -581,24 +781,34 @@ export default function GeneratePage() {
                         </span>
                       </div>
                     </div>
-                    {q.status === 'pending_review' && (
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => quickAction(q.id, 'approved')}
-                          className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 transition-colors"
-                          title="Approve"
-                        >
-                          <CheckCircle size={16} />
-                        </button>
-                        <button
-                          onClick={() => quickAction(q.id, 'rejected')}
-                          className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition-colors"
-                          title="Reject"
-                        >
-                          <XCircle size={16} />
-                        </button>
-                      </div>
-                    )}
+                    <div className="flex items-center gap-1">
+                      {/* FIX 3: Edit icon */}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setEditQuestion(q) }}
+                        className="p-1.5 rounded-lg text-[#6B7280] hover:bg-gray-100 transition-colors"
+                        title="Edit"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      {q.status === 'pending_review' && (
+                        <>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); quickAction(q.id, 'approved') }}
+                            className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 transition-colors"
+                            title="Approve"
+                          >
+                            <CheckCircle size={16} />
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); quickAction(q.id, 'rejected') }}
+                            className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition-colors"
+                            title="Reject"
+                          >
+                            <XCircle size={16} />
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -617,6 +827,24 @@ export default function GeneratePage() {
           )}
         </div>
       </div>
+
+      {/* FIX 3: QuestionModal for editing generated questions */}
+      {editQuestion && (
+        <QuestionModal
+          question={editQuestion}
+          onClose={() => setEditQuestion(null)}
+          onSaved={handleQuestionSaved}
+        />
+      )}
+
+      {/* FIX 10: AI Settings Panel */}
+      {showSettings && (
+        <AISettingsPanel
+          onClose={() => setShowSettings(false)}
+          currentPrompt={customPrompt}
+          onPromptChanged={(newPrompt) => setCustomPrompt(newPrompt)}
+        />
+      )}
     </div>
   )
 }

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { CATEGORIES } from '../../config/constants'
 import { AI_SYSTEM_PROMPT } from '../../config/aiPrompts'
-import { X, Save, Trash2, Sparkles, Loader2 } from 'lucide-react'
+import { X, Save, Trash2, Sparkles, Loader2, CheckCircle } from 'lucide-react'
 
 const LANG_TABS = [
   { code: 'en', label: 'EN', flag: '🇬🇧' },
@@ -13,6 +13,12 @@ const LANG_TABS = [
 
 const DIFFICULTIES = ['easy', 'medium', 'hard']
 const STATUSES = ['approved', 'pending_review', 'rejected']
+
+const DIFF_COLORS = {
+  easy: 'bg-green-100 text-green-700',
+  medium: 'bg-amber-100 text-amber-700',
+  hard: 'bg-red-100 text-red-700',
+}
 
 const emptyQuestion = {
   question_en: '', question_fr: '', question_it: '', question_es: '',
@@ -29,6 +35,8 @@ const emptyQuestion = {
 
 /**
  * QuestionModal — edit/create question with language tabs.
+ * FIX 4: Larger modal, better design, character counters, colored answers.
+ * FIX 7: Save feedback toast + spinner.
  */
 export default function QuestionModal({ question, onClose, onSaved }) {
   const isNew = !question?.id
@@ -50,6 +58,8 @@ export default function QuestionModal({ question, onClose, onSaved }) {
   const [translating, setTranslating] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [error, setError] = useState(null)
+  // FIX 7: Save feedback toast
+  const [showToast, setShowToast] = useState(false)
 
   function updateField(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -99,8 +109,13 @@ export default function QuestionModal({ question, onClose, onSaved }) {
         if (err) throw err
       }
 
+      // FIX 7: Show toast, then close
+      setShowToast(true)
       onSaved?.()
-      onClose()
+      setTimeout(() => {
+        setShowToast(false)
+        onClose()
+      }, 800)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -173,7 +188,6 @@ IMPORTANT: Keep the same answer order. Translations must be native-quality.`
       const data = await response.json()
       const text = data.content?.[0]?.text || ''
 
-      // Parse JSON from response (handle potential markdown wrapping)
       const jsonMatch = text.match(/\{[\s\S]*\}/)
       if (!jsonMatch) throw new Error('Could not parse translation response')
 
@@ -203,20 +217,43 @@ IMPORTANT: Keep the same answer order. Translations must be native-quality.`
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 overflow-y-auto py-8 px-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl">
-        {/* Header */}
+      {/* FIX 4: Wider modal max-w-3xl */}
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl">
+        {/* Header with badges — FIX 4 */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#D1D5DB]">
-          <h2 className="text-lg font-bold text-[#1A1A1A]">
-            {isNew ? 'New Question' : 'Edit Question'}
-          </h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-lg font-bold text-[#1A1A1A]">
+              {isNew ? 'New Question' : 'Edit Question'}
+            </h2>
+            {/* FIX 4: Category & difficulty badges in header */}
+            {!isNew && (
+              <div className="flex items-center gap-1.5">
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 truncate max-w-[150px]">
+                  {form.macro_category}
+                </span>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium capitalize ${DIFF_COLORS[form.difficulty] || 'bg-gray-100 text-gray-700'}`}>
+                  {form.difficulty}
+                </span>
+              </div>
+            )}
+          </div>
           <button onClick={onClose} className="text-[#6B7280] hover:text-[#1A1A1A] p-1">
             <X size={20} />
           </button>
         </div>
 
         <div className="px-6 py-4 max-h-[70vh] overflow-y-auto">
+          {/* FIX 7: Error display */}
           {error && (
-            <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>
+            <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm border border-red-200">{error}</div>
+          )}
+
+          {/* FIX 7: Success toast */}
+          {showToast && (
+            <div className="mb-4 p-3 bg-green-50 text-green-700 rounded-lg text-sm flex items-center gap-2 border border-green-200">
+              <CheckCircle size={16} />
+              Question saved ✓
+            </div>
           )}
 
           {/* Language tabs */}
@@ -244,10 +281,18 @@ IMPORTANT: Keep the same answer order. Translations must be native-quality.`
             </button>
           </div>
 
-          {/* Question */}
-          <label className="block mb-1 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
-            Question ({activeLang.toUpperCase()})
-          </label>
+          {/* FIX 4: Visual separator */}
+          <div className="h-px bg-gray-100 mb-4" />
+
+          {/* Question + character counter */}
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
+              Question ({activeLang.toUpperCase()})
+            </label>
+            <span className={`text-xs ${(form[qKey] || '').length > 200 ? 'text-red-500' : 'text-[#6B7280]'}`}>
+              {(form[qKey] || '').length}/200
+            </span>
+          </div>
           <textarea
             value={form[qKey] || ''}
             onChange={(e) => updateField(qKey, e.target.value)}
@@ -256,47 +301,72 @@ IMPORTANT: Keep the same answer order. Translations must be native-quality.`
             placeholder={`Enter question in ${activeLang.toUpperCase()}...`}
           />
 
-          {/* 4 Answers */}
+          {/* 4 Answers — FIX 4: Colored correct answer */}
           <label className="block mb-1 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
             Answers ({activeLang.toUpperCase()})
           </label>
           <div className="space-y-2 mb-4">
-            {[0, 1, 2, 3].map((i) => (
-              <div key={i} className="flex items-center gap-2">
-                <label className="flex items-center gap-1.5 cursor-pointer">
+            {[0, 1, 2, 3].map((i) => {
+              const isCorrect = form.correct_answer_index === i + 1
+              return (
+                <div
+                  key={i}
+                  className={`flex items-center gap-2 p-2 rounded-lg transition-colors ${
+                    isCorrect ? 'bg-green-50 border border-green-200' : 'bg-white'
+                  }`}
+                >
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="correct"
+                      checked={isCorrect}
+                      onChange={() => updateField('correct_answer_index', i + 1)}
+                      className="accent-[#2ECC71]"
+                    />
+                    <span className={`text-xs font-bold w-5 text-center ${isCorrect ? 'text-[#2ECC71]' : 'text-[#6B7280]'}`}>
+                      {isCorrect ? '✓' : i + 1}
+                    </span>
+                  </label>
                   <input
-                    type="radio"
-                    name="correct"
-                    checked={form.correct_answer_index === i + 1}
-                    onChange={() => updateField('correct_answer_index', i + 1)}
-                    className="accent-[#2ECC71]"
+                    type="text"
+                    value={(form[aKey] || ['', '', '', ''])[i] || ''}
+                    onChange={(e) => updateAnswer(activeLang, i, e.target.value)}
+                    className={`flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2ECC71] ${
+                      isCorrect ? 'border-green-300 bg-white' : 'border-[#D1D5DB]'
+                    }`}
+                    placeholder={`Answer ${i + 1}`}
                   />
-                  <span className={`text-xs font-bold w-5 text-center ${form.correct_answer_index === i + 1 ? 'text-[#2ECC71]' : 'text-[#6B7280]'}`}>
-                    {i + 1}
+                  {/* FIX 4: Character counter for answers */}
+                  <span className="text-[10px] text-[#6B7280] w-8 text-right">
+                    {((form[aKey] || ['', '', '', ''])[i] || '').length}
                   </span>
-                </label>
-                <input
-                  type="text"
-                  value={(form[aKey] || ['', '', '', ''])[i] || ''}
-                  onChange={(e) => updateAnswer(activeLang, i, e.target.value)}
-                  className="flex-1 border border-[#D1D5DB] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2ECC71]"
-                  placeholder={`Answer ${i + 1}`}
-                />
-              </div>
-            ))}
+                </div>
+              )
+            })}
           </div>
 
-          {/* Explanation */}
-          <label className="block mb-1 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
-            Explanation ({activeLang.toUpperCase()})
-          </label>
+          {/* FIX 4: Visual separator */}
+          <div className="h-px bg-gray-100 mb-4" />
+
+          {/* Explanation — FIX 4: Larger textarea */}
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
+              Explanation ({activeLang.toUpperCase()})
+            </label>
+            <span className="text-xs text-[#6B7280]">
+              {(form[eKey] || '').length} chars
+            </span>
+          </div>
           <textarea
             value={form[eKey] || ''}
             onChange={(e) => updateField(eKey, e.target.value)}
-            rows={2}
-            className="w-full border border-[#D1D5DB] rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2ECC71] mb-4 resize-none"
+            rows={4}
+            className="w-full border border-[#D1D5DB] rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2ECC71] mb-4 resize-none min-h-[120px]"
             placeholder={`Explanation in ${activeLang.toUpperCase()}...`}
           />
+
+          {/* FIX 4: Visual separator */}
+          <div className="h-px bg-gray-100 mb-4" />
 
           {/* Metadata row */}
           <div className="grid grid-cols-2 gap-3 mb-4">
@@ -409,10 +479,10 @@ IMPORTANT: Keep the same answer order. Translations must be native-quality.`
             <button
               onClick={handleSave}
               disabled={saving || !form.question_en}
-              className="flex items-center gap-2 px-4 py-2 bg-[#1B3D2F] text-white text-sm font-semibold rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity"
+              className="flex items-center gap-2 px-5 py-2.5 bg-[#1B3D2F] text-white text-sm font-semibold rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity"
             >
               {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-              Save
+              {saving ? 'Saving...' : 'Save'}
             </button>
           </div>
         </div>
