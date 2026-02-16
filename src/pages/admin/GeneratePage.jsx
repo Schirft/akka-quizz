@@ -32,8 +32,9 @@ export default function GeneratePage() {
 
   // Generation state
   const [generating, setGenerating] = useState(false)
-  const [progress, setProgress] = useState({ done: 0, total: 0 })
+  const [progress, setProgress] = useState({ done: 0, total: 0, chunk: 0, totalChunks: 0 })
   const [generated, setGenerated] = useState([])
+  const [visibleCount, setVisibleCount] = useState(0) // for staggered animation
   const [batchId, setBatchId] = useState(null)
   const [summary, setSummary] = useState(null)
   const [error, setError] = useState(null)
@@ -67,7 +68,8 @@ export default function GeneratePage() {
       remaining -= chunkSize
     }
 
-    setProgress({ done: 0, total: count })
+    setProgress({ done: 0, total: count, chunk: 0, totalChunks: chunks.length })
+    setVisibleCount(0)
 
     // Create batch record
     let batchRecord = null
@@ -103,6 +105,8 @@ export default function GeneratePage() {
 
     for (let i = 0; i < chunks.length; i++) {
       if (abortRef.current) break
+
+      setProgress((prev) => ({ ...prev, chunk: i + 1, totalChunks: chunks.length }))
 
       const chunkCount = chunks[i]
       const userPrompt = buildUserPrompt({
@@ -150,9 +154,25 @@ export default function GeneratePage() {
         const parsed = JSON.parse(jsonMatch[0])
         if (!Array.isArray(parsed)) throw new Error('Parsed result is not an array')
 
-        // Insert each question into Supabase
-        for (const q of parsed) {
+        // Insert each question into Supabase with staggered reveal + duplicate check
+        for (let qi = 0; qi < parsed.length; qi++) {
           if (abortRef.current) break
+          const q = parsed[qi]
+
+          // FEATURE 9: Duplicate detection — check first 50 chars
+          const prefix = (q.question_en || '').slice(0, 50)
+          if (prefix) {
+            const { data: dupes } = await supabase
+              .from('questions')
+              .select('id')
+              .ilike('question_en', `${prefix}%`)
+              .limit(1)
+            if (dupes && dupes.length > 0) {
+              // Skip duplicate, still count progress
+              setProgress((prev) => ({ ...prev, done: prev.done + 1 }))
+              continue
+            }
+          }
 
           const insertData = {
             question_en: q.question_en,
@@ -187,6 +207,10 @@ export default function GeneratePage() {
             allGenerated.push(inserted)
             setGenerated((prev) => [...prev, inserted])
             setProgress((prev) => ({ ...prev, done: prev.done + 1 }))
+            // Staggered animation: reveal each question with 200ms delay
+            setTimeout(() => {
+              setVisibleCount((v) => v + 1)
+            }, qi * 200)
           }
         }
       } catch (err) {
@@ -224,6 +248,8 @@ export default function GeneratePage() {
       outputTokens: totalOutputTokens,
     })
 
+    // Make all items visible after generation completes
+    setVisibleCount(allGenerated.length)
     setGenerating(false)
   }
 
@@ -438,14 +464,19 @@ export default function GeneratePage() {
           {generating && (
             <Card>
               <div className="flex items-center justify-between mb-2">
-                <p className="text-sm font-medium text-[#1A1A1A]">
-                  {progress.done}/{progress.total} questions generated...
-                </p>
+                <div>
+                  <p className="text-sm font-medium text-[#1A1A1A]">
+                    Batch {progress.chunk}/{progress.totalChunks} — Generating {Math.min(MAX_PER_CALL, count - (progress.chunk - 1) * MAX_PER_CALL)} questions...
+                  </p>
+                  <p className="text-xs text-[#6B7280] mt-0.5">
+                    {progress.done}/{progress.total} total questions inserted
+                  </p>
+                </div>
                 <Loader2 size={16} className="text-[#2ECC71] animate-spin" />
               </div>
               <div className="w-full bg-gray-100 rounded-full h-3">
                 <div
-                  className="bg-[#2ECC71] h-3 rounded-full transition-all duration-300"
+                  className="bg-[#2ECC71] h-3 rounded-full transition-all duration-500"
                   style={{ width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%` }}
                 />
               </div>
@@ -519,10 +550,12 @@ export default function GeneratePage() {
                 </p>
               </div>
               <div className="divide-y divide-gray-100 max-h-[500px] overflow-y-auto">
-                {generated.map((q) => (
+                {generated.map((q, idx) => (
                   <div
                     key={q.id}
-                    className="flex items-center justify-between px-4 py-3 hover:bg-gray-50/50 transition-colors"
+                    className={`flex items-center justify-between px-4 py-3 hover:bg-gray-50/50 transition-all duration-300 ${
+                      idx < visibleCount ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'
+                    }`}
                   >
                     <div className="flex-1 min-w-0 mr-3">
                       <p className="text-sm text-[#1A1A1A] truncate">

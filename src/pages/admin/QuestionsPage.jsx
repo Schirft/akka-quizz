@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import { CATEGORIES } from '../../config/constants'
 import Card from '../../components/ui/Card'
 import QuestionModal from '../../components/admin/QuestionModal'
+import ImportModal from '../../components/admin/ImportModal'
 import {
   Search,
   Plus,
@@ -11,6 +12,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Filter,
+  Upload,
+  Download,
+  Loader2,
 } from 'lucide-react'
 
 const PAGE_SIZE = 20
@@ -30,7 +34,22 @@ export default function QuestionsPage() {
   const [filterStatus, setFilterStatus] = useState('all')
   const [filterCategory, setFilterCategory] = useState('all')
   const [filterSource, setFilterSource] = useState('all')
-  const [modalQuestion, setModalQuestion] = useState(null) // null=closed, {}=new, {id:...}=edit
+  const [modalQuestion, setModalQuestion] = useState(null)
+  const [showImport, setShowImport] = useState(false)
+  const [approvingAll, setApprovingAll] = useState(false)
+  const [exporting, setExporting] = useState(false)
+
+  // Debounce search input
+  const searchTimeoutRef = useRef(null)
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+
+  useEffect(() => {
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
+    searchTimeoutRef.current = setTimeout(() => {
+      setDebouncedSearch(search)
+    }, 400)
+    return () => clearTimeout(searchTimeoutRef.current)
+  }, [search])
 
   const loadQuestions = useCallback(async () => {
     setLoading(true)
@@ -44,7 +63,7 @@ export default function QuestionsPage() {
       if (filterStatus !== 'all') query = query.eq('status', filterStatus)
       if (filterCategory !== 'all') query = query.eq('macro_category', filterCategory)
       if (filterSource !== 'all') query = query.eq('source', filterSource)
-      if (search.trim()) query = query.ilike('question_en', `%${search.trim()}%`)
+      if (debouncedSearch.trim()) query = query.ilike('question_en', `%${debouncedSearch.trim()}%`)
 
       const { data, count, error } = await query
       if (error) throw error
@@ -56,20 +75,24 @@ export default function QuestionsPage() {
     } finally {
       setLoading(false)
     }
-  }, [page, filterStatus, filterCategory, filterSource, search])
+  }, [page, filterStatus, filterCategory, filterSource, debouncedSearch])
 
   useEffect(() => {
     loadQuestions()
   }, [loadQuestions])
 
-  // Reset page on filter change
+  // Reset page on filter change (use functional update to avoid race)
   useEffect(() => {
     setPage(0)
-  }, [filterStatus, filterCategory, filterSource, search])
+  }, [filterStatus, filterCategory, filterSource, debouncedSearch])
 
   async function quickStatusChange(id, newStatus) {
     try {
-      await supabase.from('questions').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', id)
+      const { error } = await supabase
+        .from('questions')
+        .update({ status: newStatus, updated_at: new Date().toISOString() })
+        .eq('id', id)
+      if (error) throw error
       setQuestions((prev) =>
         prev.map((q) => (q.id === id ? { ...q, status: newStatus } : q))
       )
@@ -78,7 +101,84 @@ export default function QuestionsPage() {
     }
   }
 
+  // BUG 7: Approve All Pending (filtered by current source)
+  async function approveAllPending() {
+    setApprovingAll(true)
+    try {
+      let query = supabase
+        .from('questions')
+        .update({ status: 'approved', updated_at: new Date().toISOString() })
+        .eq('status', 'pending_review')
+
+      if (filterSource !== 'all') query = query.eq('source', filterSource)
+      if (filterCategory !== 'all') query = query.eq('macro_category', filterCategory)
+
+      const { error } = await query
+      if (error) throw error
+      await loadQuestions()
+    } catch (err) {
+      console.error('Approve all error:', err)
+    } finally {
+      setApprovingAll(false)
+    }
+  }
+
+  // FEATURE 10: Export CSV
+  async function handleExport() {
+    setExporting(true)
+    try {
+      const { data, error } = await supabase
+        .from('questions')
+        .select('*')
+        .eq('status', 'approved')
+        .order('macro_category', { ascending: true })
+
+      if (error) throw error
+      if (!data || data.length === 0) {
+        alert('No approved questions to export')
+        setExporting(false)
+        return
+      }
+
+      // Build CSV
+      const headers = [
+        'question_en', 'question_fr', 'question_it', 'question_es',
+        'answers_en', 'answers_fr', 'answers_it', 'answers_es',
+        'explanation_en', 'explanation_fr', 'explanation_it', 'explanation_es',
+        'correct_answer_index', 'macro_category', 'sub_category', 'topic',
+        'difficulty', 'source',
+      ]
+
+      const csvRows = [headers.join(',')]
+      for (const q of data) {
+        const row = headers.map((h) => {
+          const val = q[h]
+          if (val === null || val === undefined) return ''
+          if (Array.isArray(val) || typeof val === 'object') {
+            return `"${JSON.stringify(val).replace(/"/g, '""')}"`
+          }
+          return `"${String(val).replace(/"/g, '""')}"`
+        })
+        csvRows.push(row.join(','))
+      }
+
+      const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `akka_questions_${new Date().toISOString().split('T')[0]}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('Export error:', err)
+    } finally {
+      setExporting(false)
+    }
+  }
+
   const totalPages = Math.ceil(totalCount / PAGE_SIZE)
+  const pendingCount = questions.filter((q) => q.status === 'pending_review').length
+  const showApproveAll = filterStatus === 'pending_review' || (filterSource !== 'all' && pendingCount > 0)
 
   return (
     <div>
@@ -88,21 +188,38 @@ export default function QuestionsPage() {
           <h1 className="text-2xl font-bold text-[#1A1A1A]">Questions</h1>
           <p className="text-sm text-[#6B7280] mt-1">{totalCount} questions total</p>
         </div>
-        <button
-          onClick={() => setModalQuestion({})}
-          className="flex items-center gap-2 px-4 py-2.5 bg-[#1B3D2F] text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity"
-        >
-          <Plus size={16} />
-          New Question
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            className="flex items-center gap-2 px-3 py-2.5 border border-[#D1D5DB] text-[#1A1A1A] text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors"
+          >
+            {exporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+            Export CSV
+          </button>
+          <button
+            onClick={() => setShowImport(true)}
+            className="flex items-center gap-2 px-3 py-2.5 border border-[#D1D5DB] text-[#1A1A1A] text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors"
+          >
+            <Upload size={16} />
+            Import
+          </button>
+          <button
+            onClick={() => setModalQuestion({})}
+            className="flex items-center gap-2 px-4 py-2.5 bg-[#1B3D2F] text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity"
+          >
+            <Plus size={16} />
+            New Question
+          </button>
+        </div>
       </div>
 
-      {/* Filters */}
+      {/* Filters + Approve All */}
       <Card className="mb-4">
         <div className="flex flex-wrap items-center gap-3">
           {/* Search */}
           <div className="relative flex-1 min-w-[200px]">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" />
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280] pointer-events-none" />
             <input
               type="text"
               value={search}
@@ -147,6 +264,18 @@ export default function QuestionsPage() {
             <option value="import">Import</option>
             <option value="ai">AI</option>
           </select>
+
+          {/* Approve All Pending button */}
+          {showApproveAll && (
+            <button
+              onClick={approveAllPending}
+              disabled={approvingAll}
+              className="flex items-center gap-1.5 px-3 py-2 bg-[#2ECC71] text-white text-sm font-semibold rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity"
+            >
+              {approvingAll ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+              Approve All Pending
+            </button>
+          )}
         </div>
       </Card>
 
@@ -222,18 +351,24 @@ export default function QuestionsPage() {
                         {q.status === 'pending_review' && (
                           <>
                             <button
-                              onClick={() => quickStatusChange(q.id, 'approved')}
-                              className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 transition-colors"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                quickStatusChange(q.id, 'approved')
+                              }}
+                              className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 cursor-pointer transition-colors"
                               title="Approve"
                             >
-                              <CheckCircle size={16} />
+                              <CheckCircle size={16} className="pointer-events-none" />
                             </button>
                             <button
-                              onClick={() => quickStatusChange(q.id, 'rejected')}
-                              className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition-colors"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                quickStatusChange(q.id, 'rejected')
+                              }}
+                              className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 cursor-pointer transition-colors"
                               title="Reject"
                             >
-                              <XCircle size={16} />
+                              <XCircle size={16} className="pointer-events-none" />
                             </button>
                           </>
                         )}
@@ -258,7 +393,7 @@ export default function QuestionsPage() {
                 disabled={page === 0}
                 className="p-1.5 rounded-lg text-[#6B7280] hover:bg-gray-100 disabled:opacity-30 transition-colors"
               >
-                <ChevronLeft size={16} />
+                <ChevronLeft size={16} className="pointer-events-none" />
               </button>
               <span className="text-sm text-[#1A1A1A] font-medium px-2">
                 {page + 1} / {totalPages}
@@ -268,19 +403,27 @@ export default function QuestionsPage() {
                 disabled={page >= totalPages - 1}
                 className="p-1.5 rounded-lg text-[#6B7280] hover:bg-gray-100 disabled:opacity-30 transition-colors"
               >
-                <ChevronRight size={16} />
+                <ChevronRight size={16} className="pointer-events-none" />
               </button>
             </div>
           </div>
         )}
       </Card>
 
-      {/* Modal */}
+      {/* Question Edit Modal */}
       {modalQuestion !== null && (
         <QuestionModal
           question={modalQuestion}
           onClose={() => setModalQuestion(null)}
           onSaved={loadQuestions}
+        />
+      )}
+
+      {/* Import Modal */}
+      {showImport && (
+        <ImportModal
+          onClose={() => setShowImport(false)}
+          onImported={loadQuestions}
         />
       )}
     </div>

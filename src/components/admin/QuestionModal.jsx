@@ -162,7 +162,7 @@ IMPORTANT: Keep the same answer order. Translations must be native-quality.`
           'anthropic-dangerous-direct-browser-access': 'true',
         },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-5-20250514',
+          model: 'claude-sonnet-4-5-20250929',
           max_tokens: 2000,
           messages: [{ role: 'user', content: prompt }],
         }),

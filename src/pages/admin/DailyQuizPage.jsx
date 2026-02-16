@@ -136,46 +136,46 @@ export default function DailyQuizPage() {
   }
 
   /**
-   * Save or update a daily quiz.
+   * Save or update a daily quiz using upsert (quiz_date has UNIQUE constraint).
    */
   async function saveQuiz(date, questionIds) {
     if (questionIds.length !== 5) return
 
-    const payload = {
-      quiz_date: date,
-      question_1_id: questionIds[0],
-      question_2_id: questionIds[1],
-      question_3_id: questionIds[2],
-      question_4_id: questionIds[3],
-      question_5_id: questionIds[4],
-      auto_generated: true,
-      created_by: user?.id || null,
+    try {
+      const payload = {
+        quiz_date: date,
+        question_1_id: questionIds[0],
+        question_2_id: questionIds[1],
+        question_3_id: questionIds[2],
+        question_4_id: questionIds[3],
+        question_5_id: questionIds[4],
+        auto_generated: true,
+        created_by: user?.id || null,
+      }
+
+      // Upsert — if quiz_date already exists, update it
+      const { error: upsertErr } = await supabase
+        .from('daily_quizzes')
+        .upsert(payload, { onConflict: 'quiz_date' })
+
+      if (upsertErr) {
+        console.error('Upsert daily quiz error:', upsertErr)
+        return
+      }
+
+      // Update served counts for each question
+      for (const qid of questionIds) {
+        await supabase
+          .from('questions')
+          .update({ last_served_date: date })
+          .eq('id', qid)
+      }
+
+      // Reload
+      await loadData()
+    } catch (err) {
+      console.error('Save quiz error:', err)
     }
-
-    const existing = quizzes[date]
-    if (existing?.id) {
-      // Update
-      await supabase.from('daily_quizzes').update(payload).eq('id', existing.id)
-    } else {
-      // Insert
-      await supabase.from('daily_quizzes').insert(payload)
-    }
-
-    // Update served counts
-    await supabase.rpc('increment_times_served_noop', {}).catch(() => {
-      // RPC might not exist — just update directly
-    })
-
-    for (const qid of questionIds) {
-      await supabase
-        .from('questions')
-        .update({ last_served_date: date, times_served: supabase.raw ? 1 : 1 })
-        .eq('id', qid)
-        .catch(() => {})
-    }
-
-    // Reload
-    await loadData()
   }
 
   /**
