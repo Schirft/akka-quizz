@@ -1,14 +1,16 @@
 import { NavLink } from 'react-router-dom'
 import { House, Brain, Newspaper, Trophy } from 'lucide-react'
+import { useLang } from '../../hooks/useLang'
 
 /**
  * Tabs configuration — 4 bottom navigation items (Profile merged into Home).
+ * Labels use i18n keys resolved inside the component.
  */
 const TABS = [
-  { to: '/', label: 'Home', icon: House },
-  { to: '/quiz', label: 'Quiz', icon: Brain },
-  { to: '/news', label: 'News', icon: Newspaper },
-  { to: '/leaderboard', label: 'Ranking', icon: Trophy },
+  { to: '/', labelKey: 'home', icon: House },
+  { to: '/quiz', labelKey: 'quiz', icon: Brain },
+  { to: '/news', labelKey: 'news', icon: Newspaper },
+  { to: '/leaderboard', labelKey: 'ranking', icon: Trophy },
 ]
 
 /**
@@ -17,10 +19,12 @@ const TABS = [
  * Touch targets: 44px minimum. White background, subtle top border.
  */
 export default function TabBar() {
+  const { t } = useLang()
+
   return (
     <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-[#D1D5DB] pb-safe z-50">
       <div className="flex items-center justify-around max-w-[480px] mx-auto">
-        {TABS.map(({ to, label, icon: Icon }) => (
+        {TABS.map(({ to, labelKey, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
@@ -34,7 +38,7 @@ export default function TabBar() {
             }
           >
             <Icon size={22} strokeWidth={2} />
-            <span className="text-[10px] font-medium mt-0.5">{label}</span>
+            <span className="text-[10px] font-medium mt-0.5">{t(labelKey)}</span>
           </NavLink>
         ))}
       </div>

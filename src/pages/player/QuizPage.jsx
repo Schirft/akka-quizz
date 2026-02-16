@@ -2,10 +2,11 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import { useProfile } from '../../hooks/useProfile'
+import { useLang } from '../../hooks/useLang'
+import { t as tRaw } from '../../config/i18n'
 import { supabase } from '../../lib/supabase'
 import {
   QUESTION_TIMER_SECONDS,
-  TIMER_WARNING_SECONDS,
   TIMER_CRITICAL_SECONDS,
   XP_CORRECT_ANSWER,
   XP_SPEED_BONUS_FAST,
@@ -25,7 +26,6 @@ import {
   toggleMute,
 } from '../../lib/sounds'
 import Button from '../../components/ui/Button'
-import Card from '../../components/ui/Card'
 import {
   ArrowLeft,
   Clock,
@@ -47,10 +47,13 @@ import {
  * - quiz_sessions: total_xp_earned, duration_seconds, speed_bonuses, is_perfect
  * - quiz_answers: question_order, response_time_ms, speed_bonus (no user_id)
  * - profiles: current_streak, total_quizzes, total_correct, total_questions
+ *
+ * Language priority: localStorage('akka_lang') > profile.language > 'en'
  */
 export default function QuizPage() {
   const { user } = useAuth()
   const { profile } = useProfile()
+  const { lang, t, tp } = useLang()
   const navigate = useNavigate()
 
   // Quiz state
@@ -95,7 +98,7 @@ export default function QuizPage() {
           .limit(1)
 
         if (existingSession && existingSession.length > 0) {
-          setErrorMsg('You have already completed today\'s quiz!')
+          setErrorMsg('already_completed')
           setQuizState('error')
           return
         }
@@ -108,7 +111,7 @@ export default function QuizPage() {
           .single()
 
         if (dqError || !dailyQuiz) {
-          setErrorMsg('No quiz available for today. Try seeding a test quiz from the home page.')
+          setErrorMsg('no_quiz')
           setQuizState('error')
           return
         }
@@ -129,7 +132,7 @@ export default function QuizPage() {
           .in('id', questionIds)
 
         if (qError || !questionData || questionData.length === 0) {
-          setErrorMsg('Could not load quiz questions.')
+          setErrorMsg('load_failed')
           setQuizState('error')
           return
         }
@@ -140,11 +143,11 @@ export default function QuizPage() {
 
         // Shuffle answer order so correct answer isn't always first
         const shuffledQuestions = ordered.map((q) => {
-          const answers = q.answers_en || []
+          const answersEn = q.answers_en || []
           const correctIdx = q.correct_answer_index // 1-based
 
           // Create indexed array: [{text, originalIndex}]
-          const indexed = answers.map((text, i) => ({ text, originalIndex: i + 1 }))
+          const indexed = answersEn.map((text, i) => ({ text, originalIndex: i + 1 }))
 
           // Fisher-Yates shuffle
           for (let i = indexed.length - 1; i > 0; i--) {
@@ -175,7 +178,7 @@ export default function QuizPage() {
         setQuizState('ready')
       } catch (err) {
         console.error('Quiz load error:', err)
-        setErrorMsg('Something went wrong loading the quiz.')
+        setErrorMsg('load_failed')
         setQuizState('error')
       }
     }
@@ -200,13 +203,15 @@ export default function QuizPage() {
         playTimerTick()
       }
 
-      // Timer pressure messages
+      // Timer pressure messages — use i18n via imported t function with current lang
       if (remaining === 5) {
-        setTimerMessage('⏳ Hurry up!')
+        const currentLang = localStorage.getItem('akka_lang') || 'en'
+        setTimerMessage({ text: `⏳ ${tRaw('hurry_up', currentLang)}`, type: 'warning' })
         setTimeout(() => setTimerMessage(null), 1500)
       }
       if (remaining === 3) {
-        setTimerMessage('🔥 Last chance!')
+        const currentLang = localStorage.getItem('akka_lang') || 'en'
+        setTimerMessage({ text: `🔥 ${tRaw('last_chance', currentLang)}`, type: 'critical' })
         setTimeout(() => setTimerMessage(null), 1500)
       }
 
@@ -358,6 +363,7 @@ export default function QuizPage() {
       answers.length > 0 ? Math.round(totalDurationSec / answers.length) : 0
 
     const today = new Date().toISOString().split('T')[0]
+    const sessionLang = localStorage.getItem('akka_lang') || 'en'
 
     try {
       const { data: currentProfile } = await supabase
@@ -392,7 +398,7 @@ export default function QuizPage() {
           is_perfect: isPerfect,
           streak_day: newStreak,
           streak_multiplier: 1.0,
-          language: profile?.language || localStorage.getItem('akka_lang') || 'en',
+          language: sessionLang,
         })
         .select('id')
         .single()
@@ -451,11 +457,11 @@ export default function QuizPage() {
   // --- RENDER ---
 
   const question = questions[currentIndex]
-  const storedLang = profile?.language || localStorage.getItem('akka_lang') || 'en'
 
-  const questionText = question ? (question[`question_${storedLang}`] || question.question_en) : ''
-  const answersArr = question ? (question[`answers_${storedLang}`] || question.answers_en || []) : []
-  const explanation = question ? (question[`explanation_${storedLang}`] || question.explanation_en) : ''
+  // Language-aware question content — localStorage is the source of truth
+  const questionText = question ? (question[`question_${lang}`] || question.question_en) : ''
+  const answersArr = question ? (question[`answers_${lang}`] || question.answers_en || []) : []
+  const explanation = question ? (question[`explanation_${lang}`] || question.explanation_en) : ''
 
   // Timer progress (0 → 1)
   const timerProgress = timeLeft / QUESTION_TIMER_SECONDS
@@ -492,26 +498,26 @@ export default function QuizPage() {
     return (
       <div className="min-h-screen bg-akka-bg flex flex-col items-center justify-center">
         <Loader2 size={32} className="text-akka-green animate-spin mb-4" />
-        <p className="text-akka-text-secondary">Loading quiz...</p>
+        <p className="text-akka-text-secondary">{t('loading_quiz')}</p>
       </div>
     )
   }
 
   // Already completed state — friendly screen instead of error
-  if (quizState === 'error' && errorMsg.includes('already completed')) {
+  if (quizState === 'error' && errorMsg === 'already_completed') {
     return (
       <div className="min-h-screen bg-akka-bg flex flex-col">
-        <QuizHeader onBack={() => navigate('/')} muted={muted} onToggleMute={handleToggleMute} />
+        <QuizHeader onBack={() => navigate('/')} muted={muted} onToggleMute={handleToggleMute} title={t('quiz_of_the_day')} />
         <div className="flex-1 flex flex-col items-center justify-center px-6">
           <div className="w-20 h-20 rounded-3xl bg-emerald-50 flex items-center justify-center mb-4">
             <CheckCircle size={40} className="text-akka-green" />
           </div>
-          <h2 className="text-xl font-bold text-akka-text mb-2">Quiz Completed!</h2>
+          <h2 className="text-xl font-bold text-akka-text mb-2">{t('quiz_completed')}</h2>
           <p className="text-akka-text-secondary text-center text-sm mb-6">
-            You've already completed today's quiz. Come back tomorrow for new questions!
+            {t('come_back_tomorrow')}
           </p>
           <Button variant="primary" onClick={() => navigate('/')}>
-            Back to Home
+            {t('back_home')}
           </Button>
         </div>
       </div>
@@ -522,15 +528,17 @@ export default function QuizPage() {
   if (quizState === 'error') {
     return (
       <div className="min-h-screen bg-akka-bg flex flex-col">
-        <QuizHeader onBack={() => navigate('/')} muted={muted} onToggleMute={handleToggleMute} />
+        <QuizHeader onBack={() => navigate('/')} muted={muted} onToggleMute={handleToggleMute} title={t('quiz_of_the_day')} />
         <div className="flex-1 flex flex-col items-center justify-center px-6">
           <div className="w-16 h-16 rounded-2xl bg-amber-50 flex items-center justify-center mb-4">
             <AlertTriangle size={32} className="text-amber-500" />
           </div>
-          <p className="text-akka-text text-center font-semibold mb-2">No Quiz Available</p>
-          <p className="text-akka-text-secondary text-center text-sm mb-6">{errorMsg}</p>
+          <p className="text-akka-text text-center font-semibold mb-2">{t('no_quiz_title')}</p>
+          <p className="text-akka-text-secondary text-center text-sm mb-6">
+            {errorMsg === 'no_quiz' ? t('no_quiz_available') : t('something_went_wrong')}
+          </p>
           <Button variant="primary" onClick={() => navigate('/')}>
-            Back to Home
+            {t('back_home')}
           </Button>
         </div>
       </div>
@@ -541,20 +549,20 @@ export default function QuizPage() {
   if (quizState === 'ready') {
     return (
       <div className="min-h-screen bg-akka-bg flex flex-col">
-        <QuizHeader onBack={() => navigate('/')} muted={muted} onToggleMute={handleToggleMute} />
+        <QuizHeader onBack={() => navigate('/')} muted={muted} onToggleMute={handleToggleMute} title={t('quiz_of_the_day')} />
         <div className="flex-1 flex flex-col items-center justify-center px-6">
           <div className="w-20 h-20 rounded-3xl bg-emerald-50 flex items-center justify-center mb-6">
             <span className="text-4xl">🧠</span>
           </div>
-          <h2 className="text-2xl font-bold text-akka-text mb-2">Quiz of the Day</h2>
+          <h2 className="text-2xl font-bold text-akka-text mb-2">{t('quiz_of_the_day')}</h2>
           <p className="text-akka-text-secondary text-center mb-1">
-            {questions.length} questions · {QUESTION_TIMER_SECONDS}s per question
+            {tp('questions_per_question', { count: questions.length, timer: QUESTION_TIMER_SECONDS })}
           </p>
           <p className="text-xs text-akka-text-secondary mb-8">
-            Answer quickly for speed bonus XP!
+            {t('answer_quickly')}
           </p>
           <Button variant="primary" className="w-full max-w-xs gap-2" onClick={handleStart}>
-            Start Quiz
+            {t('start_quiz_short')}
           </Button>
         </div>
       </div>
@@ -622,16 +630,16 @@ export default function QuizPage() {
       {/* Timer pressure messages */}
       {timerMessage && (
         <div className={`mx-4 mt-2 px-4 py-2.5 rounded-xl text-white text-center text-sm font-bold animate-bounce ${
-          timerMessage.includes('Last') ? 'bg-[#E74C3C]' : 'bg-[#F39C12]'
+          timerMessage.type === 'critical' ? 'bg-[#E74C3C]' : 'bg-[#F39C12]'
         }`}>
-          {timerMessage}
+          {timerMessage.text}
         </div>
       )}
 
       {/* Question counter */}
       <div className="px-4 pt-4">
         <p className="text-xs font-semibold text-akka-text-secondary uppercase tracking-wide">
-          Question {currentIndex + 1} of {questions.length}
+          {tp('question_of', { n: currentIndex + 1, total: questions.length })}
         </p>
       </div>
 
@@ -755,15 +763,15 @@ export default function QuizPage() {
                 <XCircle size={18} className="text-[#E74C3C] shrink-0 mt-0.5" />
               )}
               <p className={`text-sm font-bold ${isCorrect ? 'text-[#166534]' : 'text-[#991B1B]'}`}>
-                {isCorrect ? 'Correct!' : 'Incorrect'}
+                {isCorrect ? t('correct') : t('incorrect')}
               </p>
             </div>
             <p className="text-sm text-[#1A1A1A] leading-relaxed font-medium">
               {explanation}
             </p>
             <p className={`text-xs mt-2 font-semibold ${isCorrect ? 'text-[#166534]' : 'text-[#991B1B]'}`}>
-              Answered in {timeSpentSec}s
-              {answers[answers.length - 1]?.speedBonus > 0 && ' · ⚡ Speed bonus!'}
+              {tp('answered_in', { time: timeSpentSec })}
+              {answers[answers.length - 1]?.speedBonus > 0 && ` · ⚡ ${t('speed_bonus')}`}
             </p>
           </div>
 
@@ -771,11 +779,11 @@ export default function QuizPage() {
           <Button variant="primary" className="w-full gap-2" onClick={handleNext}>
             {currentIndex + 1 < questions.length ? (
               <>
-                Next Question
+                {t('next_question')}
                 <ChevronRight size={18} />
               </>
             ) : (
-              'See Results'
+              t('see_results')
             )}
           </Button>
         </div>
@@ -785,9 +793,9 @@ export default function QuizPage() {
 }
 
 /**
- * QuizHeader — back button + optional mute toggle.
+ * QuizHeader — back button + title + optional mute toggle.
  */
-function QuizHeader({ onBack, muted, onToggleMute }) {
+function QuizHeader({ onBack, muted, onToggleMute, title }) {
   return (
     <div className="flex items-center justify-between px-4 py-3 border-b border-akka-border">
       <button
@@ -796,7 +804,7 @@ function QuizHeader({ onBack, muted, onToggleMute }) {
       >
         <ArrowLeft size={20} />
       </button>
-      <h1 className="text-lg font-bold text-akka-text">Quiz of the Day</h1>
+      <h1 className="text-lg font-bold text-akka-text">{title}</h1>
       <button
         onClick={onToggleMute}
         className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl hover:bg-gray-50 transition-colors"

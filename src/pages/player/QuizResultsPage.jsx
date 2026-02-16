@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import { useProfile } from '../../hooks/useProfile'
+import { useLang } from '../../hooks/useLang'
 import { getLevelForXP } from '../../config/levels'
 import {
   XP_QUIZ_STARTED,
@@ -13,7 +14,7 @@ import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
 import Confetti from '../../components/Confetti'
 import LevelUpModal from '../../components/LevelUpModal'
-import { Home, RotateCcw, Share2, Flame, Trophy, Zap, Target } from 'lucide-react'
+import { Home, Share2, Flame, Trophy, Zap, Target } from 'lucide-react'
 import { playQuizComplete, playPerfect } from '../../lib/sounds'
 
 /**
@@ -25,6 +26,7 @@ export default function QuizResultsPage() {
   const location = useLocation()
   const { refreshProfile } = useAuth()
   const { profile, level } = useProfile()
+  const { t, tp } = useLang()
 
   const [showConfetti, setShowConfetti] = useState(false)
   const [showLevelUp, setShowLevelUp] = useState(false)
@@ -46,22 +48,22 @@ export default function QuizResultsPage() {
 
   // Contextual message
   const getMessage = () => {
-    if (isPerfect) return { text: 'Perfect Score!', emoji: '🏆' }
-    if (percentage >= 80) return { text: 'Excellent!', emoji: '🌟' }
-    if (percentage >= 60) return { text: 'Good Job!', emoji: '👍' }
-    if (percentage >= 40) return { text: 'Keep Learning!', emoji: '📚' }
-    return { text: 'Better Luck Tomorrow!', emoji: '💪' }
+    if (isPerfect) return { text: t('perfect_score'), emoji: '🏆' }
+    if (percentage >= 80) return { text: t('excellent'), emoji: '🌟' }
+    if (percentage >= 60) return { text: t('good_job'), emoji: '👍' }
+    if (percentage >= 40) return { text: t('keep_learning'), emoji: '📚' }
+    return { text: t('better_luck'), emoji: '💪' }
   }
 
   const message = getMessage()
 
   // Build XP breakdown items
   const xpBreakdown = []
-  xpBreakdown.push({ label: 'Quiz started', amount: XP_QUIZ_STARTED, icon: '🎯' })
+  xpBreakdown.push({ label: t('quiz_started'), amount: XP_QUIZ_STARTED, icon: '🎯' })
   const correctCount = answers.filter((a) => a.correct).length
   if (correctCount > 0) {
     xpBreakdown.push({
-      label: `${correctCount} correct answer${correctCount > 1 ? 's' : ''}`,
+      label: tp('correct_answers', { count: correctCount }),
       amount: correctCount * XP_CORRECT_ANSWER,
       icon: '✅',
     })
@@ -71,10 +73,10 @@ export default function QuizResultsPage() {
     0
   )
   if (speedBonusTotal > 0) {
-    xpBreakdown.push({ label: 'Speed bonus', amount: speedBonusTotal, icon: '⚡' })
+    xpBreakdown.push({ label: t('speed_bonus_label'), amount: speedBonusTotal, icon: '⚡' })
   }
   if (isPerfect) {
-    xpBreakdown.push({ label: 'Perfect quiz bonus', amount: XP_PERFECT_QUIZ, icon: '🏆' })
+    xpBreakdown.push({ label: t('perfect_quiz_bonus'), amount: XP_PERFECT_QUIZ, icon: '🏆' })
   }
 
   // Animate XP breakdown sequentially + check level up
@@ -198,7 +200,7 @@ export default function QuizResultsPage() {
               <span className="text-3xl font-bold text-akka-text">
                 {score}/{totalQuestions}
               </span>
-              <span className="text-xs text-akka-text-secondary">correct</span>
+              <span className="text-xs text-akka-text-secondary">{t('correct')}</span>
             </div>
           </div>
 
@@ -214,17 +216,17 @@ export default function QuizResultsPage() {
           <Card className="flex-1 flex flex-col items-center py-3">
             <Target size={18} className="text-akka-green mb-1" />
             <p className="text-lg font-bold text-akka-text">{percentage}%</p>
-            <p className="text-[10px] text-akka-text-secondary">Accuracy</p>
+            <p className="text-[10px] text-akka-text-secondary">{t('accuracy')}</p>
           </Card>
           <Card className="flex-1 flex flex-col items-center py-3">
             <Zap size={18} className="text-amber-500 mb-1" />
             <p className="text-lg font-bold text-akka-text">{avgTime}s</p>
-            <p className="text-[10px] text-akka-text-secondary">Avg. time</p>
+            <p className="text-[10px] text-akka-text-secondary">{t('avg_time')}</p>
           </Card>
           <Card className="flex-1 flex flex-col items-center py-3">
             <Flame size={18} className="text-orange-500 mb-1" />
             <p className="text-lg font-bold text-akka-text">{profile?.current_streak || 0}</p>
-            <p className="text-[10px] text-akka-text-secondary">Streak</p>
+            <p className="text-[10px] text-akka-text-secondary">{t('streak')}</p>
           </Card>
         </div>
 
@@ -233,7 +235,7 @@ export default function QuizResultsPage() {
           <div className="flex items-center gap-2 mb-3">
             <Trophy size={16} className="text-akka-green" />
             <p className="text-xs font-semibold uppercase tracking-wide text-akka-text-secondary">
-              XP Earned
+              {t('xp_earned')}
             </p>
           </div>
 
@@ -254,7 +256,7 @@ export default function QuizResultsPage() {
 
           {/* Total */}
           <div className="mt-3 pt-3 border-t border-akka-border flex items-center justify-between">
-            <span className="text-sm font-bold text-akka-text">Total XP</span>
+            <span className="text-sm font-bold text-akka-text">{t('total_xp')}</span>
             <span className="text-lg font-bold text-akka-green">+{totalAnimated}</span>
           </div>
         </Card>
@@ -267,16 +269,15 @@ export default function QuizResultsPage() {
             onClick={() => navigate('/', { replace: true })}
           >
             <Home size={18} />
-            Back to Home
+            {t('back_home')}
           </Button>
 
           <Button
             variant="outline"
             className="w-full gap-2"
             onClick={() => {
-              const shareText = score === totalQuestions
-                ? `🏆 Score parfait ${score}/${totalQuestions} au Quiz Akka !\nJ'ai tout bon sur un quiz d'investissement startup. Tu penses pouvoir faire mieux ?\n👉 Découvre Akka : akka.app`
-                : `💡 J'ai scoré ${score}/${totalQuestions} au Quiz Akka !\nTeste tes connaissances en investissement startup et rejoins le club.\n👉 Découvre Akka : akka.app`
+              const shareKey = score === totalQuestions ? 'share_perfect' : 'share_normal'
+              const shareText = tp(shareKey, { score, total: totalQuestions })
 
               if (navigator.share) {
                 navigator.share({ title: 'Akka Quiz', text: shareText })
@@ -287,7 +288,7 @@ export default function QuizResultsPage() {
             }}
           >
             <Share2 size={18} />
-            Share Results
+            {t('share_results')}
           </Button>
         </div>
       </div>

@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useProfile } from '../../hooks/useProfile'
 import { useAuth } from '../../hooks/useAuth'
+import { useLang } from '../../hooks/useLang'
 import { supabase } from '../../lib/supabase'
 import { LEVELS } from '../../config/levels'
 import { BADGES, TIER_COLORS } from '../../config/badges'
+import { LANGUAGES } from '../../config/constants'
 import { replayQuiz } from '../../lib/seedQuiz'
 import Card from '../../components/ui/Card'
 import ProgressBar from '../../components/ui/ProgressBar'
@@ -14,16 +16,22 @@ import {
   LogOut, Shield,
 } from 'lucide-react'
 
-const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+const DAY_LABELS_I18N = {
+  en: ['M', 'T', 'W', 'T', 'F', 'S', 'S'],
+  fr: ['L', 'M', 'M', 'J', 'V', 'S', 'D'],
+  it: ['L', 'M', 'M', 'G', 'V', 'S', 'D'],
+  es: ['L', 'M', 'X', 'J', 'V', 'S', 'D'],
+}
 
 /**
  * HomePage — merged player dashboard + profile.
  * Shows greeting, streak, level, investor score, stats, badges, quiz CTA,
- * admin panel button, and sign out.
+ * admin panel button, language selector, and sign out.
  */
 export default function HomePage() {
   const { profile, level, levelProgress } = useProfile()
   const { user, signOut } = useAuth()
+  const { lang, setLang, t } = useLang()
   const navigate = useNavigate()
 
   const [quizPlayedToday, setQuizPlayedToday] = useState(false)
@@ -31,6 +39,8 @@ export default function HomePage() {
   const [streakHistory, setStreakHistory] = useState([])
   const [replaying, setReplaying] = useState(false)
   const [replayResult, setReplayResult] = useState(null)
+
+  const dayLabels = DAY_LABELS_I18N[lang] || DAY_LABELS_I18N.en
 
   // Check if quiz already played today + fetch recent badges + streak history
   useEffect(() => {
@@ -86,7 +96,7 @@ export default function HomePage() {
         const jsDay = new Date(date + 'T12:00:00').getDay() // 0=Sun
         const idx = jsDay === 0 ? 6 : jsDay - 1 // Mon=0..Sun=6
         return {
-          label: DAY_LABELS[idx],
+          label: dayLabels[idx],
           date,
           played: playedDates.has(date),
         }
@@ -95,7 +105,7 @@ export default function HomePage() {
     }
 
     loadHomeData()
-  }, [user])
+  }, [user, dayLabels])
 
   // New Quiz handler — delete today's session/answers, re-seed, navigate to quiz
   async function handleReplay() {
@@ -190,7 +200,7 @@ export default function HomePage() {
           <span className="text-white text-sm font-bold">{initials}</span>
         </div>
         <div className="flex-1">
-          <p className="text-akka-text-secondary text-sm">Welcome back,</p>
+          <p className="text-akka-text-secondary text-sm">{t('welcome_back')}</p>
           <h1 className="text-xl font-bold text-akka-text">{displayName}</h1>
         </div>
       </div>
@@ -204,9 +214,9 @@ export default function HomePage() {
           <div>
             <p className="text-2xl font-bold text-akka-text">
               {streakDays}{' '}
-              <span className="text-sm font-medium text-akka-text-secondary">days</span>
+              <span className="text-sm font-medium text-akka-text-secondary">{t('days')}</span>
             </p>
-            <p className="text-xs text-akka-text-secondary">Current streak</p>
+            <p className="text-xs text-akka-text-secondary">{t('current_streak')}</p>
           </div>
         </div>
         {/* 7-day circles */}
@@ -246,11 +256,11 @@ export default function HomePage() {
         <ProgressBar value={levelProgress} />
         <div className="flex items-center justify-between mt-1.5">
           <p className="text-[10px] text-akka-text-secondary">
-            Level {level?.level}
+            {t('level')} {level?.level}
           </p>
           {nextLevel && (
             <p className="text-[10px] text-akka-text-secondary">
-              {nextLevel.xpRequired.toLocaleString()} XP → Level {nextLevel.level}
+              {nextLevel.xpRequired.toLocaleString()} XP → {t('level')} {nextLevel.level}
             </p>
           )}
         </div>
@@ -261,24 +271,24 @@ export default function HomePage() {
         <Card className="flex-1 flex flex-col items-center py-3 px-2">
           <span className="text-base mb-0.5">📊</span>
           <p className="text-lg font-bold text-[#2ECC71]">{avgScore}</p>
-          <p className="text-[10px] text-akka-text-secondary">Avg Score</p>
+          <p className="text-[10px] text-akka-text-secondary">{t('avg_score')}</p>
         </Card>
         <Card className="flex-1 flex flex-col items-center py-3 px-2">
           <span className="text-base mb-0.5">🎯</span>
           <p className="text-lg font-bold text-[#3498DB]">{accuracy}%</p>
-          <p className="text-[10px] text-akka-text-secondary">Accuracy</p>
+          <p className="text-[10px] text-akka-text-secondary">{t('accuracy')}</p>
         </Card>
         <Card className="flex-1 flex flex-col items-center py-3 px-2">
           <span className="text-base mb-0.5">🏆</span>
           <p className="text-lg font-bold text-[#F39C12]">{profile.longest_streak || 0}</p>
-          <p className="text-[10px] text-akka-text-secondary">Best Streak</p>
+          <p className="text-[10px] text-akka-text-secondary">{t('best_streak')}</p>
         </Card>
       </div>
 
       {/* Investor Score */}
       <Card className="mb-3">
         <p className="text-xs font-semibold uppercase tracking-wide text-akka-text-secondary mb-1">
-          Investor Score
+          {t('investor_score')}
         </p>
         <p className="text-2xl font-bold text-akka-text">
           {profile.investor_score || 0}
@@ -292,7 +302,7 @@ export default function HomePage() {
           <div className="flex items-center gap-2 mb-3">
             <Trophy size={16} className="text-amber-500" />
             <p className="text-xs font-semibold uppercase tracking-wide text-akka-text-secondary">
-              Recent Badges
+              {t('recent_badges')}
             </p>
           </div>
           <div className="flex gap-3">
@@ -318,12 +328,12 @@ export default function HomePage() {
       {quizPlayedToday ? (
         <Button variant="outline" className="w-full gap-2 opacity-70" disabled>
           <CheckCircle size={18} className="text-akka-green" />
-          Quiz Completed ✓
+          {t('quiz_completed')} ✓
         </Button>
       ) : (
         <Button variant="primary" className="w-full gap-2" onClick={() => navigate('/quiz')}>
           <Play size={18} />
-          Start Quiz of the Day
+          {t('start_quiz')}
         </Button>
       )}
 
@@ -336,7 +346,7 @@ export default function HomePage() {
           style={{ backgroundColor: '#1B3D2F' }}
         >
           <Shield size={18} />
-          Admin Panel
+          {t('admin_panel')}
         </Button>
 
         <button
@@ -344,8 +354,31 @@ export default function HomePage() {
           className="w-full flex items-center justify-center gap-2 py-3 min-h-[44px] rounded-xl border-2 border-[#E74C3C] text-[#E74C3C] font-semibold hover:bg-red-50 transition-colors"
         >
           <LogOut size={18} />
-          Sign Out
+          {t('sign_out')}
         </button>
+      </div>
+
+      {/* Language selector */}
+      <div className="mt-4 pt-4 border-t border-[#D1D5DB]">
+        <p className="text-xs font-semibold uppercase tracking-wide text-akka-text-secondary mb-2 text-center">
+          {t('language')}
+        </p>
+        <div className="flex items-center justify-center gap-2">
+          {LANGUAGES.map(({ code, flag }) => (
+            <button
+              key={code}
+              onClick={() => setLang(code)}
+              className={`text-lg px-2 py-1 rounded-lg transition-all ${
+                lang === code
+                  ? 'bg-gray-100 scale-110'
+                  : 'opacity-50 hover:opacity-80'
+              }`}
+              title={code.toUpperCase()}
+            >
+              {flag}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Demo tools */}
@@ -361,7 +394,7 @@ export default function HomePage() {
           ) : (
             <RotateCcw size={16} />
           )}
-          {replaying ? 'Resetting...' : '🔄 New Quiz (Demo)'}
+          {replaying ? t('resetting') : `🔄 ${t('new_quiz_demo')}`}
         </Button>
         {replayResult && !replayResult.success && (
           <p className="text-xs text-center text-akka-red">

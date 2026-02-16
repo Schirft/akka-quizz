@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useAuth } from '../../hooks/useAuth'
 import { LANGUAGES } from '../../config/constants'
+import { useLang } from '../../hooks/useLang'
 import { ArrowRight, Eye, EyeOff } from 'lucide-react'
 
 /**
@@ -9,6 +10,7 @@ import { ArrowRight, Eye, EyeOff } from 'lucide-react'
  */
 export default function LoginPage() {
   const { signIn, signUp, signInDemo } = useAuth()
+  const { lang, setLang, t } = useLang()
 
   const [mode, setMode] = useState('signin')
   const [email, setEmail] = useState('')
@@ -17,14 +19,6 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
-  const [lang, setLang] = useState(
-    () => localStorage.getItem('akka_lang') || 'en'
-  )
-
-  function handleLangChange(code) {
-    setLang(code)
-    localStorage.setItem('akka_lang', code)
-  }
 
   function validate() {
     if (!email.trim()) return 'Email is required'
@@ -84,7 +78,7 @@ export default function LoginPage() {
             akka<span className="text-akka-green">.quiz</span>
           </h1>
           <p className="text-sm text-akka-text-secondary mt-1">
-            Test your investor knowledge
+            {t('test_investor_knowledge')}
           </p>
         </div>
 
@@ -98,7 +92,7 @@ export default function LoginPage() {
                 : 'text-akka-text-secondary'
             }`}
           >
-            Sign In
+            {t('sign_in')}
           </button>
           <button
             onClick={() => { setMode('signup'); setError(''); setMessage('') }}
@@ -108,7 +102,7 @@ export default function LoginPage() {
                 : 'text-akka-text-secondary'
             }`}
           >
-            Sign Up
+            {t('sign_up')}
           </button>
         </div>
 
@@ -117,7 +111,7 @@ export default function LoginPage() {
           {/* Email */}
           <div>
             <label className="block text-xs font-semibold text-akka-text-secondary uppercase tracking-wide mb-1.5">
-              Email
+              {t('email')}
             </label>
             <input
               type="email"
@@ -132,7 +126,7 @@ export default function LoginPage() {
           {/* Password */}
           <div>
             <label className="block text-xs font-semibold text-akka-text-secondary uppercase tracking-wide mb-1.5">
-              Password
+              {t('password')}
             </label>
             <div className="relative">
               <input
@@ -175,17 +169,17 @@ export default function LoginPage() {
             className="w-full bg-akka-dark text-white font-semibold py-3.5 rounded-xl min-h-[52px] transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading
-              ? 'Loading...'
+              ? t('loading')
               : mode === 'signin'
-              ? 'Sign In'
-              : 'Create Account'}
+              ? t('sign_in')
+              : t('create_account')}
           </button>
         </form>
 
         {/* Divider */}
         <div className="flex items-center gap-3 my-6">
           <div className="flex-1 h-px bg-akka-border" />
-          <span className="text-xs text-akka-text-secondary">or</span>
+          <span className="text-xs text-akka-text-secondary">{t('or')}</span>
           <div className="flex-1 h-px bg-akka-border" />
         </div>
 
@@ -195,7 +189,7 @@ export default function LoginPage() {
           disabled={loading}
           className="w-full flex items-center justify-center gap-2 border-2 border-akka-border text-akka-text font-semibold py-3.5 rounded-xl min-h-[52px] transition-all active:scale-[0.98] hover:border-akka-dark disabled:opacity-50"
         >
-          Try Demo
+          {t('try_demo')}
           <ArrowRight size={16} />
         </button>
 
@@ -204,7 +198,7 @@ export default function LoginPage() {
           {LANGUAGES.map(({ code, flag }) => (
             <button
               key={code}
-              onClick={() => handleLangChange(code)}
+              onClick={() => setLang(code)}
               className={`text-lg px-2 py-1 rounded-lg transition-all ${
                 lang === code
                   ? 'bg-gray-100 scale-110'
