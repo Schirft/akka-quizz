@@ -217,12 +217,14 @@ export async function replayQuiz() {
 
     // 2. Fisher-Yates shuffle for true randomness
     const arr = [...allQ]
-    fisherYatesShuffle(arr)
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]]
+    }
     const picked = arr.slice(0, 5).map((q) => q.id)
 
-    // 3. Safety check — no duplicates
-    const uniquePicked = [...new Set(picked)]
-    if (uniquePicked.length < 5) throw new Error('Duplicate questions detected, retry')
+    // 3. Safety: verify uniqueness
+    if (new Set(picked).size < 5) throw new Error('Duplicate questions detected')
 
     // 4. Check if a daily quiz already exists for today
     const { data: existing } = await supabase
