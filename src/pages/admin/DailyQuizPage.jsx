@@ -14,6 +14,8 @@ import {
   ChevronUp,
   Save,
   Trash2,
+  Plus,
+  X,
 } from 'lucide-react'
 
 /**
@@ -42,6 +44,10 @@ export default function DailyQuizPage() {
   const [selectedIds, setSelectedIds] = useState([])
   const [saving, setSaving] = useState(false)
   const [autoSelecting, setAutoSelecting] = useState(null) // date being auto-selected
+  // HOTFIX E: Single question add/remove
+  const [addPickerDay, setAddPickerDay] = useState(null) // day for adding ONE question
+  const [addPickerQuestions, setAddPickerQuestions] = useState([])
+  const [confirmRemoveAll, setConfirmRemoveAll] = useState(null) // date awaiting confirmation
 
   useEffect(() => {
     loadData()
@@ -137,18 +143,23 @@ export default function DailyQuizPage() {
 
   /**
    * Save or update a daily quiz using upsert (quiz_date has UNIQUE constraint).
+   * HOTFIX E: Allow 1-5 questions (null-fill empty slots).
    */
   async function saveQuiz(date, questionIds) {
-    if (questionIds.length !== 5) return
+    if (questionIds.length === 0 || questionIds.length > 5) return
 
     try {
+      // Pad to 5 with null
+      const padded = [...questionIds]
+      while (padded.length < 5) padded.push(null)
+
       const payload = {
         quiz_date: date,
-        question_1_id: questionIds[0],
-        question_2_id: questionIds[1],
-        question_3_id: questionIds[2],
-        question_4_id: questionIds[3],
-        question_5_id: questionIds[4],
+        question_1_id: padded[0],
+        question_2_id: padded[1],
+        question_3_id: padded[2],
+        question_4_id: padded[3],
+        question_5_id: padded[4],
         auto_generated: true,
         created_by: user?.id || null,
       }
@@ -164,7 +175,7 @@ export default function DailyQuizPage() {
       }
 
       // Update served counts for each question
-      for (const qid of questionIds) {
+      for (const qid of questionIds.filter(Boolean)) {
         await supabase
           .from('questions')
           .update({ last_served_date: date })
@@ -176,6 +187,47 @@ export default function DailyQuizPage() {
     } catch (err) {
       console.error('Save quiz error:', err)
     }
+  }
+
+  /**
+   * HOTFIX E: Remove a single question from a day's quiz.
+   */
+  async function removeOneQuestion(date, questionId) {
+    const quiz = quizzes[date]
+    if (!quiz) return
+    const remaining = quiz.questions.filter((q) => q.id !== questionId).map((q) => q.id)
+    if (remaining.length === 0) {
+      // If no questions left, delete the quiz entirely
+      await deleteQuiz(date)
+    } else {
+      await saveQuiz(date, remaining)
+    }
+  }
+
+  /**
+   * HOTFIX E: Open single-question picker for adding one question.
+   */
+  async function openAddPicker(date) {
+    setAddPickerDay(date)
+    const existingIds = quizzes[date]?.questions?.map((q) => q.id) || []
+    const { data } = await supabase
+      .from('questions')
+      .select('id, question_en, macro_category, difficulty')
+      .eq('status', 'approved')
+      .order('last_served_date', { ascending: true, nullsFirst: true })
+      .limit(100)
+    // Filter out already-selected questions
+    setAddPickerQuestions((data || []).filter((q) => !existingIds.includes(q.id)))
+  }
+
+  /**
+   * HOTFIX E: Add a single question to a day's quiz.
+   */
+  async function addOneQuestion(date, questionId) {
+    const existing = quizzes[date]?.questions?.map((q) => q.id) || []
+    if (existing.length >= 5) return
+    await saveQuiz(date, [...existing, questionId])
+    setAddPickerDay(null)
   }
 
   /**
@@ -215,7 +267,7 @@ export default function DailyQuizPage() {
   }
 
   async function savePicker() {
-    if (selectedIds.length !== 5 || !pickerDay) return
+    if (selectedIds.length === 0 || selectedIds.length > 5 || !pickerDay) return
     setSaving(true)
     await saveQuiz(pickerDay, selectedIds)
     setPickerDay(null)
@@ -310,14 +362,43 @@ export default function DailyQuizPage() {
                       <List size={14} />
                       Manual Select
                     </button>
-                    {quiz && (
+                    {/* HOTFIX E: Add question button when <5 */}
+                    {quiz && quiz.questions.length < 5 && (
                       <button
-                        onClick={() => deleteQuiz(date)}
-                        className="flex items-center gap-1.5 px-3 py-2 text-red-600 text-xs font-medium rounded-lg hover:bg-red-50 transition-colors ml-auto"
+                        onClick={() => openAddPicker(date)}
+                        className="flex items-center gap-1.5 px-3 py-2 border border-[#2ECC71] text-[#1B3D2F] text-xs font-medium rounded-lg hover:bg-green-50 transition-colors"
                       >
-                        <Trash2 size={14} />
-                        Remove
+                        <Plus size={14} />
+                        Add Question
                       </button>
+                    )}
+                    {/* HOTFIX E: Remove all with confirmation */}
+                    {quiz && (
+                      confirmRemoveAll === date ? (
+                        <div className="flex items-center gap-2 ml-auto">
+                          <span className="text-xs text-red-600 font-medium">Remove all?</span>
+                          <button
+                            onClick={() => { deleteQuiz(date); setConfirmRemoveAll(null) }}
+                            className="px-2 py-1 bg-red-600 text-white text-xs font-semibold rounded-lg hover:bg-red-700 transition-colors"
+                          >
+                            Yes
+                          </button>
+                          <button
+                            onClick={() => setConfirmRemoveAll(null)}
+                            className="px-2 py-1 text-xs text-[#6B7280] hover:bg-gray-100 rounded-lg transition-colors"
+                          >
+                            No
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setConfirmRemoveAll(date)}
+                          className="flex items-center gap-1.5 px-3 py-2 text-red-600 text-xs font-medium rounded-lg hover:bg-red-50 transition-colors ml-auto"
+                        >
+                          <Trash2 size={14} />
+                          Remove All
+                        </button>
+                      )
                     )}
                   </div>
 
@@ -327,9 +408,9 @@ export default function DailyQuizPage() {
                       {quiz.questions.map((q, idx) => (
                         <div
                           key={q.id}
-                          className="flex items-center gap-3 px-3 py-2 bg-gray-50 rounded-lg"
+                          className="flex items-center gap-3 px-3 py-2 bg-gray-50 rounded-lg group"
                         >
-                          <span className="w-6 h-6 rounded-full bg-[#1B3D2F] text-white text-xs font-bold flex items-center justify-center">
+                          <span className="w-6 h-6 rounded-full bg-[#1B3D2F] text-white text-xs font-bold flex items-center justify-center shrink-0">
                             {idx + 1}
                           </span>
                           <div className="flex-1 min-w-0">
@@ -343,8 +424,26 @@ export default function DailyQuizPage() {
                               </span>
                             </div>
                           </div>
+                          {/* HOTFIX E: Remove single question */}
+                          <button
+                            onClick={() => removeOneQuestion(date, q.id)}
+                            className="p-1.5 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                            title="Remove this question"
+                          >
+                            <X size={14} />
+                          </button>
                         </div>
                       ))}
+                      {/* HOTFIX E: Inline add button when has some but <5 */}
+                      {quiz.questions.length < 5 && (
+                        <button
+                          onClick={() => openAddPicker(date)}
+                          className="flex items-center gap-2 w-full px-3 py-2 border-2 border-dashed border-gray-200 rounded-lg text-xs text-[#6B7280] hover:border-[#2ECC71] hover:text-[#1B3D2F] transition-colors"
+                        >
+                          <Plus size={14} />
+                          Add question ({quiz.questions.length}/5)
+                        </button>
+                      )}
                     </div>
                   ) : (
                     <p className="text-sm text-[#6B7280] text-center py-4">
@@ -420,11 +519,64 @@ export default function DailyQuizPage() {
               </button>
               <button
                 onClick={savePicker}
-                disabled={selectedIds.length !== 5 || saving}
+                disabled={selectedIds.length === 0 || selectedIds.length > 5 || saving}
                 className="flex items-center gap-2 px-4 py-2 bg-[#1B3D2F] text-white text-sm font-semibold rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity"
               >
                 {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                 Save ({selectedIds.length}/5)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* HOTFIX E: Single Question Picker Modal */}
+      {addPickerDay && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 overflow-y-auto py-8 px-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-[#D1D5DB]">
+              <div>
+                <h2 className="text-lg font-bold text-[#1A1A1A]">Add a Question</h2>
+                <p className="text-xs text-[#6B7280]">
+                  {addPickerDay} — Pick one question to add
+                </p>
+              </div>
+              <button onClick={() => setAddPickerDay(null)} className="text-[#6B7280] hover:text-[#1A1A1A]">
+                <XCircle size={20} />
+              </button>
+            </div>
+
+            <div className="max-h-[60vh] overflow-y-auto divide-y divide-gray-100">
+              {addPickerQuestions.length === 0 ? (
+                <p className="text-sm text-[#6B7280] text-center py-8">No available questions</p>
+              ) : addPickerQuestions.map((q) => (
+                <div
+                  key={q.id}
+                  onClick={() => addOneQuestion(addPickerDay, q.id)}
+                  className="flex items-center gap-3 px-6 py-3 cursor-pointer hover:bg-emerald-50 transition-colors"
+                >
+                  <Plus size={16} className="text-[#2ECC71] shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-[#1A1A1A] truncate">{q.question_en}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-[10px] text-[#6B7280]">{q.macro_category}</span>
+                      <span className={`text-[10px] font-medium capitalize ${
+                        q.difficulty === 'hard' ? 'text-red-600' : q.difficulty === 'medium' ? 'text-amber-600' : 'text-green-600'
+                      }`}>
+                        {q.difficulty}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex items-center justify-end px-6 py-4 border-t border-[#D1D5DB]">
+              <button
+                onClick={() => setAddPickerDay(null)}
+                className="px-4 py-2 text-sm text-[#6B7280] font-medium hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Cancel
               </button>
             </div>
           </div>

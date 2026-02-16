@@ -57,6 +57,7 @@ export default function QuestionsPage() {
   // FIX 8d: Bulk select
   const [selected, setSelected] = useState(new Set())
   const [bulkLoading, setBulkLoading] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false) // HOTFIX F: delete confirmation
 
   // FIX 8c: Stats counts
   const [stats, setStats] = useState({ approved: 0, pending: 0, rejected: 0, total: 0 })
@@ -106,18 +107,17 @@ export default function QuestionsPage() {
       const in7 = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
       const { data } = await supabase
         .from('daily_quizzes')
-        .select('question_ids, quiz_date')
+        .select('question_1_id, question_2_id, question_3_id, question_4_id, question_5_id, quiz_date')
         .gte('quiz_date', now.toISOString().split('T')[0])
         .lte('quiz_date', in7.toISOString().split('T')[0])
       if (data) {
         const ids = new Set()
         const dateMap = {}
         for (const dq of data) {
-          if (Array.isArray(dq.question_ids)) {
-            for (const qid of dq.question_ids) {
-              ids.add(qid)
-              dateMap[qid] = dq.quiz_date
-            }
+          const qIds = [dq.question_1_id, dq.question_2_id, dq.question_3_id, dq.question_4_id, dq.question_5_id].filter(Boolean)
+          for (const qid of qIds) {
+            ids.add(qid)
+            dateMap[qid] = dq.quiz_date
           }
         }
         setScheduledIds(ids)
@@ -238,7 +238,13 @@ export default function QuestionsPage() {
   async function bulkAction(action) {
     const ids = Array.from(selected)
     if (ids.length === 0) return
+    // HOTFIX F: Require confirmation for delete
+    if (action === 'delete' && !confirmDelete) {
+      setConfirmDelete(true)
+      return
+    }
     setBulkLoading(true)
+    setConfirmDelete(false)
     try {
       if (action === 'delete') {
         await supabase.from('questions').delete().in('id', ids)
@@ -399,6 +405,15 @@ export default function QuestionsPage() {
     const day = d.toLocaleDateString('en-US', { weekday: 'short' })
     const num = d.getDate()
     return `📅 ${day} ${num}`
+  }
+
+  // HOTFIX D: Get language flags for a question
+  function getLangFlags(q) {
+    let flags = '🇬🇧' // EN is always present
+    if (q.question_fr) flags += '🇫🇷'
+    if (q.question_it) flags += '🇮🇹'
+    if (q.question_es) flags += '🇪🇸'
+    return flags
   }
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE)
@@ -584,34 +599,55 @@ export default function QuestionsPage() {
         </div>
       </Card>
 
-      {/* FIX 8d: Bulk action bar */}
+      {/* FIX 8d + HOTFIX F: Bulk action bar with counts & delete confirmation */}
       {selected.size > 0 && (
         <div className="mb-4 flex items-center gap-3 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl">
           <span className="text-sm font-medium text-blue-700">
             {selected.size} selected
           </span>
           <div className="flex items-center gap-2 ml-auto">
-            <button
-              onClick={() => bulkAction('approved')}
-              disabled={bulkLoading}
-              className="flex items-center gap-1 px-3 py-1.5 bg-green-100 text-green-700 text-xs font-medium rounded-lg hover:bg-green-200 transition-colors"
-            >
-              <CheckCircle size={12} /> Approve All
-            </button>
-            <button
-              onClick={() => bulkAction('rejected')}
-              disabled={bulkLoading}
-              className="flex items-center gap-1 px-3 py-1.5 bg-red-100 text-red-700 text-xs font-medium rounded-lg hover:bg-red-200 transition-colors"
-            >
-              <XCircle size={12} /> Reject All
-            </button>
-            <button
-              onClick={() => bulkAction('delete')}
-              disabled={bulkLoading}
-              className="flex items-center gap-1 px-3 py-1.5 bg-red-100 text-red-700 text-xs font-medium rounded-lg hover:bg-red-200 transition-colors"
-            >
-              <Trash2 size={12} /> Delete All
-            </button>
+            {confirmDelete ? (
+              <>
+                <span className="text-xs text-red-700 font-medium">Delete {selected.size} question{selected.size > 1 ? 's' : ''}? This cannot be undone.</span>
+                <button
+                  onClick={() => bulkAction('delete')}
+                  disabled={bulkLoading}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-red-600 text-white text-xs font-semibold rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  <Trash2 size={12} /> Yes, Delete
+                </button>
+                <button
+                  onClick={() => setConfirmDelete(false)}
+                  className="px-3 py-1.5 text-xs font-medium text-[#6B7280] hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => bulkAction('approved')}
+                  disabled={bulkLoading}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-green-100 text-green-700 text-xs font-medium rounded-lg hover:bg-green-200 transition-colors"
+                >
+                  <CheckCircle size={12} /> Approve ({selected.size})
+                </button>
+                <button
+                  onClick={() => bulkAction('rejected')}
+                  disabled={bulkLoading}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-red-100 text-red-700 text-xs font-medium rounded-lg hover:bg-red-200 transition-colors"
+                >
+                  <XCircle size={12} /> Reject ({selected.size})
+                </button>
+                <button
+                  onClick={() => bulkAction('delete')}
+                  disabled={bulkLoading}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-red-100 text-red-700 text-xs font-medium rounded-lg hover:bg-red-200 transition-colors"
+                >
+                  <Trash2 size={12} /> Delete ({selected.size})
+                </button>
+              </>
+            )}
             {bulkLoading && <Loader2 size={14} className="animate-spin text-blue-500" />}
           </div>
         </div>
@@ -669,6 +705,8 @@ export default function QuestionsPage() {
                     <span className="flex items-center gap-1">Status <SortIcon col="status" /></span>
                   </th>
                   <th className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Source</th>
+                  {/* HOTFIX D: Language flags column */}
+                  <th className="text-left py-3 px-3 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Lang</th>
                   {/* FIX 5: Created date column */}
                   <th
                     className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wide text-[#6B7280] cursor-pointer select-none"
@@ -726,6 +764,17 @@ export default function QuestionsPage() {
                       </td>
                       <td className="py-3 px-4">
                         <span className="text-xs text-[#6B7280] capitalize">{q.source}</span>
+                      </td>
+                      {/* HOTFIX D: Language flags */}
+                      <td className="py-3 px-3">
+                        <span className="text-xs tracking-wide" title={[
+                          'EN',
+                          q.question_fr ? 'FR' : null,
+                          q.question_it ? 'IT' : null,
+                          q.question_es ? 'ES' : null,
+                        ].filter(Boolean).join(', ')}>
+                          {getLangFlags(q)}
+                        </span>
                       </td>
                       {/* FIX 5: Created date */}
                       <td className="py-3 px-4">

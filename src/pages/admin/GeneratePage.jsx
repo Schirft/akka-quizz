@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import { supabase } from '../../lib/supabase'
 import { CATEGORIES } from '../../config/constants'
-import { AI_SYSTEM_PROMPT, buildUserPrompt, estimateCost } from '../../config/aiPrompts'
+import { AI_SYSTEM_PROMPT, buildUserPrompt, buildTranslationPrompt, estimateCost } from '../../config/aiPrompts'
 import Card from '../../components/ui/Card'
 import QuestionModal from '../../components/admin/QuestionModal'
 import AISettingsPanel from '../../components/admin/AISettingsPanel'
@@ -19,20 +19,57 @@ import {
   Trash2,
   Settings,
   Pencil,
+  Play,
+  Check,
 } from 'lucide-react'
 
 const STORAGE_KEY = 'akka_last_generation'
+const STORAGE_EXPIRY = 2 * 60 * 60 * 1000 // 2 hours
 
-// FIX 2: Streaming UX — animated status messages
-const GENERATION_STEPS = [
+/* ── HOTFIX A: Robust JSON parsing ── */
+function parsePartialJSON(text) {
+  // Strip markdown fences
+  let clean = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
+
+  // Try direct parse first
+  try { return JSON.parse(clean) } catch {}
+
+  // Try extracting [...] from the text
+  const arrMatch = clean.match(/\[[\s\S]*\]/)
+  if (arrMatch) {
+    try { return JSON.parse(arrMatch[0]) } catch {}
+  }
+
+  // Fix truncated array: find last complete object }, then close the array
+  const lastBrace = clean.lastIndexOf('}')
+  if (lastBrace > 0) {
+    const slice = clean.slice(0, lastBrace + 1)
+    // Find the opening bracket
+    const openBracket = slice.indexOf('[')
+    if (openBracket >= 0) {
+      const fixed = slice.slice(openBracket) + ']'
+      try { return JSON.parse(fixed) } catch {}
+    }
+  }
+
+  throw new Error('Unable to parse JSON from response')
+}
+
+// Animated status messages
+const STEP1_MESSAGES = [
   { icon: '🧠', text: 'Analyzing startup ecosystem knowledge...' },
   { icon: '📚', text: 'Reviewing VC terminology database...' },
   { icon: '✍️', text: 'Crafting questions with real-world examples...' },
   { icon: '🔍', text: 'Validating answer plausibility...' },
-  { icon: '🌍', text: 'Generating multilingual translations...' },
   { icon: '⚡', text: 'Quality checking explanations...' },
   { icon: '🎯', text: 'Ensuring difficulty calibration...' },
-  { icon: '🔄', text: 'Finalizing question set...' },
+]
+const STEP2_MESSAGES = [
+  { icon: '🌍', text: 'Translating to target languages...' },
+  { icon: '🇫🇷', text: 'Generating French translations...' },
+  { icon: '🇮🇹', text: 'Generating Italian translations...' },
+  { icon: '🇪🇸', text: 'Generating Spanish translations...' },
+  { icon: '✨', text: 'Polishing native-quality translations...' },
 ]
 
 export default function GeneratePage() {
@@ -57,37 +94,51 @@ export default function GeneratePage() {
   const [error, setError] = useState(null)
   const abortRef = useRef(false)
 
-  // FIX 2: Streaming UX state
+  // Streaming UX state
+  const [stepLabel, setStepLabel] = useState('')
   const [stepIndex, setStepIndex] = useState(0)
   const [elapsed, setElapsed] = useState(0)
   const stepTimerRef = useRef(null)
   const elapsedTimerRef = useRef(null)
+  const stepsRef = useRef(STEP1_MESSAGES)
 
-  // FIX 3: Edit modal for generated questions
+  // Edit modal
   const [editQuestion, setEditQuestion] = useState(null)
 
-  // FIX 10: AI Settings
+  // AI Settings
   const [showSettings, setShowSettings] = useState(false)
-  const [customPrompt, setCustomPrompt] = useState(null) // null = not loaded yet
+  const [customPrompt, setCustomPrompt] = useState(null)
   const [promptLoaded, setPromptLoaded] = useState(false)
 
-  // FIX 1: Restore from localStorage on mount
+  // HOTFIX A: Resume state
+  const [resumeInfo, setResumeInfo] = useState(null) // { resumeFrom, totalRequested, batchId, mode, category, theme, difficulty, languages }
+
+  // ── Restore from localStorage on mount (with 2-hour expiry) ──
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY)
       if (saved) {
         const data = JSON.parse(saved)
+        // Check 2-hour expiry
+        if (data.savedAt && Date.now() - data.savedAt > STORAGE_EXPIRY) {
+          localStorage.removeItem(STORAGE_KEY)
+          return
+        }
         if (data.generated?.length > 0) {
           setGenerated(data.generated)
           setVisibleCount(data.generated.length)
           setSummary(data.summary || null)
           setBatchId(data.batchId || null)
+          // Restore resume info if incomplete
+          if (data.resumeInfo) {
+            setResumeInfo(data.resumeInfo)
+          }
         }
       }
     } catch {}
   }, [])
 
-  // FIX 1: Persist to localStorage whenever generated changes
+  // Persist to localStorage
   useEffect(() => {
     if (generated.length > 0) {
       try {
@@ -95,13 +146,14 @@ export default function GeneratePage() {
           generated,
           summary,
           batchId,
+          resumeInfo,
           savedAt: Date.now(),
         }))
       } catch {}
     }
-  }, [generated, summary, batchId])
+  }, [generated, summary, batchId, resumeInfo])
 
-  // FIX 10: Load custom prompt on mount
+  // Load custom prompt on mount
   useEffect(() => {
     async function loadPrompt() {
       try {
@@ -119,12 +171,7 @@ export default function GeneratePage() {
 
   // Export generating state for AdminLayout nav indicator
   useEffect(() => {
-    if (generating) {
-      window.__akka_generating = true
-    } else {
-      window.__akka_generating = false
-    }
-    // Dispatch a custom event so AdminLayout can react
+    window.__akka_generating = !!generating
     window.dispatchEvent(new Event('akka-gen-state'))
     return () => { window.__akka_generating = false }
   }, [generating])
@@ -142,19 +189,28 @@ export default function GeneratePage() {
     setSummary(null)
     setBatchId(null)
     setError(null)
+    setResumeInfo(null)
     localStorage.removeItem(STORAGE_KEY)
   }
 
-  // FIX 2: Start/stop animated status messages
-  function startStreamingUX() {
+  // ── Streaming UX helpers ──
+  function startStreamingUX(steps, label) {
+    stepsRef.current = steps
+    setStepLabel(label)
     setStepIndex(0)
     setElapsed(0)
     stepTimerRef.current = setInterval(() => {
-      setStepIndex((prev) => (prev + 1) % GENERATION_STEPS.length)
+      setStepIndex((prev) => (prev + 1) % stepsRef.current.length)
     }, 3000)
     elapsedTimerRef.current = setInterval(() => {
       setElapsed((prev) => prev + 1)
     }, 1000)
+  }
+
+  function switchStreamingUX(steps, label) {
+    stepsRef.current = steps
+    setStepLabel(label)
+    setStepIndex(0)
   }
 
   function stopStreamingUX() {
@@ -162,106 +218,121 @@ export default function GeneratePage() {
     clearInterval(elapsedTimerRef.current)
   }
 
-  async function handleGenerate() {
+  function formatElapsed(secs) {
+    const m = Math.floor(secs / 60)
+    const s = secs % 60
+    return m > 0 ? `${m}m ${s}s` : `${s}s`
+  }
+
+  /* ──────────────── HOTFIX A: 2-step generation ──────────────── */
+  async function handleGenerate(resumeFrom = 0) {
     if (!import.meta.env.VITE_ANTHROPIC_API_KEY) {
       setError('VITE_ANTHROPIC_API_KEY is not set in .env.local')
       return
     }
 
+    const isResume = resumeFrom > 0
+    const totalRequested = isResume ? (resumeInfo?.totalRequested || count) : count
+    const effectiveBatchId = isResume ? (resumeInfo?.batchId || null) : null
+
     setGenerating(true)
     setError(null)
-    setGenerated([])
-    setSummary(null)
+    if (!isResume) {
+      setGenerated([])
+      setSummary(null)
+      setResumeInfo(null)
+      setVisibleCount(0)
+    }
     abortRef.current = false
-    setVisibleCount(0)
-    startStreamingUX()
+
+    const needsTranslation = languages.some(l => l !== 'en')
+    const label = needsTranslation ? 'Step 1/2 — 🧠 Generating questions in English...' : '🧠 Generating questions in English...'
+    startStreamingUX(STEP1_MESSAGES, label)
 
     const startTime = Date.now()
-
-    // FIX 10: Use custom prompt if available
     const systemPrompt = customPrompt || AI_SYSTEM_PROMPT
 
-    // FIX 2: Performance — single call for ≤10, parallel 2 calls for >10
-    const MAX_PER_CALL = 10
-    const chunks = []
-    if (count <= MAX_PER_CALL) {
-      chunks.push(count)
-    } else {
-      const half = Math.ceil(count / 2)
-      chunks.push(half)
-      chunks.push(count - half)
+    // Split into batches of 5
+    const BATCH_SIZE = 5
+    const remaining = totalRequested - resumeFrom
+    const batches = []
+    for (let i = 0; i < remaining; i += BATCH_SIZE) {
+      batches.push(Math.min(BATCH_SIZE, remaining - i))
     }
 
-    setProgress({ done: 0, total: count })
+    setProgress({ done: resumeFrom, total: totalRequested })
 
-    // Create batch record
+    // Create batch record if new
     let batchRecord = null
-    try {
-      const { data, error: bErr } = await supabase
-        .from('ai_generation_batches')
-        .insert({
-          requested_count: count,
-          mode,
-          category: mode === 'category' ? category : null,
-          theme: mode === 'theme' ? theme : null,
-          difficulty: difficulty !== 'mix' ? difficulty : null,
-          languages,
-          generated_count: 0,
-          status: 'in_progress',
-          created_by: user?.id || null,
-        })
-        .select()
-        .single()
+    if (!isResume) {
+      try {
+        const { data, error: bErr } = await supabase
+          .from('ai_generation_batches')
+          .insert({
+            requested_count: totalRequested,
+            mode,
+            category: mode === 'category' ? category : null,
+            theme: mode === 'theme' ? theme : null,
+            difficulty: difficulty !== 'mix' ? difficulty : null,
+            languages,
+            generated_count: 0,
+            status: 'in_progress',
+            created_by: user?.id || null,
+          })
+          .select()
+          .single()
 
-      if (bErr) throw bErr
-      batchRecord = data
-      setBatchId(data.id)
-    } catch (err) {
-      setError('Failed to create batch: ' + err.message)
-      setGenerating(false)
-      stopStreamingUX()
-      return
+        if (bErr) throw bErr
+        batchRecord = data
+        setBatchId(data.id)
+      } catch (err) {
+        setError('Failed to create batch: ' + err.message)
+        setGenerating(false)
+        stopStreamingUX()
+        return
+      }
+    } else {
+      batchRecord = { id: effectiveBatchId }
+      setBatchId(effectiveBatchId)
     }
 
-    let allGenerated = []
+    let allGenerated = isResume ? [...generated] : []
     let totalInputTokens = 0
     let totalOutputTokens = 0
 
-    // FIX 2: Build prompts for each chunk
-    const chunkPromises = chunks.map((chunkCount) => {
-      const userPrompt = buildUserPrompt({
-        count: chunkCount,
-        mode,
-        category,
-        theme,
-        difficulty,
-        languages,
-      })
-      // Reduce max_tokens for small counts
-      const maxTokens = chunkCount <= 5 ? 4096 : 8000
-      return fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': import.meta.env.VITE_ANTHROPIC_API_KEY,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true',
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-5-20250929',
-          max_tokens: maxTokens,
-          system: systemPrompt,
-          messages: [{ role: 'user', content: userPrompt }],
-        }),
-      })
-    })
+    // ── Process each batch sequentially ──
+    for (let bIdx = 0; bIdx < batches.length; bIdx++) {
+      if (abortRef.current) break
 
-    try {
-      // FIX 2: For ≤10 single call, for >10 parallel 2 calls
-      const responses = await Promise.all(chunkPromises)
+      const batchCount = batches[bIdx]
 
-      for (const response of responses) {
-        if (abortRef.current) break
+      try {
+        // ── STEP 1: Generate EN-only questions ──
+        const userPrompt = buildUserPrompt({
+          count: batchCount,
+          mode,
+          category,
+          theme,
+          difficulty,
+        })
+
+        const maxTokensStep1 = batchCount <= 5 ? 4096 : 6000
+
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': import.meta.env.VITE_ANTHROPIC_API_KEY,
+            'anthropic-version': '2023-06-01',
+            'anthropic-dangerous-direct-browser-access': 'true',
+          },
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-5-20250929',
+            max_tokens: maxTokensStep1,
+            system: systemPrompt,
+            messages: [{ role: 'user', content: userPrompt }],
+          }),
+        })
 
         if (!response.ok) {
           const errData = await response.json().catch(() => ({}))
@@ -274,18 +345,74 @@ export default function GeneratePage() {
         totalInputTokens += data.usage?.input_tokens || 0
         totalOutputTokens += data.usage?.output_tokens || 0
 
-        // Parse JSON array from response
-        const jsonMatch = text.match(/\[[\s\S]*\]/)
-        if (!jsonMatch) throw new Error('No JSON array found in response')
+        // Robust JSON parsing
+        let enQuestions = parsePartialJSON(text)
+        if (!Array.isArray(enQuestions)) throw new Error('Parsed result is not an array')
 
-        const parsed = JSON.parse(jsonMatch[0])
-        if (!Array.isArray(parsed)) throw new Error('Parsed result is not an array')
+        // ── STEP 2: Translate if needed ──
+        if (needsTranslation && !abortRef.current) {
+          const langLabels = { fr: '🇫🇷 French', it: '🇮🇹 Italian', es: '🇪🇸 Spanish' }
+          const targetLangs = languages.filter(l => l !== 'en')
+          const langList = targetLangs.map(l => langLabels[l] || l).join(', ')
+          switchStreamingUX(STEP2_MESSAGES, `Step 2/2 — 🌍 Translating to ${langList}...`)
 
-        // FIX 2: Parallel Supabase inserts — build all payloads, then batch insert
+          try {
+            const translationPrompt = buildTranslationPrompt(enQuestions, languages)
+
+            const transResponse = await fetch('https://api.anthropic.com/v1/messages', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': import.meta.env.VITE_ANTHROPIC_API_KEY,
+                'anthropic-version': '2023-06-01',
+                'anthropic-dangerous-direct-browser-access': 'true',
+              },
+              body: JSON.stringify({
+                model: 'claude-sonnet-4-5-20250929',
+                max_tokens: 6000,
+                messages: [{ role: 'user', content: translationPrompt }],
+              }),
+            })
+
+            if (transResponse.ok) {
+              const transData = await transResponse.json()
+              const transText = transData.content?.[0]?.text || ''
+
+              totalInputTokens += transData.usage?.input_tokens || 0
+              totalOutputTokens += transData.usage?.output_tokens || 0
+
+              const translations = parsePartialJSON(transText)
+              if (Array.isArray(translations)) {
+                // Merge translations into EN questions
+                for (const t of translations) {
+                  const idx = t.index
+                  if (idx >= 0 && idx < enQuestions.length) {
+                    for (const lang of targetLangs) {
+                      if (t[`question_${lang}`]) enQuestions[idx][`question_${lang}`] = t[`question_${lang}`]
+                      if (t[`answers_${lang}`]) enQuestions[idx][`answers_${lang}`] = t[`answers_${lang}`]
+                      if (t[`explanation_${lang}`]) enQuestions[idx][`explanation_${lang}`] = t[`explanation_${lang}`]
+                    }
+                  }
+                }
+              }
+            } else {
+              console.warn('Translation API failed, saving EN-only')
+            }
+          } catch (transErr) {
+            console.warn('Translation failed, saving EN-only:', transErr.message)
+          }
+
+          // Switch back label for next batch if any
+          if (bIdx < batches.length - 1) {
+            switchStreamingUX(STEP1_MESSAGES, 'Step 1/2 — 🧠 Generating questions in English...')
+          }
+        }
+
+        // ── Insert into Supabase immediately ──
         const insertPayloads = []
         const prefixes = []
 
-        for (const q of parsed) {
+        for (const q of enQuestions) {
           const prefix = (q.question_en || '').slice(0, 50)
           prefixes.push(prefix)
           insertPayloads.push({
@@ -312,10 +439,9 @@ export default function GeneratePage() {
           })
         }
 
-        // Duplicate check — batch query all prefixes at once
+        // Duplicate check
         const dupeSet = new Set()
         if (prefixes.filter(Boolean).length > 0) {
-          // Check each prefix (Supabase doesn't support OR ilike natively in batch)
           const dupeChecks = await Promise.all(
             prefixes.filter(Boolean).map((p) =>
               supabase.from('questions').select('id').ilike('question_en', `${p}%`).limit(1)
@@ -326,7 +452,6 @@ export default function GeneratePage() {
           })
         }
 
-        // Filter out duplicates and insert remaining
         const toInsert = insertPayloads.filter((_, idx) => !dupeSet.has(idx))
 
         if (toInsert.length > 0) {
@@ -338,8 +463,8 @@ export default function GeneratePage() {
           if (!iErr && inserted) {
             allGenerated = [...allGenerated, ...inserted]
             setGenerated((prev) => [...prev, ...inserted])
-            setProgress({ done: allGenerated.length, total: count })
-            // FIX 2: Staggered 300ms slide-in for results
+            setProgress({ done: allGenerated.length, total: totalRequested })
+            // Staggered slide-in
             inserted.forEach((_, qi) => {
               setTimeout(() => {
                 setVisibleCount((v) => v + 1)
@@ -348,12 +473,21 @@ export default function GeneratePage() {
           }
         }
 
-        // Update progress for skipped dupes
-        setProgress({ done: allGenerated.length + dupeSet.size, total: count })
+        // Update progress
+        setProgress({ done: allGenerated.length, total: totalRequested })
+
+      } catch (err) {
+        console.error('Generation batch error:', err)
+        setError(err.message)
+        // Save resume info so user can continue
+        setResumeInfo({
+          resumeFrom: allGenerated.length,
+          totalRequested,
+          batchId: batchRecord.id,
+          mode, category, theme, difficulty, languages,
+        })
+        break
       }
-    } catch (err) {
-      console.error('Generation error:', err)
-      setError(err.message)
     }
 
     stopStreamingUX()
@@ -362,21 +496,35 @@ export default function GeneratePage() {
     const duration = Math.round((Date.now() - startTime) / 1000)
     const totalCost = estimateCost(totalInputTokens, totalOutputTokens)
 
-    try {
-      await supabase
-        .from('ai_generation_batches')
-        .update({
-          generated_count: allGenerated.length,
-          total_input_tokens: totalInputTokens,
-          total_output_tokens: totalOutputTokens,
-          total_cost_usd: totalCost,
-          duration_seconds: duration,
-          status: abortRef.current ? 'failed' : 'completed',
-          completed_at: new Date().toISOString(),
-        })
-        .eq('id', batchRecord.id)
-    } catch (err) {
-      console.error('Batch update error:', err)
+    if (batchRecord?.id) {
+      try {
+        await supabase
+          .from('ai_generation_batches')
+          .update({
+            generated_count: allGenerated.length,
+            total_input_tokens: totalInputTokens,
+            total_output_tokens: totalOutputTokens,
+            total_cost_usd: totalCost,
+            duration_seconds: duration,
+            status: abortRef.current ? 'failed' : (allGenerated.length < totalRequested ? 'partial' : 'completed'),
+            completed_at: new Date().toISOString(),
+          })
+          .eq('id', batchRecord.id)
+      } catch (err) {
+        console.error('Batch update error:', err)
+      }
+    }
+
+    // If incomplete, set resume info
+    if (allGenerated.length < totalRequested && !abortRef.current) {
+      setResumeInfo({
+        resumeFrom: allGenerated.length,
+        totalRequested,
+        batchId: batchRecord.id,
+        mode, category, theme, difficulty, languages,
+      })
+    } else {
+      setResumeInfo(null)
     }
 
     setSummary({
@@ -389,6 +537,17 @@ export default function GeneratePage() {
 
     setVisibleCount(allGenerated.length)
     setGenerating(false)
+  }
+
+  function handleResume() {
+    if (!resumeInfo) return
+    // Restore form settings from resume info
+    handleGenerate(resumeInfo.resumeFrom)
+  }
+
+  function keepPartial() {
+    setResumeInfo(null)
+    setError(null)
   }
 
   async function approveAll() {
@@ -431,9 +590,7 @@ export default function GeneratePage() {
     }
   }
 
-  // FIX 3: After editing a generated question, update in the list
   function handleQuestionSaved() {
-    // Reload the question from supabase
     if (editQuestion?.id) {
       supabase
         .from('questions')
@@ -451,14 +608,8 @@ export default function GeneratePage() {
   }
 
   const pendingCount = generated.filter((q) => q.status === 'pending_review').length
-  const currentStep = GENERATION_STEPS[stepIndex]
-
-  // FIX 2: Format elapsed time
-  function formatElapsed(secs) {
-    const m = Math.floor(secs / 60)
-    const s = secs % 60
-    return m > 0 ? `${m}m ${s}s` : `${s}s`
-  }
+  const currentSteps = stepsRef.current
+  const currentStep = currentSteps[stepIndex % currentSteps.length] || currentSteps[0]
 
   return (
     <div>
@@ -471,7 +622,6 @@ export default function GeneratePage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {/* FIX 10: Custom prompt badge */}
           {promptLoaded && (
             <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
               customPrompt
@@ -616,7 +766,7 @@ export default function GeneratePage() {
 
           {/* Generate button */}
           <button
-            onClick={handleGenerate}
+            onClick={() => handleGenerate(0)}
             disabled={generating || (mode === 'theme' && !theme.trim())}
             className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-[#1B3D2F] text-white font-semibold rounded-xl hover:opacity-90 disabled:opacity-50 transition-opacity"
           >
@@ -642,7 +792,7 @@ export default function GeneratePage() {
             </button>
           )}
 
-          {/* FIX 1: Clear results button */}
+          {/* Clear results */}
           {!generating && generated.length > 0 && (
             <button
               onClick={clearResults}
@@ -656,13 +806,13 @@ export default function GeneratePage() {
 
         {/* Right: Results */}
         <div className="lg:col-span-2 space-y-4">
-          {/* FIX 2: Streaming progress with animated messages */}
+          {/* Streaming progress with animated messages */}
           {generating && (
             <Card className="overflow-hidden">
-              {/* Animated status message */}
-              <div className="flex items-center gap-3 mb-4">
+              <div className="flex items-center gap-3 mb-3">
                 <div className="text-2xl animate-bounce">{currentStep.icon}</div>
                 <div className="flex-1">
+                  <p className="text-xs font-semibold text-[#1B3D2F] mb-0.5">{stepLabel}</p>
                   <p className="text-sm font-medium text-[#1A1A1A] transition-all">
                     {currentStep.text}
                   </p>
@@ -672,7 +822,6 @@ export default function GeneratePage() {
                 </div>
                 <Loader2 size={16} className="text-[#2ECC71] animate-spin" />
               </div>
-              {/* Smooth progress bar */}
               <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
                 <div
                   className="bg-gradient-to-r from-[#2ECC71] to-[#27AE60] h-2.5 rounded-full transition-all duration-700 ease-out"
@@ -682,10 +831,28 @@ export default function GeneratePage() {
             </Card>
           )}
 
-          {/* Error */}
+          {/* Error + resume/keep buttons */}
           {error && (
             <Card className="border-red-200 bg-red-50">
-              <p className="text-sm text-red-700 whitespace-pre-wrap">{error}</p>
+              <p className="text-sm text-red-700 whitespace-pre-wrap mb-3">{error}</p>
+              {resumeInfo && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleResume}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-[#1B3D2F] text-white text-sm font-semibold rounded-lg hover:opacity-90 transition-opacity"
+                  >
+                    <Play size={14} />
+                    ▶️ Resume ({resumeInfo.resumeFrom}/{resumeInfo.totalRequested})
+                  </button>
+                  <button
+                    onClick={keepPartial}
+                    className="flex items-center gap-1.5 px-4 py-2 border border-[#D1D5DB] text-[#1A1A1A] text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    <Check size={14} />
+                    ✓ Keep {resumeInfo.resumeFrom} questions
+                  </button>
+                </div>
+              )}
             </Card>
           )}
 
@@ -770,6 +937,13 @@ export default function GeneratePage() {
                         }`}>
                           {q.difficulty}
                         </span>
+                        {/* Language flags */}
+                        <span className="text-xs">
+                          🇬🇧
+                          {q.question_fr && ' 🇫🇷'}
+                          {q.question_it && ' 🇮🇹'}
+                          {q.question_es && ' 🇪🇸'}
+                        </span>
                         <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
                           q.status === 'approved'
                             ? 'bg-green-100 text-green-700'
@@ -782,7 +956,6 @@ export default function GeneratePage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
-                      {/* FIX 3: Edit icon */}
                       <button
                         onClick={(e) => { e.stopPropagation(); setEditQuestion(q) }}
                         className="p-1.5 rounded-lg text-[#6B7280] hover:bg-gray-100 transition-colors"
@@ -828,7 +1001,7 @@ export default function GeneratePage() {
         </div>
       </div>
 
-      {/* FIX 3: QuestionModal for editing generated questions */}
+      {/* QuestionModal for editing */}
       {editQuestion && (
         <QuestionModal
           question={editQuestion}
@@ -837,7 +1010,7 @@ export default function GeneratePage() {
         />
       )}
 
-      {/* FIX 10: AI Settings Panel */}
+      {/* AI Settings Panel */}
       {showSettings && (
         <AISettingsPanel
           onClose={() => setShowSettings(false)}

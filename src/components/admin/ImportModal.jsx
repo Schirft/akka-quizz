@@ -29,7 +29,7 @@ const FIELD_ALIASES = {
   difficulty: ['difficulty', 'diff', 'level', 'difficulty_level'],
 }
 
-/* Also detect individual answer columns: answer_1/A/option_a etc. */
+/* Also detect individual answer columns */
 const ANSWER_COL_PATTERNS = [
   /^answer[\s_]?([a-d1-4])$/i,
   /^option[\s_]?([a-d1-4])$/i,
@@ -48,17 +48,18 @@ const DIFF_COLORS = {
 }
 
 /**
- * ImportModal — FIX 9: complete refonte with smart fuzzy auto-mapping,
- * beautiful preview showing answers with correct in green ✓,
- * explanation, category/difficulty badges, checkboxes, duplicate badges.
+ * ImportModal — HOTFIX B+C refonte:
+ * - Remove mapping step → auto-map + skip straight to editable preview
+ * - Each question card is editable (textarea, inputs, radio, select)
+ * - HOTFIX C: Smart correct_answer_index detection from text
  */
 export default function ImportModal({ onClose, onImported }) {
-  const [step, setStep] = useState('upload') // upload | map | preview | importing | done
+  const [step, setStep] = useState('upload') // upload | preview | importing | done
   const [fileName, setFileName] = useState('')
   const [rawData, setRawData] = useState([])
   const [headers, setHeaders] = useState([])
   const [mapping, setMapping] = useState({})
-  const [answerCols, setAnswerCols] = useState([]) // individual answer columns [colA, colB, colC, colD]
+  const [answerCols, setAnswerCols] = useState([])
   const [preview, setPreview] = useState([])
   const [selected, setSelected] = useState(new Set())
   const [duplicates, setDuplicates] = useState({})
@@ -78,7 +79,6 @@ export default function ImportModal({ onClose, onImported }) {
       for (const alias of aliases) {
         const cleanAlias = alias.toLowerCase().replace(/[\s_\-'"]/g, '')
         if (clean === cleanAlias) return { field, confidence: 1.0 }
-        // Partial match
         if (clean.includes(cleanAlias) || cleanAlias.includes(clean)) {
           return { field, confidence: 0.7 }
         }
@@ -87,9 +87,8 @@ export default function ImportModal({ onClose, onImported }) {
     return null
   }
 
-  // Check if individual answer columns exist (answer_1, answer_2, answer_3, answer_4)
   function detectAnswerColumns(hdrs) {
-    const found = [null, null, null, null] // slots for answers 1-4
+    const found = [null, null, null, null]
     for (const h of hdrs) {
       for (const pattern of ANSWER_COL_PATTERNS) {
         const m = h.match(pattern)
@@ -102,6 +101,27 @@ export default function ImportModal({ onClose, onImported }) {
       }
     }
     return found.every(Boolean) ? found : []
+  }
+
+  // ── HOTFIX C: Smart correct_answer_index detection ──
+  function resolveCorrectAnswerIndex(rawValue, answersArray) {
+    if (rawValue === null || rawValue === undefined) return 1
+
+    // If it's already a valid number (1-4)
+    const num = parseInt(rawValue, 10)
+    if (!isNaN(num) && num >= 1 && num <= 4) return num
+
+    // If it's text, try to match against answers
+    if (typeof rawValue === 'string' && Array.isArray(answersArray)) {
+      const cleanVal = rawValue.trim().toLowerCase()
+      for (let i = 0; i < answersArray.length; i++) {
+        if (String(answersArray[i]).trim().toLowerCase() === cleanVal) {
+          return i + 1 // 1-based
+        }
+      }
+    }
+
+    return 1 // default fallback
   }
 
   // ── Parse file ──
@@ -155,7 +175,6 @@ export default function ImportModal({ onClose, onImported }) {
     // Smart auto-mapping
     const autoMap = {}
     const usedHeaders = new Set()
-    // First pass: exact & high-confidence matches
     for (const h of hdrs) {
       const match = fuzzyMatch(h)
       if (match && match.confidence >= 0.7 && !usedHeaders.has(h)) {
@@ -166,36 +185,17 @@ export default function ImportModal({ onClose, onImported }) {
       }
     }
 
-    // Detect individual answer columns
     const aCols = detectAnswerColumns(hdrs)
     setAnswerCols(aCols)
 
-    // If we found answer columns but no answers_en mapping, we'll merge them later
     if (aCols.length === 4 && !autoMap.answers_en) {
-      autoMap._answerCols = true // marker
+      autoMap._answerCols = true
     }
 
     setMapping(autoMap)
 
-    // If all required fields are mapped (or answer cols detected), skip to preview
-    const requiredMapped = REQUIRED_FIELDS.every(f =>
-      f === 'answers_en' ? (autoMap.answers_en || aCols.length === 4) : autoMap[f]
-    )
-    if (requiredMapped) {
-      // Auto-skip mapping step → go straight to preview building
-      buildPreview(autoMap, aCols, data, hdrs)
-    } else {
-      setStep('map')
-    }
-  }
-
-  function updateMapping(targetField, sourceColumn) {
-    setMapping((prev) => {
-      const next = { ...prev }
-      if (sourceColumn === '') delete next[targetField]
-      else next[targetField] = sourceColumn
-      return next
-    })
+    // HOTFIX B: Always skip mapping step → go straight to preview
+    buildPreview(autoMap, aCols, data, hdrs)
   }
 
   // ── Build preview & check duplicates ──
@@ -203,17 +203,7 @@ export default function ImportModal({ onClose, onImported }) {
     setError(null)
     setCheckingDupes(true)
 
-    // Validate required
     const useAnswerCols = aCols.length === 4 && !map.answers_en
-    const missing = REQUIRED_FIELDS.filter(f => {
-      if (f === 'answers_en') return !map[f] && !useAnswerCols
-      return !map[f]
-    })
-    if (missing.length > 0) {
-      setError(`Required fields not mapped: ${missing.join(', ')}`)
-      setCheckingDupes(false)
-      return
-    }
 
     // Build rows
     const rows = data.map((row) => {
@@ -228,16 +218,18 @@ export default function ImportModal({ onClose, onImported }) {
           }
           if (!Array.isArray(val) || val.length < 4) val = null
         }
-        if (target === 'correct_answer_index') {
-          val = parseInt(val, 10)
-          if (isNaN(val) || val < 1 || val > 4) val = 1
-        }
         q[target] = val
       }
       // Merge individual answer columns
       if (useAnswerCols) {
         q.answers_en = aCols.map(col => String(row[col] || '').trim())
         if (q.answers_en.some(a => !a)) q.answers_en = null
+      }
+      // HOTFIX C: Smart correct_answer_index detection
+      if (q.correct_answer_index !== undefined) {
+        q.correct_answer_index = resolveCorrectAnswerIndex(q.correct_answer_index, q.answers_en)
+      } else {
+        q.correct_answer_index = 1
       }
       // Defaults
       if (!q.difficulty) q.difficulty = 'medium'
@@ -248,7 +240,6 @@ export default function ImportModal({ onClose, onImported }) {
     }).filter(q => q.question_en && q.answers_en)
 
     setPreview(rows)
-    // Select all by default
     setSelected(new Set(rows.map((_, i) => i)))
 
     // Parallel duplicate detection
@@ -277,9 +268,24 @@ export default function ImportModal({ onClose, onImported }) {
     setStep('preview')
   }
 
+  // ── HOTFIX B: Edit a question field in the preview ──
+  function updatePreviewQuestion(idx, field, value) {
+    setPreview(prev => prev.map((q, i) => i === idx ? { ...q, [field]: value } : q))
+  }
+
+  function updatePreviewAnswer(idx, ansIdx, value) {
+    setPreview(prev => prev.map((q, i) => {
+      if (i !== idx) return q
+      const newAnswers = [...(q.answers_en || [])]
+      newAnswers[ansIdx] = value
+      return { ...q, answers_en: newAnswers }
+    }))
+  }
+
   // ── Import selected rows ──
   async function handleImport() {
     setImporting(true)
+    setStep('importing')
     setError(null)
     setImportProgress(0)
     let imported = 0
@@ -289,7 +295,6 @@ export default function ImportModal({ onClose, onImported }) {
     const toImport = [...selected].sort((a, b) => a - b)
     const total = toImport.length
 
-    // Batch insert in chunks of 50
     const batchSize = 50
     for (let b = 0; b < toImport.length; b += batchSize) {
       const batch = toImport.slice(b, b + batchSize)
@@ -355,7 +360,6 @@ export default function ImportModal({ onClose, onImported }) {
     else setSelected(new Set(preview.map((_, i) => i)))
   }
 
-  // ── Computed stats ──
   const stats = useMemo(() => {
     const dupeCount = Object.keys(duplicates).length
     return {
@@ -366,11 +370,6 @@ export default function ImportModal({ onClose, onImported }) {
     }
   }, [preview, selected, duplicates])
 
-  // ── Mapping quality score ──
-  const mappedRequired = REQUIRED_FIELDS.filter(f =>
-    f === 'answers_en' ? (mapping[f] || answerCols.length === 4) : mapping[f]
-  ).length
-
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 overflow-y-auto py-8 px-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl">
@@ -379,22 +378,21 @@ export default function ImportModal({ onClose, onImported }) {
           <div className="flex items-center gap-3">
             <h2 className="text-lg font-bold text-[#1A1A1A]">
               {step === 'upload' && '📤 Import Questions'}
-              {step === 'map' && '🔗 Map Columns'}
-              {step === 'preview' && '👀 Preview & Import'}
+              {step === 'preview' && '👀 Preview & Edit'}
               {step === 'importing' && '⏳ Importing...'}
               {step === 'done' && '✅ Import Complete'}
             </h2>
             {/* Step indicator */}
             {step !== 'done' && step !== 'importing' && (
               <div className="flex items-center gap-1 ml-2">
-                {['upload', 'map', 'preview'].map((s, i) => (
+                {['upload', 'preview'].map((s, i) => (
                   <div key={s} className="flex items-center gap-1">
                     <div className={`w-2 h-2 rounded-full ${
                       s === step ? 'bg-[#1B3D2F]' :
-                      ['upload', 'map', 'preview'].indexOf(s) < ['upload', 'map', 'preview'].indexOf(step)
+                      ['upload', 'preview'].indexOf(s) < ['upload', 'preview'].indexOf(step)
                         ? 'bg-[#2ECC71]' : 'bg-gray-300'
                     }`} />
-                    {i < 2 && <div className="w-4 h-px bg-gray-300" />}
+                    {i < 1 && <div className="w-4 h-px bg-gray-300" />}
                   </div>
                 ))}
               </div>
@@ -413,8 +411,16 @@ export default function ImportModal({ onClose, onImported }) {
             </div>
           )}
 
+          {/* Loading indicator during dupe check */}
+          {checkingDupes && (
+            <div className="flex items-center justify-center py-12 gap-3">
+              <Loader2 size={24} className="animate-spin text-[#1B3D2F]" />
+              <p className="text-sm text-[#6B7280]">Parsing file and checking duplicates...</p>
+            </div>
+          )}
+
           {/* ── STEP 1: Upload ── */}
-          {step === 'upload' && (
+          {step === 'upload' && !checkingDupes && (
             <div
               onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
               onDragLeave={() => setDragOver(false)}
@@ -447,92 +453,8 @@ export default function ImportModal({ onClose, onImported }) {
             </div>
           )}
 
-          {/* ── STEP 2: Column Mapping ── */}
-          {step === 'map' && (
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <p className="text-sm text-[#6B7280]">
-                  📄 <span className="font-medium text-[#1A1A1A]">{fileName}</span> — {rawData.length} rows found
-                </p>
-                <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
-                  mappedRequired === REQUIRED_FIELDS.length
-                    ? 'bg-green-100 text-green-700'
-                    : 'bg-amber-100 text-amber-700'
-                }`}>
-                  {mappedRequired}/{REQUIRED_FIELDS.length} required mapped
-                </span>
-              </div>
-
-              {answerCols.length === 4 && (
-                <div className="mb-4 p-3 bg-blue-50 text-blue-700 rounded-lg text-sm">
-                  ✨ Detected individual answer columns: {answerCols.join(', ')} — these will be merged automatically
-                </div>
-              )}
-
-              <div className="space-y-1.5 max-h-[50vh] overflow-y-auto">
-                {ALL_FIELDS.map((field) => {
-                  const isRequired = REQUIRED_FIELDS.includes(field)
-                  const isMapped = !!mapping[field]
-                  const isAnswerColsDetected = field === 'answers_en' && answerCols.length === 4
-                  return (
-                    <div
-                      key={field}
-                      className={`flex items-center gap-3 px-3 py-2 rounded-lg ${
-                        isMapped || isAnswerColsDetected ? 'bg-green-50' : isRequired ? 'bg-red-50' : ''
-                      }`}
-                    >
-                      <div className="w-44 shrink-0">
-                        <span className={`text-sm ${isRequired ? 'font-semibold text-[#1A1A1A]' : 'text-[#6B7280]'}`}>
-                          {field}
-                        </span>
-                        {isRequired && <span className="text-red-500 ml-1 text-xs">*</span>}
-                      </div>
-                      <ArrowRight size={14} className="text-gray-400 shrink-0" />
-                      {isAnswerColsDetected && !mapping[field] ? (
-                        <div className="flex-1 text-sm text-blue-600 font-medium">
-                          ← auto-merged from {answerCols.join(' + ')}
-                        </div>
-                      ) : (
-                        <select
-                          value={mapping[field] || ''}
-                          onChange={(e) => updateMapping(field, e.target.value)}
-                          className="flex-1 border border-[#D1D5DB] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2ECC71] bg-white"
-                        >
-                          <option value="">— Skip —</option>
-                          {headers.map((h) => (
-                            <option key={h} value={h}>{h}</option>
-                          ))}
-                        </select>
-                      )}
-                      {(isMapped || isAnswerColsDetected) && (
-                        <CheckCircle size={16} className="text-[#2ECC71] shrink-0" />
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-
-              <div className="flex justify-between mt-5">
-                <button
-                  onClick={() => { setStep('upload'); setRawData([]); setHeaders([]) }}
-                  className="px-4 py-2.5 text-sm text-[#6B7280] font-medium hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  ← Back
-                </button>
-                <button
-                  onClick={() => buildPreview()}
-                  disabled={checkingDupes}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-[#1B3D2F] text-white text-sm font-semibold rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity"
-                >
-                  {checkingDupes ? <Loader2 size={14} className="animate-spin" /> : <ArrowRight size={14} />}
-                  {checkingDupes ? 'Checking duplicates...' : 'Preview'}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* ── STEP 3: Preview ── */}
-          {step === 'preview' && (
+          {/* ── STEP 2: Editable Preview (HOTFIX B) ── */}
+          {step === 'preview' && !checkingDupes && (
             <div>
               {/* Stats bar */}
               <div className="flex flex-wrap items-center gap-3 mb-4">
@@ -564,8 +486,8 @@ export default function ImportModal({ onClose, onImported }) {
                 </button>
               </div>
 
-              {/* Question cards */}
-              <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-1">
+              {/* Question cards — editable */}
+              <div className="space-y-2 max-h-[55vh] overflow-y-auto pr-1">
                 {preview.map((q, idx) => {
                   const isDupe = !!duplicates[idx]
                   const isSelected = selected.has(idx)
@@ -582,7 +504,6 @@ export default function ImportModal({ onClose, onImported }) {
                     >
                       {/* Row header */}
                       <div className="flex items-start gap-3 px-4 py-3">
-                        {/* Checkbox */}
                         <button
                           onClick={() => toggleSelect(idx)}
                           className="mt-0.5 shrink-0"
@@ -594,7 +515,6 @@ export default function ImportModal({ onClose, onImported }) {
                           </div>
                         </button>
 
-                        {/* Question text */}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start gap-2">
                             <span className="text-xs font-mono text-[#6B7280] mt-0.5 shrink-0">#{idx + 1}</span>
@@ -602,7 +522,6 @@ export default function ImportModal({ onClose, onImported }) {
                               {q.question_en}
                             </p>
                           </div>
-                          {/* Badges */}
                           <div className="flex items-center gap-1.5 mt-1.5 ml-6">
                             <span className="px-2 py-0.5 rounded-full bg-gray-100 text-[#6B7280] text-[10px] font-medium truncate max-w-[140px]">
                               {q.macro_category}
@@ -618,7 +537,6 @@ export default function ImportModal({ onClose, onImported }) {
                           </div>
                         </div>
 
-                        {/* Expand toggle */}
                         <button
                           onClick={() => setExpandedRow(isExpanded ? null : idx)}
                           className="text-[#6B7280] hover:text-[#1A1A1A] p-1 shrink-0"
@@ -627,45 +545,96 @@ export default function ImportModal({ onClose, onImported }) {
                         </button>
                       </div>
 
-                      {/* Expanded detail */}
+                      {/* HOTFIX B: Expanded editable form */}
                       {isExpanded && (
-                        <div className="px-4 pb-4 pt-1 ml-7 border-t border-gray-100 mt-1">
-                          {/* Answers */}
-                          <p className="text-[10px] uppercase tracking-wide font-semibold text-[#6B7280] mb-1.5">Answers</p>
-                          <div className="grid grid-cols-2 gap-1.5 mb-3">
-                            {(q.answers_en || []).map((ans, ai) => (
-                              <div
-                                key={ai}
-                                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${
-                                  ai === correctIdx
-                                    ? 'bg-green-50 border border-green-200 text-green-800 font-medium'
-                                    : 'bg-gray-50 border border-gray-100 text-[#1A1A1A]'
-                                }`}
-                              >
-                                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
-                                  ai === correctIdx ? 'bg-green-200 text-green-800' : 'bg-gray-200 text-gray-600'
-                                }`}>
-                                  {'ABCD'[ai]}
-                                </span>
-                                <span className="truncate">{ans}</span>
-                                {ai === correctIdx && <Check size={12} className="text-green-600 shrink-0 ml-auto" />}
-                              </div>
-                            ))}
+                        <div className="px-4 pb-4 pt-1 border-t border-gray-100 mt-1 space-y-3">
+                          {/* Question text */}
+                          <div>
+                            <label className="text-[10px] uppercase tracking-wide font-semibold text-[#6B7280] block mb-1">Question</label>
+                            <textarea
+                              value={q.question_en || ''}
+                              onChange={(e) => updatePreviewQuestion(idx, 'question_en', e.target.value)}
+                              rows={2}
+                              className="w-full border border-[#D1D5DB] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2ECC71] resize-none"
+                            />
+                          </div>
+
+                          {/* Answers with radio buttons for correct */}
+                          <div>
+                            <label className="text-[10px] uppercase tracking-wide font-semibold text-[#6B7280] block mb-1.5">Answers</label>
+                            <div className="space-y-2">
+                              {(q.answers_en || ['', '', '', '']).map((ans, ai) => (
+                                <div key={ai} className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => updatePreviewQuestion(idx, 'correct_answer_index', ai + 1)}
+                                    className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-[10px] font-bold shrink-0 transition-colors ${
+                                      ai === correctIdx
+                                        ? 'bg-[#2ECC71] border-[#2ECC71] text-white'
+                                        : 'border-gray-300 text-gray-500 hover:border-[#2ECC71]'
+                                    }`}
+                                    title={ai === correctIdx ? 'Correct answer' : 'Set as correct'}
+                                  >
+                                    {'ABCD'[ai]}
+                                  </button>
+                                  <input
+                                    type="text"
+                                    value={ans}
+                                    onChange={(e) => updatePreviewAnswer(idx, ai, e.target.value)}
+                                    className={`flex-1 border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2ECC71] ${
+                                      ai === correctIdx ? 'border-[#2ECC71] bg-green-50' : 'border-[#D1D5DB]'
+                                    }`}
+                                    placeholder={`Answer ${ai + 1}`}
+                                  />
+                                  {ai === correctIdx && <Check size={14} className="text-[#2ECC71] shrink-0" />}
+                                </div>
+                              ))}
+                            </div>
                           </div>
 
                           {/* Explanation */}
-                          {q.explanation_en && (
-                            <div className="mb-2">
-                              <p className="text-[10px] uppercase tracking-wide font-semibold text-[#6B7280] mb-1">Explanation</p>
-                              <p className="text-xs text-[#6B7280] leading-relaxed bg-gray-50 rounded-lg px-3 py-2">
-                                {q.explanation_en}
-                              </p>
+                          <div>
+                            <label className="text-[10px] uppercase tracking-wide font-semibold text-[#6B7280] block mb-1">Explanation</label>
+                            <textarea
+                              value={q.explanation_en || ''}
+                              onChange={(e) => updatePreviewQuestion(idx, 'explanation_en', e.target.value)}
+                              rows={2}
+                              className="w-full border border-[#D1D5DB] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2ECC71] resize-none"
+                              placeholder="Why this is the correct answer..."
+                            />
+                          </div>
+
+                          {/* Category & Difficulty */}
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="text-[10px] uppercase tracking-wide font-semibold text-[#6B7280] block mb-1">Category</label>
+                              <select
+                                value={q.macro_category || CATEGORIES[0]}
+                                onChange={(e) => updatePreviewQuestion(idx, 'macro_category', e.target.value)}
+                                className="w-full border border-[#D1D5DB] rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2ECC71]"
+                              >
+                                {CATEGORIES.map((c) => (
+                                  <option key={c} value={c}>{c}</option>
+                                ))}
+                              </select>
                             </div>
-                          )}
+                            <div>
+                              <label className="text-[10px] uppercase tracking-wide font-semibold text-[#6B7280] block mb-1">Difficulty</label>
+                              <select
+                                value={q.difficulty || 'medium'}
+                                onChange={(e) => updatePreviewQuestion(idx, 'difficulty', e.target.value)}
+                                className="w-full border border-[#D1D5DB] rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2ECC71]"
+                              >
+                                <option value="easy">Easy</option>
+                                <option value="medium">Medium</option>
+                                <option value="hard">Hard</option>
+                              </select>
+                            </div>
+                          </div>
 
                           {/* Duplicate warning */}
                           {isDupe && (
-                            <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+                            <div className="p-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
                               ⚠️ Similar question exists in DB: "{duplicates[idx]?.question_en?.slice(0, 80)}..."
                             </div>
                           )}
@@ -679,10 +648,10 @@ export default function ImportModal({ onClose, onImported }) {
               {/* Footer */}
               <div className="flex items-center justify-between mt-5 pt-4 border-t border-gray-200">
                 <button
-                  onClick={() => setStep('map')}
+                  onClick={() => { setStep('upload'); setRawData([]); setHeaders([]); setPreview([]) }}
                   className="px-4 py-2.5 text-sm text-[#6B7280] font-medium hover:bg-gray-100 rounded-lg transition-colors"
                 >
-                  ← Edit Mapping
+                  ← Back
                 </button>
                 <button
                   onClick={handleImport}
@@ -696,7 +665,7 @@ export default function ImportModal({ onClose, onImported }) {
             </div>
           )}
 
-          {/* ── STEP 3.5: Importing progress ── */}
+          {/* ── Importing progress ── */}
           {step === 'importing' && (
             <div className="text-center py-12">
               <Loader2 size={40} className="mx-auto text-[#1B3D2F] animate-spin mb-4" />
@@ -711,7 +680,7 @@ export default function ImportModal({ onClose, onImported }) {
             </div>
           )}
 
-          {/* ── STEP 4: Done ── */}
+          {/* ── Done ── */}
           {step === 'done' && result && (
             <div className="text-center py-10">
               <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
