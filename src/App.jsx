@@ -9,6 +9,9 @@ import NewsPage from './pages/player/NewsPage'
 import LeaderboardPage from './pages/player/LeaderboardPage'
 import QuizResultsPage from './pages/player/QuizResultsPage'
 import DashboardPage from './pages/admin/DashboardPage'
+import QuestionsPage from './pages/admin/QuestionsPage'
+import GeneratePage from './pages/admin/GeneratePage'
+import DailyQuizPage from './pages/admin/DailyQuizPage'
 
 /**
  * ProtectedRoute — redirects to /login if user is not authenticated.
@@ -94,11 +97,9 @@ export default function App() {
         }
       >
         <Route index element={<DashboardPage />} />
-        <Route path="questions" element={<PlaceholderAdmin title="Questions Manager" />} />
-        <Route path="generate" element={<PlaceholderAdmin title="AI Generator" />} />
-        <Route path="review" element={<PlaceholderAdmin title="AI Review" />} />
-        <Route path="daily-quiz" element={<PlaceholderAdmin title="Daily Quiz" />} />
-        <Route path="import" element={<PlaceholderAdmin title="Import / Export" />} />
+        <Route path="questions" element={<QuestionsPage />} />
+        <Route path="generate" element={<GeneratePage />} />
+        <Route path="daily" element={<DailyQuizPage />} />
       </Route>
 
       {/* Catch-all */}
@@ -107,14 +108,3 @@ export default function App() {
   )
 }
 
-/**
- * Inline placeholder for admin sub-pages.
- */
-function PlaceholderAdmin({ title }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-20">
-      <h1 className="text-2xl font-bold text-akka-text">{title}</h1>
-      <p className="mt-2 text-akka-text-secondary">Coming in Phase 2</p>
-    </div>
-  )
-}

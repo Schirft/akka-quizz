@@ -3,105 +3,75 @@ import {
   LayoutDashboard,
   FileQuestion,
   Sparkles,
-  CheckCircle,
   Calendar,
-  Upload,
   ArrowLeft,
 } from 'lucide-react'
 
 /**
- * Admin sidebar navigation items.
+ * Admin navigation tabs — 4 main sections.
  */
 const NAV_ITEMS = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/admin/questions', label: 'Questions', icon: FileQuestion },
-  { to: '/admin/generate', label: 'AI Generate', icon: Sparkles },
-  { to: '/admin/review', label: 'AI Review', icon: CheckCircle },
-  { to: '/admin/daily-quiz', label: 'Daily Quiz', icon: Calendar },
-  { to: '/admin/import', label: 'Import/Export', icon: Upload },
+  { to: '/admin/generate', label: 'AI Generator', icon: Sparkles },
+  { to: '/admin/daily', label: 'Daily Quiz', icon: Calendar },
 ]
 
 /**
- * AdminLayout — sidebar navigation for the back-office.
- * On mobile: top header with hamburger menu (simplified for Phase 1).
- * On desktop: persistent left sidebar.
+ * AdminLayout — horizontal tab navigation for the back-office.
+ * Desktop-optimized with responsive mobile support.
  */
 export default function AdminLayout() {
   const navigate = useNavigate()
 
   return (
-    <div className="min-h-screen bg-gray-50 lg:flex">
-      {/* Sidebar — visible on desktop, hidden on mobile (shown as top nav) */}
-      <aside className="hidden lg:flex lg:flex-col lg:w-60 bg-white border-r border-akka-border">
-        <div className="p-4 border-b border-akka-border">
-          <h2 className="text-lg font-bold text-akka-text">akka.admin</h2>
-        </div>
-        <nav className="flex-1 p-2">
-          {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                  isActive
-                    ? 'bg-emerald-50 text-akka-green'
-                    : 'text-akka-text-secondary hover:bg-gray-50'
-                }`
-              }
+    <div className="min-h-screen bg-gray-50">
+      {/* Top header */}
+      <header className="bg-white border-b border-[#D1D5DB] sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 lg:px-8">
+          {/* Title row */}
+          <div className="flex items-center justify-between h-14">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-[#1B3D2F] flex items-center justify-center">
+                <span className="text-white font-bold text-sm">A</span>
+              </div>
+              <h1 className="text-lg font-bold text-[#1A1A1A]">akka.admin</h1>
+            </div>
+            <button
+              onClick={() => navigate('/')}
+              className="flex items-center gap-1.5 text-sm text-[#6B7280] hover:text-[#1A1A1A] transition-colors min-h-[44px] px-3 rounded-lg hover:bg-gray-50"
             >
-              <Icon size={18} />
-              {label}
-            </NavLink>
-          ))}
-        </nav>
-        <div className="p-3 border-t border-akka-border">
-          <button
-            onClick={() => navigate('/')}
-            className="flex items-center gap-2 text-sm text-akka-text-secondary hover:text-akka-text w-full px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            <ArrowLeft size={16} />
-            Back to App
-          </button>
-        </div>
-      </aside>
+              <ArrowLeft size={16} />
+              <span className="hidden sm:inline">Back to Quiz</span>
+              <span className="sm:hidden">App</span>
+            </button>
+          </div>
 
-      {/* Mobile top bar */}
-      <div className="lg:hidden bg-white border-b border-akka-border">
-        <div className="flex items-center justify-between px-4 py-3">
-          <h2 className="text-lg font-bold text-akka-text">akka.admin</h2>
-          <button
-            onClick={() => navigate('/')}
-            className="flex items-center gap-1.5 text-sm text-akka-text-secondary min-h-[44px]"
-          >
-            <ArrowLeft size={16} />
-            App
-          </button>
+          {/* Tab navigation */}
+          <nav className="flex gap-1 -mb-px overflow-x-auto">
+            {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
+              <NavLink
+                key={to}
+                to={to}
+                end={end}
+                className={({ isActive }) =>
+                  `flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
+                    isActive
+                      ? 'border-[#1B3D2F] text-[#1B3D2F]'
+                      : 'border-transparent text-[#6B7280] hover:text-[#1A1A1A] hover:border-gray-300'
+                  }`
+                }
+              >
+                <Icon size={16} />
+                {label}
+              </NavLink>
+            ))}
+          </nav>
         </div>
-        {/* Horizontal scroll nav on mobile */}
-        <nav className="flex gap-1 px-3 pb-2 overflow-x-auto">
-          {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              className={({ isActive }) =>
-                `flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap min-h-[36px] transition-colors ${
-                  isActive
-                    ? 'bg-emerald-50 text-akka-green'
-                    : 'text-akka-text-secondary'
-                }`
-              }
-            >
-              <Icon size={14} />
-              {label}
-            </NavLink>
-          ))}
-        </nav>
-      </div>
+      </header>
 
       {/* Main content */}
-      <main className="flex-1 p-4 lg:p-8">
+      <main className="max-w-7xl mx-auto px-4 lg:px-8 py-6">
         <Outlet />
       </main>
     </div>
