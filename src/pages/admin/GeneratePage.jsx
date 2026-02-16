@@ -82,7 +82,7 @@ export default function GeneratePage() {
           difficulty: difficulty !== 'mix' ? difficulty : null,
           languages,
           generated_count: 0,
-          status: 'running',
+          status: 'in_progress',
           created_by: user?.id || null,
         })
         .select()
@@ -124,7 +124,7 @@ export default function GeneratePage() {
             'anthropic-dangerous-direct-browser-access': 'true',
           },
           body: JSON.stringify({
-            model: 'claude-sonnet-4-5-20250514',
+            model: 'claude-sonnet-4-5-20250929',
             max_tokens: 8000,
             system: AI_SYSTEM_PROMPT,
             messages: [{ role: 'user', content: userPrompt }],
