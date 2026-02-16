@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
+import { useProfile } from '../../hooks/useProfile'
 import { supabase } from '../../lib/supabase'
 import {
   QUESTION_TIMER_SECONDS,
@@ -49,6 +50,7 @@ import {
  */
 export default function QuizPage() {
   const { user } = useAuth()
+  const { profile } = useProfile()
   const navigate = useNavigate()
 
   // Quiz state
@@ -378,7 +380,7 @@ export default function QuizPage() {
           is_perfect: isPerfect,
           streak_day: newStreak,
           streak_multiplier: 1.0,
-          language: 'en',
+          language: profile?.language || localStorage.getItem('akka_lang') || 'en',
         })
         .select('id')
         .single()
@@ -437,7 +439,7 @@ export default function QuizPage() {
   // --- RENDER ---
 
   const question = questions[currentIndex]
-  const lang = 'en'
+  const lang = profile?.language || localStorage.getItem('akka_lang') || 'en'
 
   const answersArr = question ? (question[`answers_${lang}`] || question.answers_en || []) : []
 
@@ -599,6 +601,18 @@ export default function QuizPage() {
             className={`h-full rounded-r-full transition-all duration-200 ease-linear ${timerBarColor}`}
             style={{ width: `${timerProgress * 100}%` }}
           />
+        </div>
+      )}
+
+      {/* Timer pressure messages */}
+      {quizState === 'question' && timeLeft <= TIMER_WARNING_SECONDS && timeLeft > TIMER_CRITICAL_SECONDS && (
+        <div className="mx-4 mt-2 px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-center">
+          <span className="text-xs font-bold text-amber-600">⏳ Hurry up!</span>
+        </div>
+      )}
+      {quizState === 'question' && timeLeft <= TIMER_CRITICAL_SECONDS && timeLeft > 0 && (
+        <div className="mx-4 mt-2 px-3 py-1.5 rounded-lg bg-red-50 border border-red-200 text-center animate-timer-pulse">
+          <span className="text-xs font-bold text-red-600">🔥 Last chance!</span>
         </div>
       )}
 

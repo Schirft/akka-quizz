@@ -9,18 +9,21 @@ import { seedTestQuiz, replayQuiz } from '../../lib/seedQuiz'
 import Card from '../../components/ui/Card'
 import ProgressBar from '../../components/ui/ProgressBar'
 import Button from '../../components/ui/Button'
-import { Flame, Play, CheckCircle, Trophy, Sparkles, Loader2, RotateCcw } from 'lucide-react'
+import {
+  Flame, Play, CheckCircle, Trophy, Sparkles, Loader2, RotateCcw,
+  LogOut, Shield,
+} from 'lucide-react'
 
 const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
 
 /**
- * HomePage — player dashboard showing profile summary and CTA.
- * Displays display_name, level, XP progress, streak with 7-day circles,
- * investor score, recent badges, and quiz CTA.
+ * HomePage — merged player dashboard + profile.
+ * Shows greeting, streak, level, investor score, stats, badges, quiz CTA,
+ * admin panel button, and sign out.
  */
 export default function HomePage() {
   const { profile, level, levelProgress } = useProfile()
-  const { user } = useAuth()
+  const { user, signOut } = useAuth()
   const navigate = useNavigate()
 
   const [quizPlayedToday, setQuizPlayedToday] = useState(false)
@@ -153,19 +156,54 @@ export default function HomePage() {
     }
   }
 
-  if (!profile) return null
+  // Sign out handler
+  async function handleSignOut() {
+    try {
+      await signOut()
+      navigate('/login', { replace: true })
+    } catch (err) {
+      console.error('Logout error:', err)
+      navigate('/login', { replace: true })
+    }
+  }
+
+  if (!profile) return (
+    <div className="flex items-center justify-center min-h-[60vh]">
+      <div className="w-8 h-8 border-4 border-[#2ECC71] border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
 
   const displayName = profile.display_name || 'Player'
   const totalXP = profile.total_xp || 0
   const streakDays = profile.current_streak || 0
   const nextLevel = level?.level < 10 ? LEVELS[level.level] : null
 
+  // Compute stats
+  const totalQuizzes = profile.total_quizzes || 0
+  const totalCorrect = profile.total_correct || 0
+  const totalQuestions = profile.total_questions || 0
+  const accuracy = totalQuestions > 0 ? Math.round((totalCorrect / totalQuestions) * 100) : 0
+  const avgScore = totalQuizzes > 0 ? (totalCorrect / totalQuizzes).toFixed(1) : '0'
+
+  // Initials for avatar
+  const initials = displayName
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2)
+
   return (
     <div className="px-4 pt-6 pb-4">
-      {/* Greeting */}
-      <div className="mb-6">
-        <p className="text-akka-text-secondary text-sm">Welcome back,</p>
-        <h1 className="text-2xl font-bold text-akka-text">{displayName}</h1>
+      {/* Greeting with avatar */}
+      <div className="flex items-center gap-3 mb-6">
+        <div className="w-12 h-12 rounded-full bg-[#1B3D2F] flex items-center justify-center">
+          <span className="text-white text-sm font-bold">{initials}</span>
+        </div>
+        <div className="flex-1">
+          <p className="text-akka-text-secondary text-sm">Welcome back,</p>
+          <h1 className="text-xl font-bold text-akka-text">{displayName}</h1>
+        </div>
       </div>
 
       {/* Streak card with 7-day circles */}
@@ -203,20 +241,50 @@ export default function HomePage() {
         )}
       </Card>
 
-      {/* Level card */}
+      {/* Level card — redesigned Akka style */}
       <Card className="mb-3">
-        <div className="flex items-center justify-between mb-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-akka-text-secondary">
-            Level {level?.level}
+        <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-full bg-[#1B3D2F] flex items-center justify-center">
+              <span className="text-white text-xs font-bold">{level?.level}</span>
+            </div>
+            <p className="text-sm font-bold text-[#2ECC71]">{level?.name}</p>
+          </div>
+          <p className="text-sm font-bold text-akka-text tabular-nums">
+            {totalXP.toLocaleString()} XP
           </p>
-          <p className="text-xs font-semibold text-akka-green">{level?.name}</p>
         </div>
         <ProgressBar value={levelProgress} />
-        <p className="text-xs text-akka-text-secondary mt-1.5">
-          {totalXP.toLocaleString()} XP
-          {nextLevel && <> / {nextLevel.xpRequired.toLocaleString()} XP</>}
-        </p>
+        <div className="flex items-center justify-between mt-1.5">
+          <p className="text-[10px] text-akka-text-secondary">
+            Level {level?.level}
+          </p>
+          {nextLevel && (
+            <p className="text-[10px] text-akka-text-secondary">
+              {nextLevel.xpRequired.toLocaleString()} XP → Level {nextLevel.level}
+            </p>
+          )}
+        </div>
       </Card>
+
+      {/* Stats — 3 pill cards with colors */}
+      <div className="flex gap-2 mb-3">
+        <Card className="flex-1 flex flex-col items-center py-3 px-2">
+          <span className="text-base mb-0.5">📊</span>
+          <p className="text-lg font-bold text-[#2ECC71]">{avgScore}</p>
+          <p className="text-[10px] text-akka-text-secondary">Avg Score</p>
+        </Card>
+        <Card className="flex-1 flex flex-col items-center py-3 px-2">
+          <span className="text-base mb-0.5">🎯</span>
+          <p className="text-lg font-bold text-[#3498DB]">{accuracy}%</p>
+          <p className="text-[10px] text-akka-text-secondary">Accuracy</p>
+        </Card>
+        <Card className="flex-1 flex flex-col items-center py-3 px-2">
+          <span className="text-base mb-0.5">🏆</span>
+          <p className="text-lg font-bold text-[#F39C12]">{profile.longest_streak || 0}</p>
+          <p className="text-[10px] text-akka-text-secondary">Best Streak</p>
+        </Card>
+      </div>
 
       {/* Investor Score */}
       <Card className="mb-3">
@@ -270,8 +338,29 @@ export default function HomePage() {
         </Button>
       )}
 
+      {/* Admin + Sign Out — visible real buttons */}
+      <div className="mt-6 pt-4 border-t border-[#D1D5DB] space-y-3">
+        <Button
+          variant="primary"
+          className="w-full gap-2"
+          onClick={() => navigate('/admin')}
+          style={{ backgroundColor: '#1B3D2F' }}
+        >
+          <Shield size={18} />
+          Admin Panel
+        </Button>
+
+        <button
+          onClick={handleSignOut}
+          className="w-full flex items-center justify-center gap-2 py-3 min-h-[44px] rounded-xl border-2 border-[#E74C3C] text-[#E74C3C] font-semibold hover:bg-red-50 transition-colors"
+        >
+          <LogOut size={18} />
+          Sign Out
+        </button>
+      </div>
+
       {/* Dev tools */}
-      <div className="mt-6 pt-4 border-t border-akka-border space-y-3">
+      <div className="mt-4 pt-4 border-t border-[#D1D5DB] space-y-3">
         {/* Replay Quiz — deletes today's session, reseeds, navigates to quiz */}
         <Button
           variant="outline"

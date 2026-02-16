@@ -7,7 +7,6 @@ import HomePage from './pages/player/HomePage'
 import QuizPage from './pages/player/QuizPage'
 import NewsPage from './pages/player/NewsPage'
 import LeaderboardPage from './pages/player/LeaderboardPage'
-import ProfilePage from './pages/player/ProfilePage'
 import QuizResultsPage from './pages/player/QuizResultsPage'
 import DashboardPage from './pages/admin/DashboardPage'
 
@@ -63,7 +62,6 @@ export default function App() {
         <Route index element={<HomePage />} />
         <Route path="news" element={<NewsPage />} />
         <Route path="leaderboard" element={<LeaderboardPage />} />
-        <Route path="profile" element={<ProfilePage />} />
       </Route>
 
       {/* Quiz route — no TabBar */}
