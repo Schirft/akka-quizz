@@ -68,6 +68,7 @@ export default function QuizPage() {
   const [communityStats, setCommunityStats] = useState(null)
   const [muted, setMutedState] = useState(isMuted)
   const [shakeAnswer, setShakeAnswer] = useState(false)
+  const [timerMessage, setTimerMessage] = useState(null)
 
   const timerRef = useRef(null)
   const startTimeRef = useRef(null)
@@ -199,6 +200,16 @@ export default function QuizPage() {
         playTimerTick()
       }
 
+      // Timer pressure messages
+      if (remaining === 5) {
+        setTimerMessage('⏳ Hurry up!')
+        setTimeout(() => setTimerMessage(null), 1500)
+      }
+      if (remaining === 3) {
+        setTimerMessage('🔥 Last chance!')
+        setTimeout(() => setTimerMessage(null), 1500)
+      }
+
       if (remaining <= 0) {
         clearInterval(timerRef.current)
         handleTimeUp()
@@ -321,6 +332,7 @@ export default function QuizPage() {
     setXpFloat(null)
     setCommunityStats(null)
     setShakeAnswer(false)
+    setTimerMessage(null)
 
     if (currentIndex + 1 < questions.length) {
       setCurrentIndex((i) => i + 1)
@@ -439,34 +451,37 @@ export default function QuizPage() {
   // --- RENDER ---
 
   const question = questions[currentIndex]
-  const lang = profile?.language || localStorage.getItem('akka_lang') || 'en'
+  const storedLang = profile?.language || localStorage.getItem('akka_lang') || 'en'
 
-  const answersArr = question ? (question[`answers_${lang}`] || question.answers_en || []) : []
+  const questionText = question ? (question[`question_${storedLang}`] || question.question_en) : ''
+  const answersArr = question ? (question[`answers_${storedLang}`] || question.answers_en || []) : []
+  const explanation = question ? (question[`explanation_${storedLang}`] || question.explanation_en) : ''
 
   // Timer progress (0 → 1)
   const timerProgress = timeLeft / QUESTION_TIMER_SECONDS
 
-  // Timer colors
+  // Timer colors — blue/orange/red to differentiate from green progress bar
+  const timerPercent = (timeLeft / QUESTION_TIMER_SECONDS) * 100
   const timerColor =
-    timeLeft <= TIMER_CRITICAL_SECONDS
-      ? 'text-akka-red'
-      : timeLeft <= TIMER_WARNING_SECONDS
-        ? 'text-amber-500'
-        : 'text-akka-green'
+    timerPercent > 50
+      ? 'text-[#3498DB]'
+      : timerPercent > 25
+        ? 'text-[#F39C12]'
+        : 'text-[#E74C3C]'
 
   const timerBarColor =
-    timeLeft <= TIMER_CRITICAL_SECONDS
-      ? 'bg-akka-red'
-      : timeLeft <= TIMER_WARNING_SECONDS
-        ? 'bg-amber-500'
-        : 'bg-akka-green'
+    timerPercent > 50
+      ? 'bg-[#3498DB]'
+      : timerPercent > 25
+        ? 'bg-[#F39C12]'
+        : 'bg-[#E74C3C] animate-pulse'
 
   const timerBg =
-    timeLeft <= TIMER_CRITICAL_SECONDS
-      ? 'bg-red-50'
-      : timeLeft <= TIMER_WARNING_SECONDS
+    timerPercent > 50
+      ? 'bg-blue-50'
+      : timerPercent > 25
         ? 'bg-amber-50'
-        : 'bg-emerald-50'
+        : 'bg-red-50'
 
   const isCritical = timeLeft <= TIMER_CRITICAL_SECONDS && timeLeft > 0 && quizState === 'question'
 
@@ -605,14 +620,11 @@ export default function QuizPage() {
       )}
 
       {/* Timer pressure messages */}
-      {quizState === 'question' && timeLeft <= TIMER_WARNING_SECONDS && timeLeft > TIMER_CRITICAL_SECONDS && (
-        <div className="mx-4 mt-2 px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-center">
-          <span className="text-xs font-bold text-amber-600">⏳ Hurry up!</span>
-        </div>
-      )}
-      {quizState === 'question' && timeLeft <= TIMER_CRITICAL_SECONDS && timeLeft > 0 && (
-        <div className="mx-4 mt-2 px-3 py-1.5 rounded-lg bg-red-50 border border-red-200 text-center animate-timer-pulse">
-          <span className="text-xs font-bold text-red-600">🔥 Last chance!</span>
+      {timerMessage && (
+        <div className={`mx-4 mt-2 px-4 py-2.5 rounded-xl text-white text-center text-sm font-bold animate-bounce ${
+          timerMessage.includes('Last') ? 'bg-[#E74C3C]' : 'bg-[#F39C12]'
+        }`}>
+          {timerMessage}
         </div>
       )}
 
@@ -626,7 +638,7 @@ export default function QuizPage() {
       {/* Question text */}
       <div className="px-4 pt-3 pb-4">
         <h2 className="text-lg font-bold text-akka-text leading-snug">
-          {question[`question_${lang}`] || question.question_en}
+          {questionText}
         </h2>
       </div>
 
@@ -747,7 +759,7 @@ export default function QuizPage() {
               </p>
             </div>
             <p className="text-sm text-[#1A1A1A] leading-relaxed font-medium">
-              {question[`explanation_${lang}`] || question.explanation_en}
+              {explanation}
             </p>
             <p className={`text-xs mt-2 font-semibold ${isCorrect ? 'text-[#166534]' : 'text-[#991B1B]'}`}>
               Answered in {timeSpentSec}s

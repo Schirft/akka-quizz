@@ -5,12 +5,12 @@ import { useAuth } from '../../hooks/useAuth'
 import { supabase } from '../../lib/supabase'
 import { LEVELS } from '../../config/levels'
 import { BADGES, TIER_COLORS } from '../../config/badges'
-import { seedTestQuiz, replayQuiz } from '../../lib/seedQuiz'
+import { replayQuiz } from '../../lib/seedQuiz'
 import Card from '../../components/ui/Card'
 import ProgressBar from '../../components/ui/ProgressBar'
 import Button from '../../components/ui/Button'
 import {
-  Flame, Play, CheckCircle, Trophy, Sparkles, Loader2, RotateCcw,
+  Flame, Play, CheckCircle, Trophy, Loader2, RotateCcw,
   LogOut, Shield,
 } from 'lucide-react'
 
@@ -29,8 +29,6 @@ export default function HomePage() {
   const [quizPlayedToday, setQuizPlayedToday] = useState(false)
   const [recentBadges, setRecentBadges] = useState([])
   const [streakHistory, setStreakHistory] = useState([])
-  const [seeding, setSeeding] = useState(false)
-  const [seedResult, setSeedResult] = useState(null)
   const [replaying, setReplaying] = useState(false)
   const [replayResult, setReplayResult] = useState(null)
 
@@ -99,16 +97,7 @@ export default function HomePage() {
     loadHomeData()
   }, [user])
 
-  // Seed test quiz handler (dev only)
-  async function handleSeed() {
-    setSeeding(true)
-    setSeedResult(null)
-    const result = await seedTestQuiz()
-    setSeedResult(result)
-    setSeeding(false)
-  }
-
-  // Replay quiz handler — delete today's session/answers, re-seed, navigate to quiz
+  // New Quiz handler — delete today's session/answers, re-seed, navigate to quiz
   async function handleReplay() {
     if (!user) return
     setReplaying(true)
@@ -359,51 +348,24 @@ export default function HomePage() {
         </button>
       </div>
 
-      {/* Dev tools */}
+      {/* Demo tools */}
       <div className="mt-4 pt-4 border-t border-[#D1D5DB] space-y-3">
-        {/* Replay Quiz — deletes today's session, reseeds, navigates to quiz */}
         <Button
           variant="outline"
           className="w-full gap-2 text-sm"
           onClick={handleReplay}
-          disabled={replaying || seeding}
+          disabled={replaying}
         >
           {replaying ? (
             <Loader2 size={16} className="animate-spin" />
           ) : (
             <RotateCcw size={16} />
           )}
-          {replaying ? 'Resetting...' : 'Replay Quiz (Dev)'}
+          {replaying ? 'Resetting...' : '🔄 New Quiz (Demo)'}
         </Button>
         {replayResult && !replayResult.success && (
           <p className="text-xs text-center text-akka-red">
             Error: {replayResult.error}
-          </p>
-        )}
-
-        {/* Seed Test Quiz — creates quiz without deleting session */}
-        <Button
-          variant="outline"
-          className="w-full gap-2 text-sm"
-          onClick={handleSeed}
-          disabled={seeding || replaying}
-        >
-          {seeding ? (
-            <Loader2 size={16} className="animate-spin" />
-          ) : (
-            <Sparkles size={16} />
-          )}
-          {seeding ? 'Seeding...' : 'Seed Test Quiz (Dev)'}
-        </Button>
-        {seedResult && (
-          <p
-            className={`text-xs text-center ${
-              seedResult.success ? 'text-akka-green' : 'text-akka-red'
-            }`}
-          >
-            {seedResult.success
-              ? `Quiz seeded! ID: ${seedResult.quizId}`
-              : `Error: ${seedResult.error}`}
           </p>
         )}
       </div>

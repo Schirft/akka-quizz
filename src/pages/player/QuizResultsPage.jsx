@@ -275,8 +275,8 @@ export default function QuizResultsPage() {
             className="w-full gap-2"
             onClick={() => {
               const shareText = score === totalQuestions
-                ? `🏆 Score parfait ${score}/${totalQuestions} sur le Quiz Akka !\nViens tester tes connaissances en investissement startup et découvre Akka, le club d'investissement de référence en Europe.\n👉 akka.app`
-                : `💡 J'ai scoré ${score}/${totalQuestions} au Quiz Akka sur l'investissement startup !\nPense-tu pouvoir faire mieux ? Teste tes connaissances et rejoins Akka.\n👉 akka.app`
+                ? `🏆 Score parfait ${score}/${totalQuestions} au Quiz Akka !\nJ'ai tout bon sur un quiz d'investissement startup. Tu penses pouvoir faire mieux ?\n👉 Découvre Akka : akka.app`
+                : `💡 J'ai scoré ${score}/${totalQuestions} au Quiz Akka !\nTeste tes connaissances en investissement startup et rejoins le club.\n👉 Découvre Akka : akka.app`
 
               if (navigator.share) {
                 navigator.share({ title: 'Akka Quiz', text: shareText })
