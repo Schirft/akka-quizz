@@ -8,6 +8,7 @@ import {
   Calendar,
   ArrowLeft,
 } from 'lucide-react'
+import TabBar from './TabBar'
 
 /**
  * AdminLayout — horizontal tab navigation for the back-office.
@@ -156,9 +157,12 @@ export default function AdminLayout() {
       </header>
 
       {/* Main content */}
-      <main className="max-w-7xl mx-auto px-4 lg:px-8 py-6">
+      <main className="max-w-7xl mx-auto px-4 lg:px-8 py-6 pb-24">
         <Outlet />
       </main>
+
+      {/* Bottom TabBar */}
+      <TabBar />
     </div>
   )
 }

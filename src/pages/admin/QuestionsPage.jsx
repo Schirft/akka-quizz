@@ -394,7 +394,8 @@ export default function QuestionsPage() {
   function formatDate(dateStr) {
     if (!dateStr) return '—'
     const d = new Date(dateStr)
-    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
+    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) +
+      ' ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
   }
 
   // FIX 8a: Get scheduled date for question
