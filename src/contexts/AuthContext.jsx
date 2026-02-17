@@ -25,46 +25,37 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let mounted = true
 
-    // Safety timeout — if loading takes more than 5s, force it to false
+    // Safety timeout — fallback if onAuthStateChange never fires
     const safetyTimer = setTimeout(() => {
       if (mounted) {
-        console.warn('[AuthContext] Safety timeout: forcing loading=false after 5s')
+        console.warn('[AuthContext] Safety timeout after 5s')
         setLoading(false)
       }
     }, 5000)
 
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!mounted) return
-      const u = session?.user ?? null
-      setUser(u)
-      if (u) {
-        const p = await fetchProfile(u.id)
-        if (mounted) setProfile(p)
-      }
-      if (mounted) setLoading(false)
-    }).catch((err) => {
-      // Gracefully handle AbortError from Supabase internals
-      if (err?.name === 'AbortError' || err?.message?.includes('abort')) {
-        console.warn('[AuthContext] AbortError caught, forcing loading=false')
-      }
-      if (mounted) setLoading(false)
-    })
-
+    // UNIQUE source of truth: onAuthStateChange
+    // Supabase v2+ emits INITIAL_SESSION automatically — no need for getSession()
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log('[AuthContext] Auth event:', event, !!session)
+
         if (!mounted) return
-        const u = session?.user ?? null
-        setUser(u)
-        if (u) {
+
+        setUser(session?.user ?? null)
+
+        if (session?.user) {
           try {
-            const p = await fetchProfile(u.id)
+            const p = await fetchProfile(session.user.id)
             if (mounted) setProfile(p)
-          } catch {
-            // Profile fetch failed silently — user is still authed
+          } catch (err) {
+            console.warn('[AuthContext] Profile fetch error:', err.message)
           }
         } else {
           setProfile(null)
         }
+
+        setLoading(false)
+        clearTimeout(safetyTimer)
       }
     )
 
