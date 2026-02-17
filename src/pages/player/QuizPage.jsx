@@ -85,6 +85,8 @@ export default function QuizPage() {
 
   // Load daily quiz
   useEffect(() => {
+    let cancelled = false
+
     async function loadQuiz() {
       try {
         const today = new Date().toISOString().split('T')[0]
@@ -97,6 +99,7 @@ export default function QuizPage() {
           .eq('quiz_date', today)
           .limit(1)
 
+        if (cancelled) return
         if (existingSession && existingSession.length > 0) {
           setErrorMsg('already_completed')
           setQuizState('error')
@@ -110,6 +113,7 @@ export default function QuizPage() {
           .eq('quiz_date', today)
           .single()
 
+        if (cancelled) return
         if (dqError || !dailyQuiz) {
           setErrorMsg('no_quiz')
           setQuizState('error')
@@ -131,6 +135,7 @@ export default function QuizPage() {
           .select('*')
           .in('id', questionIds)
 
+        if (cancelled) return
         if (qError || !questionData || questionData.length === 0) {
           setErrorMsg('load_failed')
           setQuizState('error')
@@ -174,16 +179,20 @@ export default function QuizPage() {
           }
         })
 
+        if (cancelled) return
         setQuestions(shuffledQuestions)
         setQuizState('ready')
       } catch (err) {
         console.error('Quiz load error:', err)
-        setErrorMsg('load_failed')
-        setQuizState('error')
+        if (!cancelled) {
+          setErrorMsg('load_failed')
+          setQuizState('error')
+        }
       }
     }
 
     if (user) loadQuiz()
+    return () => { cancelled = true }
   }, [user])
 
   // Start the timer

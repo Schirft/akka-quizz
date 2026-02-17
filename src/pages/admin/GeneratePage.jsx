@@ -334,7 +334,8 @@ export default function GeneratePage() {
           difficulty,
         })
 
-        const maxTokensStep1 = batchCount <= 5 ? 4096 : 6000
+        const maxTokensStep1 = batchCount <= 5 ? 6000 : 8000
+        console.log(`[GEN] Requesting ${batchCount} questions, maxTokens=${maxTokensStep1}`)
 
         const response = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
@@ -364,8 +365,10 @@ export default function GeneratePage() {
         totalOutputTokens += data.usage?.output_tokens || 0
 
         // Robust JSON parsing
+        console.log(`[GEN] Raw response length: ${text.length} chars`)
         let enQuestions = parsePartialJSON(text)
         if (!Array.isArray(enQuestions)) throw new Error('Parsed result is not an array')
+        console.log(`[GEN] Parsed ${enQuestions.length}/${batchCount} questions from initial call`)
 
         // ── RETRY: If we got fewer questions than requested, generate the missing ones ──
         if (enQuestions.length < batchCount && !abortRef.current) {
@@ -413,6 +416,7 @@ export default function GeneratePage() {
         if (enQuestions.length > batchCount) {
           enQuestions = enQuestions.slice(0, batchCount)
         }
+        console.log(`[GEN] Final question count: ${enQuestions.length}/${batchCount}`)
 
         // ── STEP 2: Translate in PARALLEL (one API call per language) ──
         if (needsTranslation && !abortRef.current) {
@@ -434,16 +438,20 @@ export default function GeneratePage() {
                   'anthropic-dangerous-direct-browser-access': 'true',
                 },
                 body: JSON.stringify({
-                  model: 'claude-haiku-3-5-20241022',
-                  max_tokens: 3000,
+                  model: 'claude-3-5-haiku-20241022',
+                  max_tokens: 4096,
                   messages: [{ role: 'user', content: prompt }],
                 }),
               })
-              if (!res.ok) throw new Error(`API ${res.status}`)
+              if (!res.ok) {
+                const errBody = await res.json().catch(() => ({}))
+                throw new Error(`API ${res.status}: ${errBody.error?.message || 'Unknown'}`)
+              }
               const data = await res.json()
+              console.log(`[TRANSLATE] ${lang} OK — ${data.usage?.output_tokens || 0} tokens`)
               return { lang, data }
             } catch (err) {
-              console.warn(`Translation ${lang} failed:`, err.message)
+              console.error(`[TRANSLATE] ${lang} FAILED:`, err.message)
               return { lang, data: null }
             }
           })
@@ -1093,6 +1101,33 @@ export default function GeneratePage() {
                             : 'bg-amber-100 text-amber-700'
                         }`}>{q.status?.replace('_', ' ')}</span>
                       </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setEditQuestion(q) }}
+                        className="p-1.5 rounded-lg text-[#6B7280] hover:bg-gray-100 transition-colors"
+                        title="Edit"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      {q.status === 'pending_review' && (
+                        <>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); quickAction(q.id, 'approved') }}
+                            className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 transition-colors"
+                            title="Approve"
+                          >
+                            <CheckCircle size={16} />
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); quickAction(q.id, 'rejected') }}
+                            className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition-colors"
+                            title="Reject"
+                          >
+                            <XCircle size={16} />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 ))}
