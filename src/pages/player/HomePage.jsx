@@ -11,8 +11,9 @@ import { replayQuiz } from '../../lib/seedQuiz'
 import Card from '../../components/ui/Card'
 import Button from '../../components/ui/Button'
 import WeeklyRecapModal from '../../components/player/WeeklyRecapModal'
+import ProgressionPathModal from '../../components/player/ProgressionPathModal'
 import {
-  Flame, Play, CheckCircle, Trophy, Loader2, RotateCcw,
+  Flame, CheckCircle, Trophy, Loader2, RotateCcw,
   LogOut, Shield, Medal,
 } from 'lucide-react'
 
@@ -42,6 +43,7 @@ export default function HomePage() {
   const [leaders, setLeaders] = useState([])
   const [showScoreTooltip, setShowScoreTooltip] = useState(false)
   const [showWeeklyRecap, setShowWeeklyRecap] = useState(false)
+  const [showProgression, setShowProgression] = useState(false)
 
   const dayLabels = DAY_LABELS_I18N[lang] || DAY_LABELS_I18N.en
 
@@ -235,6 +237,42 @@ export default function HomePage() {
         </div>
       </div>
 
+      {/* Quiz of the Day card */}
+      <div
+        onClick={() => navigate(quizPlayedToday ? '/quiz' : '/quiz')}
+        className="mb-3 p-4 rounded-2xl bg-[#1B3D2F] text-white cursor-pointer active:scale-[0.98] transition-transform"
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-xl bg-[#2ECC71]/20 flex items-center justify-center">
+              <span className="text-2xl">🧠</span>
+            </div>
+            <div>
+              <p className="font-bold text-base">{t('quiz_of_the_day')}</p>
+              <p className="text-xs text-white/60">{t('questions_duration')}</p>
+            </div>
+          </div>
+          {quizPlayedToday ? (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10">
+              <CheckCircle size={14} className="text-[#2ECC71]" />
+              <span className="text-xs font-semibold text-[#2ECC71]">{t('completed')}</span>
+            </div>
+          ) : (
+            <button
+              onClick={(e) => { e.stopPropagation(); navigate('/quiz') }}
+              className="px-4 py-2 rounded-xl bg-[#2ECC71] text-white text-sm font-bold active:scale-95 transition-transform"
+            >
+              {t('start_quiz_short')}
+            </button>
+          )}
+        </div>
+        {quizPlayedToday && streakDays > 0 && (
+          <p className="text-xs text-white/50 mt-2">
+            🔥 {t('keep_streak')}
+          </p>
+        )}
+      </div>
+
       {/* Streak card with 7-day circles */}
       <Card className="mb-3">
         <div className="flex items-center gap-3 mb-3">
@@ -274,8 +312,8 @@ export default function HomePage() {
         )}
       </Card>
 
-      {/* Level card — redesigned Akka style */}
-      <Card className="mb-3">
+      {/* Level card — redesigned Akka style (clickable → progression path) */}
+      <Card className="mb-3 cursor-pointer active:scale-[0.98] transition-transform" onClick={() => setShowProgression(true)}>
         <div className="flex items-center justify-between mb-1">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-full bg-[#1B3D2F] flex items-center justify-center">
@@ -484,19 +522,6 @@ export default function HomePage() {
         </Card>
       )}
 
-      {/* CTA */}
-      {quizPlayedToday ? (
-        <Button variant="outline" className="w-full gap-2 opacity-70" disabled>
-          <CheckCircle size={18} className="text-akka-green" />
-          {t('quiz_completed')} ✓
-        </Button>
-      ) : (
-        <Button variant="primary" className="w-full gap-2" onClick={() => navigate('/quiz')}>
-          <Play size={18} />
-          {t('start_quiz')}
-        </Button>
-      )}
-
       {/* Admin + Sign Out — visible real buttons */}
       <div className="mt-6 pt-4 border-t border-[#D1D5DB] space-y-3">
         <Button
@@ -571,6 +596,14 @@ export default function HomePage() {
           onClose={() => setShowWeeklyRecap(false)}
         />
       )}
+
+      {/* Progression Path Modal */}
+      <ProgressionPathModal
+        open={showProgression}
+        onClose={() => setShowProgression(false)}
+        currentLevel={level}
+        totalXP={totalXP}
+      />
     </div>
   )
 }

@@ -1,21 +1,20 @@
 import { NavLink } from 'react-router-dom'
-import { House, Brain, Newspaper, Settings } from 'lucide-react'
+import { House, Newspaper, Settings } from 'lucide-react'
 import { useLang } from '../../hooks/useLang'
 import { useProfile } from '../../hooks/useProfile'
 
 /**
- * Tabs configuration — 3 bottom navigation items (Profile merged into Home).
- * Labels use i18n keys resolved inside the component.
+ * Tabs configuration — 2 main tabs + conditional Admin.
+ * Quiz merged into Home. Labels use i18n keys resolved inside the component.
  */
 const TABS = [
   { to: '/', labelKey: 'home', icon: House },
-  { to: '/quiz', labelKey: 'quiz', icon: Brain },
   { to: '/news', labelKey: 'news', icon: Newspaper },
 ]
 
 /**
- * TabBar — iOS-style bottom navigation with 4 tabs.
- * Active tab: akka-green icon + text. Inactive: gray.
+ * TabBar — iOS-style bottom navigation with 3 tabs (Home, News, Admin).
+ * Active tab: dark akka-green icon + text. Inactive: gray.
  * Touch targets: 44px minimum. White background, subtle top border.
  */
 export default function TabBar() {
@@ -38,7 +37,7 @@ export default function TabBar() {
             className={({ isActive }) =>
               `flex flex-col items-center justify-center min-h-[56px] min-w-[64px] py-1.5 transition-colors ${
                 isActive
-                  ? 'text-akka-green'
+                  ? 'text-[#1B3D2F]'
                   : 'text-gray-400'
               }`
             }

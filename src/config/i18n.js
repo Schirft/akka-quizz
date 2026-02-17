@@ -79,6 +79,8 @@ export const translations = {
     score_good: 'Growing investor profile',
     score_improving: 'Building your investor profile',
     score_tooltip_text: 'Your Investor Score reflects your learning progress: quiz accuracy, streak consistency, XP earned, and overall engagement. Max 1000.',
+    keep_streak: 'Come back tomorrow to keep your streak!',
+    view_results: 'View Results',
   },
   fr: {
     welcome_back: 'Bienvenue,',
@@ -155,6 +157,8 @@ export const translations = {
     score_good: 'Profil investisseur en croissance',
     score_improving: 'Construction de votre profil investisseur',
     score_tooltip_text: 'Ton Score Investisseur refl\u00e8te ta progression : pr\u00e9cision des quiz, r\u00e9gularit\u00e9 de ta s\u00e9rie, XP gagn\u00e9s et engagement global. Max 1000.',
+    keep_streak: 'Reviens demain pour garder ta s\u00e9rie !',
+    view_results: 'Voir les r\u00e9sultats',
   },
   it: {
     welcome_back: 'Bentornato,',
@@ -231,6 +235,8 @@ export const translations = {
     score_good: 'Profilo investitore in crescita',
     score_improving: 'Costruisci il tuo profilo investitore',
     score_tooltip_text: 'Il tuo Punteggio Investitore riflette i tuoi progressi: precisione nei quiz, costanza della serie, XP guadagnati e coinvolgimento generale. Max 1000.',
+    keep_streak: 'Torna domani per mantenere la tua serie!',
+    view_results: 'Vedi risultati',
   },
   es: {
     welcome_back: 'Bienvenido,',
@@ -307,6 +313,8 @@ export const translations = {
     score_good: 'Perfil inversor en crecimiento',
     score_improving: 'Construyendo tu perfil inversor',
     score_tooltip_text: 'Tu Puntuación de Inversor refleja tu progreso de aprendizaje: precisión en los quiz, constancia de tu racha, XP ganados y participación general. Máx 1000.',
+    keep_streak: '¡Vuelve mañana para mantener tu racha!',
+    view_results: 'Ver resultados',
   },
 }
 

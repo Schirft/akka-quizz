@@ -196,7 +196,7 @@ export default function QuizResultsPage() {
         <div className="space-y-3 mt-8">
           <button
             onClick={() => navigate('/', { replace: true })}
-            className="w-full py-4 rounded-2xl bg-[#2ECC71] text-white font-bold text-lg hover:bg-[#27AE60] transition-colors flex items-center justify-center gap-2"
+            className="w-full py-4 rounded-2xl bg-[#1B3D2F] text-white font-bold text-lg hover:opacity-90 transition-colors flex items-center justify-center gap-2"
           >
             <Home size={18} />
             {t('back_home')}
