@@ -15,6 +15,7 @@ export default function NewsPage() {
   const lang = profile?.language || localStorage.getItem('akka_lang') || 'en'
 
   const [articles, setArticles] = useState([])
+  const [allCategories, setAllCategories] = useState(['All'])
   const [loading, setLoading] = useState(true)
   const [selectedCategory, setSelectedCategory] = useState('All')
 
@@ -25,19 +26,30 @@ export default function NewsPage() {
     async function fetchArticles() {
       setLoading(true)
       try {
-        const { data, error } = await supabase
+        let query = supabase
           .from('news_articles')
           .select('*')
           .eq('is_active', true)
           .eq('language', lang)
           .order('published_at', { ascending: false })
 
+        if (selectedCategory && selectedCategory !== 'All') {
+          query = query.eq('category', selectedCategory)
+        }
+
+        const { data, error } = await query
+
         if (!cancelled) {
           if (error) {
             console.error('Error fetching articles:', error)
             setArticles([])
           } else {
-            setArticles(data || [])
+            const items = data || []
+            setArticles(items)
+            // Build full categories list only on unfiltered fetch
+            if (!selectedCategory || selectedCategory === 'All') {
+              setAllCategories(['All', ...new Set(items.map((a) => a.category).filter(Boolean))])
+            }
           }
           setLoading(false)
         }
@@ -55,19 +67,10 @@ export default function NewsPage() {
     return () => {
       cancelled = true
     }
-  }, [lang])
+  }, [lang, selectedCategory])
 
-  // Extract unique categories from loaded articles
-  const categories = ['All', ...new Set(articles.map((a) => a.category).filter(Boolean))]
-
-  // Filter articles by selected category
-  const filtered =
-    selectedCategory === 'All'
-      ? articles
-      : articles.filter((a) => a.category === selectedCategory)
-
-  const featured = filtered.find((a) => a.is_featured)
-  const rest = filtered.filter((a) => !a.is_featured)
+  const featured = articles.find((a) => a.is_featured)
+  const rest = articles.filter((a) => !a.is_featured)
 
   // Format date
   function formatDate(dateStr) {
@@ -86,9 +89,9 @@ export default function NewsPage() {
       <h1 className="text-2xl font-bold text-white mb-4">News</h1>
 
       {/* Category pills */}
-      {categories.length > 1 && (
+      {allCategories.length > 1 && (
         <div className="flex gap-2 mb-5 overflow-x-auto pb-1 -mx-4 px-4">
-          {categories.map((cat) => (
+          {allCategories.map((cat) => (
             <button
               key={cat}
               onClick={() => setSelectedCategory(cat)}
@@ -112,7 +115,7 @@ export default function NewsPage() {
       )}
 
       {/* Empty state */}
-      {!loading && filtered.length === 0 && (
+      {!loading && articles.length === 0 && (
         <div className="flex flex-col items-center justify-center py-20">
           <div className="w-16 h-16 rounded-2xl bg-akka-news-surface flex items-center justify-center mb-4">
             <Newspaper size={32} className="text-akka-green" />
