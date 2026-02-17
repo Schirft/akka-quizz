@@ -199,14 +199,42 @@ export default function DailyQuizPage() {
    * HOTFIX E: Remove a single question from a day's quiz.
    */
   async function removeOneQuestion(date, questionId) {
+    console.log('removeOneQuestion called', date, questionId)
     const quiz = quizzes[date]
-    if (!quiz) return
-    const remaining = quiz.questions.filter((q) => q.id !== questionId).map((q) => q.id)
-    if (remaining.length === 0) {
-      // If no questions left, delete the quiz entirely
+    if (!quiz) { console.warn('No quiz found for date', date); return }
+
+    // Get raw IDs from the quiz record, splice out the target, pad with null
+    const rawIds = [
+      quiz.questions.map((q) => q.id),
+    ].flat()
+    const idx = rawIds.indexOf(questionId)
+    if (idx === -1) { console.warn('Question not found in quiz', questionId); return }
+    rawIds.splice(idx, 1)
+
+    if (rawIds.length === 0) {
       await deleteQuiz(date)
-    } else {
-      await saveQuiz(date, remaining)
+      return
+    }
+
+    // Pad to 5 with null
+    while (rawIds.length < 5) rawIds.push(null)
+
+    try {
+      const { error: uErr } = await supabase
+        .from('daily_quizzes')
+        .update({
+          question_1_id: rawIds[0],
+          question_2_id: rawIds[1],
+          question_3_id: rawIds[2],
+          question_4_id: rawIds[3],
+          question_5_id: rawIds[4],
+        })
+        .eq('id', quiz.id)
+
+      if (uErr) console.error('Remove question update error:', uErr)
+      await loadData()
+    } catch (err) {
+      console.error('removeOneQuestion error:', err)
     }
   }
 

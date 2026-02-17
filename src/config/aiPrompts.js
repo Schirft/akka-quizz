@@ -42,7 +42,8 @@ QUALITY RULES:
 4. Use real examples — real startups, real VCs, real events
 5. Vary question formats
 6. correct_answer_index is 1-based (1, 2, 3, or 4)
-7. Each question is self-contained`
+7. Each question is self-contained
+CRITICAL: Generate EXACTLY the number of questions requested. Not more, not less.`
 
 /**
  * Build the user prompt for Step 1 — EN-only generation.
@@ -69,6 +70,7 @@ export function buildUserPrompt({ count, mode, category, theme, difficulty }) {
   }
 
   parts.push('Return ONLY English fields (question_en, answers_en, explanation_en). Do NOT include any _fr, _it, or _es fields.')
+  parts.push(`Return a JSON array with EXACTLY ${count} objects.`)
 
   return parts.join('\n')
 }

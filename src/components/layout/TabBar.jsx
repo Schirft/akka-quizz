@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom'
-import { House, Brain, Newspaper, Trophy } from 'lucide-react'
+import { House, Brain, Newspaper, Trophy, Settings } from 'lucide-react'
 import { useLang } from '../../hooks/useLang'
+import { useProfile } from '../../hooks/useProfile'
 
 /**
  * Tabs configuration — 4 bottom navigation items (Profile merged into Home).
@@ -20,11 +21,17 @@ const TABS = [
  */
 export default function TabBar() {
   const { t } = useLang()
+  const { profile } = useProfile()
+
+  const tabs = [...TABS]
+  if (profile?.is_admin) {
+    tabs.push({ to: '/admin', labelKey: 'admin', icon: Settings })
+  }
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-[#D1D5DB] pb-safe z-50">
       <div className="flex items-center justify-around max-w-[480px] mx-auto">
-        {TABS.map(({ to, labelKey, icon: Icon }) => (
+        {tabs.map(({ to, labelKey, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
