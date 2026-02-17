@@ -9,6 +9,8 @@ import NewsPage from './pages/player/NewsPage'
 import LeaderboardPage from './pages/player/LeaderboardPage'
 import QuizResultsPage from './pages/player/QuizResultsPage'
 import DashboardPage from './pages/admin/DashboardPage'
+import GeneratePage from './pages/admin/GeneratePage'
+import DailyQuizPage from './pages/admin/DailyQuizPage'
 
 /**
  * ProtectedRoute — redirects to /login if user is not authenticated.
@@ -95,9 +97,9 @@ export default function App() {
       >
         <Route index element={<DashboardPage />} />
         <Route path="questions" element={<PlaceholderAdmin title="Questions Manager" />} />
-        <Route path="generate" element={<PlaceholderAdmin title="AI Generator" />} />
+        <Route path="generate" element={<GeneratePage />} />
         <Route path="review" element={<PlaceholderAdmin title="AI Review" />} />
-        <Route path="daily-quiz" element={<PlaceholderAdmin title="Daily Quiz" />} />
+        <Route path="daily-quiz" element={<DailyQuizPage />} />
         <Route path="import" element={<PlaceholderAdmin title="Import / Export" />} />
       </Route>
 
