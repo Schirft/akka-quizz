@@ -424,61 +424,74 @@ export default function GeneratePage() {
         const langLabels = { fr: '🇫🇷 FR', it: '🇮🇹 IT', es: '🇪🇸 ES' }
         const targetLangs = languages.filter(l => l !== 'en')
         const langList = targetLangs.map(l => langLabels[l] || l).join(', ')
-        switchStreamingUX(STEP2_MESSAGES, `Step 2/2 — 🌍 Translating to ${langList} in parallel...`)
-
         console.log(`[TRANSLATE] Using model: ${TRANSLATION_MODEL}`)
-        const translationPromises = targetLangs.map(async (lang) => {
-          try {
-            const prompt = buildSingleLangTranslationPrompt(allEnQuestions, lang)
-            const res = await fetch('https://api.anthropic.com/v1/messages', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'x-api-key': import.meta.env.VITE_ANTHROPIC_API_KEY,
-                'anthropic-version': '2023-06-01',
-                'anthropic-dangerous-direct-browser-access': 'true',
-              },
-              body: JSON.stringify({
-                model: TRANSLATION_MODEL,
-                max_tokens: 4096,
-                messages: [{ role: 'user', content: prompt }],
-              }),
-            })
-            if (!res.ok) {
-              const errBody = await res.json().catch(() => ({}))
-              throw new Error(`API ${res.status}: ${errBody.error?.message || 'Unknown'}`)
+
+        // Split into sub-batches of 8 to avoid Haiku truncating large JSON
+        const TRANSLATE_BATCH_SIZE = 8
+        const transChunks = []
+        for (let i = 0; i < allEnQuestions.length; i += TRANSLATE_BATCH_SIZE) {
+          transChunks.push(allEnQuestions.slice(i, i + TRANSLATE_BATCH_SIZE))
+        }
+
+        for (let c = 0; c < transChunks.length; c++) {
+          if (abortRef.current) break
+          const chunkLabel = transChunks.length > 1 ? ` (batch ${c + 1}/${transChunks.length})` : ''
+          switchStreamingUX(STEP2_MESSAGES, `Step 2/2 — 🌍 Translating to ${langList}${chunkLabel}...`)
+
+          const translationPromises = targetLangs.map(async (lang) => {
+            try {
+              const prompt = buildSingleLangTranslationPrompt(transChunks[c], lang)
+              const res = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'x-api-key': import.meta.env.VITE_ANTHROPIC_API_KEY,
+                  'anthropic-version': '2023-06-01',
+                  'anthropic-dangerous-direct-browser-access': 'true',
+                },
+                body: JSON.stringify({
+                  model: TRANSLATION_MODEL,
+                  max_tokens: 4096,
+                  messages: [{ role: 'user', content: prompt }],
+                }),
+              })
+              if (!res.ok) {
+                const errBody = await res.json().catch(() => ({}))
+                throw new Error(`API ${res.status}: ${errBody.error?.message || 'Unknown'}`)
+              }
+              const data = await res.json()
+              console.log(`[TRANSLATE] ${lang} chunk ${c + 1} OK — ${data.usage?.output_tokens || 0} tokens`)
+              return { lang, data }
+            } catch (err) {
+              console.error(`[TRANSLATE] ${lang} chunk ${c + 1} FAILED:`, err.message)
+              return { lang, data: null }
             }
-            const data = await res.json()
-            console.log(`[TRANSLATE] ${lang} OK — ${data.usage?.output_tokens || 0} tokens`)
-            return { lang, data }
-          } catch (err) {
-            console.error(`[TRANSLATE] ${lang} FAILED:`, err.message)
-            return { lang, data: null }
-          }
-        })
+          })
 
-        const results = await Promise.allSettled(translationPromises)
+          const results = await Promise.allSettled(translationPromises)
 
-        for (const result of results) {
-          if (result.status !== 'fulfilled' || !result.value.data) continue
-          const { lang, data } = result.value
-          totalInputTokens += data.usage?.input_tokens || 0
-          totalOutputTokens += data.usage?.output_tokens || 0
-          try {
-            const transText = data.content?.[0]?.text || ''
-            const translations = parsePartialJSON(transText)
-            if (Array.isArray(translations)) {
-              for (const tr of translations) {
-                const idx = tr.index
-                if (idx >= 0 && idx < allEnQuestions.length) {
-                  if (tr[`question_${lang}`]) allEnQuestions[idx][`question_${lang}`] = tr[`question_${lang}`]
-                  if (tr[`answers_${lang}`]) allEnQuestions[idx][`answers_${lang}`] = tr[`answers_${lang}`]
-                  if (tr[`explanation_${lang}`]) allEnQuestions[idx][`explanation_${lang}`] = tr[`explanation_${lang}`]
+          for (const result of results) {
+            if (result.status !== 'fulfilled' || !result.value.data) continue
+            const { lang, data } = result.value
+            totalInputTokens += data.usage?.input_tokens || 0
+            totalOutputTokens += data.usage?.output_tokens || 0
+            try {
+              const transText = data.content?.[0]?.text || ''
+              const translations = parsePartialJSON(transText)
+              if (Array.isArray(translations)) {
+                for (const tr of translations) {
+                  const idx = tr.index
+                  const globalIdx = c * TRANSLATE_BATCH_SIZE + idx
+                  if (globalIdx >= 0 && globalIdx < allEnQuestions.length) {
+                    if (tr[`question_${lang}`]) allEnQuestions[globalIdx][`question_${lang}`] = tr[`question_${lang}`]
+                    if (tr[`answers_${lang}`]) allEnQuestions[globalIdx][`answers_${lang}`] = tr[`answers_${lang}`]
+                    if (tr[`explanation_${lang}`]) allEnQuestions[globalIdx][`explanation_${lang}`] = tr[`explanation_${lang}`]
+                  }
                 }
               }
+            } catch (parseErr) {
+              console.warn(`Translation parse ${lang} chunk ${c + 1} failed:`, parseErr.message)
             }
-          } catch (parseErr) {
-            console.warn(`Translation parse ${lang} failed:`, parseErr.message)
           }
         }
       }
