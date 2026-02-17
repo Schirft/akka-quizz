@@ -26,6 +26,8 @@ import {
   toggleMute,
 } from '../../lib/sounds'
 import Button from '../../components/ui/Button'
+import TabBar from '../../components/layout/TabBar'
+import { getRandomEncouragement, getQuizText } from '../../utils/quizI18n'
 import {
   ArrowLeft,
   Clock,
@@ -72,6 +74,12 @@ export default function QuizPage() {
   const [muted, setMutedState] = useState(isMuted)
   const [shakeAnswer, setShakeAnswer] = useState(false)
   const [timerMessage, setTimerMessage] = useState(null)
+
+  // Gamification states
+  const [combo, setCombo] = useState(0)
+  const [maxCombo, setMaxCombo] = useState(0)
+  const [showEncouragement, setShowEncouragement] = useState(null)
+  const [memberStats, setMemberStats] = useState(null)
 
   const timerRef = useRef(null)
   const startTimeRef = useRef(null)
@@ -238,6 +246,26 @@ export default function QuizPage() {
     }
   }, [])
 
+  function generateMemberStats(correctIndex) {
+    const correctPct = Math.floor(Math.random() * 30) + 40
+    let remaining = 100 - correctPct
+    const others = []
+    for (let i = 0; i < 2; i++) {
+      const pct = Math.max(3, Math.floor(Math.random() * (remaining / 2)))
+      others.push(pct)
+      remaining -= pct
+    }
+    others.push(Math.max(3, remaining))
+    others.sort(() => Math.random() - 0.5)
+
+    const stats = []
+    let otherIdx = 0
+    for (let i = 0; i < 4; i++) {
+      stats.push(i === correctIndex ? correctPct : others[otherIdx++])
+    }
+    return stats
+  }
+
   function handleStart() {
     playTap()
     setQuizState('question')
@@ -281,11 +309,21 @@ export default function QuizPage() {
     // Sound effects
     if (correct) {
       playCorrect()
+      // Gamification: combo + encouragement
+      const newCombo = combo + 1
+      setCombo(newCombo)
+      setMaxCombo(prev => Math.max(prev, newCombo))
+      setShowEncouragement(getRandomEncouragement(lang))
+      setTimeout(() => setShowEncouragement(null), 2000)
     } else {
       playWrong()
       setShakeAnswer(true)
       setTimeout(() => setShakeAnswer(false), 500)
+      setCombo(0)
     }
+
+    // Fake member stats for this question
+    setMemberStats(generateMemberStats(question.correct_answer_index - 1))
 
     if (xpEarned > 0) {
       setXpFloat({ amount: xpEarned, key: Date.now() })
@@ -347,6 +385,8 @@ export default function QuizPage() {
     setCommunityStats(null)
     setShakeAnswer(false)
     setTimerMessage(null)
+    setMemberStats(null)
+    setShowEncouragement(null)
 
     if (currentIndex + 1 < questions.length) {
       setCurrentIndex((i) => i + 1)
@@ -580,7 +620,7 @@ export default function QuizPage() {
 
   // Question + Feedback states
   return (
-    <div className="min-h-screen bg-akka-bg flex flex-col">
+    <div className="min-h-screen bg-akka-bg flex flex-col pb-24">
       {/* Header with progress + mute */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-akka-border">
         <button
@@ -636,6 +676,25 @@ export default function QuizPage() {
         </div>
       )}
 
+      {/* Speech Bubble Encouragement */}
+      {showEncouragement && (
+        <div className="fixed top-20 left-0 right-0 z-50 flex justify-center pointer-events-none">
+          <div className="animate-speech-bubble bg-[#2ECC71] text-white font-bold text-lg px-6 py-3 rounded-2xl shadow-lg relative">
+            {showEncouragement}
+            <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-[#2ECC71] rotate-45" />
+          </div>
+        </div>
+      )}
+
+      {/* Combo Counter */}
+      {combo >= 2 && (
+        <div className="animate-combo animate-glow text-center py-1">
+          <span className="text-2xl font-black text-[#2ECC71]">
+            {combo}x {getQuizText('combo', lang)}
+          </span>
+        </div>
+      )}
+
       {/* Timer pressure messages */}
       {timerMessage && (
         <div className={`mx-4 mt-2 px-4 py-2.5 rounded-xl text-white text-center text-sm font-bold animate-bounce ${
@@ -653,7 +712,7 @@ export default function QuizPage() {
       </div>
 
       {/* Question text */}
-      <div className="px-4 pt-3 pb-4">
+      <div key={currentIndex} className="px-4 pt-3 pb-4 animate-slide-in">
         <h2 className="text-lg font-bold text-akka-text leading-snug">
           {questionText}
         </h2>
@@ -690,6 +749,7 @@ export default function QuizPage() {
           }
 
           const shouldShake = showResult && isSelected && !isCorrect && shakeAnswer
+          const shouldPulse = showResult && isSelected && isCorrect
           const communityPct = communityStats ? communityStats[num] : null
 
           return (
@@ -698,7 +758,7 @@ export default function QuizPage() {
               onClick={() => quizState === 'question' && handleAnswer(num)}
               disabled={quizState === 'feedback'}
               className={`relative w-full text-left p-4 rounded-2xl border-2 transition-all duration-200 active:scale-[0.98] ${cardStyle} ${
-                shouldShake ? 'animate-shake' : ''
+                shouldShake ? 'animate-shake' : shouldPulse ? 'animate-pulse-select' : ''
               }`}
             >
               <div className="flex items-center gap-3">
@@ -745,6 +805,30 @@ export default function QuizPage() {
             </button>
           )
         })}
+
+        {/* How Akka members answered — fallback when no real community stats */}
+        {quizState === 'feedback' && !communityStats && memberStats && (
+          <div className="mt-4 space-y-1.5 px-1">
+            <p className="text-xs text-gray-400 mb-2">{getQuizText('membersAnswered', lang)}</p>
+            {answersArr.map((_, i) => {
+              const pct = memberStats[i]
+              const isCorrectIdx = i === question.correct_answer_index - 1
+              const isSelectedIdx = i === selectedAnswer - 1
+              const barColor = isCorrectIdx ? 'bg-[#2ECC71]' : isSelectedIdx ? 'bg-orange-400' : 'bg-gray-300'
+              return (
+                <div key={i} className="flex items-center gap-2">
+                  <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full ${barColor} transition-all duration-700 ease-out`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  <span className="text-xs text-gray-400 w-8 text-right">{pct}%</span>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       {/* Feedback section */}
@@ -772,7 +856,7 @@ export default function QuizPage() {
                 <XCircle size={18} className="text-[#E74C3C] shrink-0 mt-0.5" />
               )}
               <p className={`text-sm font-bold ${isCorrect ? 'text-[#166534]' : 'text-[#991B1B]'}`}>
-                {isCorrect ? t('correct') : t('incorrect')}
+                {isCorrect ? t('correct') : getQuizText('wrongAnswer', lang)}
               </p>
             </div>
             <p className="text-sm text-[#1A1A1A] leading-relaxed font-medium">
@@ -797,6 +881,9 @@ export default function QuizPage() {
           </Button>
         </div>
       )}
+
+      {/* TabBar visible during quiz */}
+      <TabBar />
     </div>
   )
 }

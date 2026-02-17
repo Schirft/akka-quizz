@@ -113,3 +113,88 @@ a,
 summary {
   cursor: pointer;
 }
+
+/* ====== QUIZ GAMIFICATION ANIMATIONS ====== */
+
+/* Speech bubble */
+@keyframes speech-bubble-in {
+  0% { transform: translateX(120%) scale(0.5); opacity: 0; }
+  20% { transform: translateX(0) scale(1.1); opacity: 1; }
+  30% { transform: translateX(0) scale(1); opacity: 1; }
+  80% { transform: translateX(0) scale(1); opacity: 1; }
+  100% { transform: translateX(-120%) scale(0.8); opacity: 0; }
+}
+.animate-speech-bubble {
+  animation: speech-bubble-in 2s ease-in-out forwards;
+}
+
+/* Pulse on select */
+@keyframes pulse-select {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.03); }
+  100% { transform: scale(1); }
+}
+.animate-pulse-select { animation: pulse-select 0.3s ease-in-out; }
+
+/* XP Float */
+@keyframes float-xp {
+  0% { transform: translateY(0); opacity: 1; }
+  100% { transform: translateY(-60px); opacity: 0; }
+}
+.animate-float-xp { animation: float-xp 1s ease-out forwards; }
+
+/* Slide in */
+@keyframes slide-in-right {
+  0% { transform: translateX(30px); opacity: 0; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+.animate-slide-in { animation: slide-in-right 0.3s ease-out; }
+
+/* Combo counter */
+@keyframes combo-pop {
+  0% { transform: scale(0.5); opacity: 0; }
+  50% { transform: scale(1.3); }
+  100% { transform: scale(1); opacity: 1; }
+}
+.animate-combo { animation: combo-pop 0.4s ease-out; }
+
+/* Combo glow */
+@keyframes combo-glow {
+  0%, 100% { text-shadow: 0 0 5px rgba(46, 204, 113, 0.5); }
+  50% { text-shadow: 0 0 20px rgba(46, 204, 113, 0.8), 0 0 40px rgba(46, 204, 113, 0.4); }
+}
+.animate-glow { animation: combo-glow 1s ease-in-out infinite; }
+
+/* Progress bar pulse */
+@keyframes progress-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(46, 204, 113, 0); }
+}
+.animate-progress-pulse { animation: progress-pulse 0.6s ease-out; }
+
+/* Star border spin */
+@keyframes star-border-spin {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+.animate-star-border {
+  background: linear-gradient(90deg, #F1C40F, #E67E22, #F1C40F, #E67E22);
+  background-size: 200% 100%;
+  animation: star-border-spin 2s linear infinite;
+  padding: 3px;
+  border-radius: 1.5rem;
+}
+
+/* Gradient text */
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+.animate-gradient-text {
+  background: linear-gradient(90deg, #F1C40F, #E67E22, #F39C12, #F1C40F);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: gradient-shift 2s ease-in-out infinite;
+}
