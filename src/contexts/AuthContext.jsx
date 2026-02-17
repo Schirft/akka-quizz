@@ -11,60 +11,46 @@ export function AuthProvider({ children }) {
 
   async function fetchProfile(userId) {
     try {
-      const { data } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single()
-      return data || null
+      const result = await Promise.race([
+        supabase.from("profiles").select("*").eq("id", userId).single(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 3000))
+      ])
+      return result.data || null
     } catch {
       return null
     }
   }
 
+  // Effect 1 : Auth only — FAST, non-async
   useEffect(() => {
     let mounted = true
-
-    // Safety timeout — fallback if onAuthStateChange never fires
     const safetyTimer = setTimeout(() => {
-      if (mounted) {
-        console.warn('[AuthContext] Safety timeout after 5s')
-        setLoading(false)
-      }
+      if (mounted) setLoading(false)
     }, 5000)
 
-    // UNIQUE source of truth: onAuthStateChange
-    // Supabase v2+ emits INITIAL_SESSION automatically — no need for getSession()
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('[AuthContext] Auth event:', event, !!session)
-
+      (event, session) => {
+        console.log('[AuthContext] Auth event:', event)
         if (!mounted) return
-
         setUser(session?.user ?? null)
-
-        if (session?.user) {
-          try {
-            const p = await fetchProfile(session.user.id)
-            if (mounted) setProfile(p)
-          } catch (err) {
-            console.warn('[AuthContext] Profile fetch error:', err.message)
-          }
-        } else {
-          setProfile(null)
-        }
-
+        if (!session?.user) setProfile(null)
         setLoading(false)
         clearTimeout(safetyTimer)
       }
     )
 
-    return () => {
-      mounted = false
-      clearTimeout(safetyTimer)
-      subscription.unsubscribe()
-    }
+    return () => { mounted = false; clearTimeout(safetyTimer); subscription.unsubscribe() }
   }, [])
+
+  // Effect 2 : Profile loading — background, non-blocking
+  useEffect(() => {
+    if (!user) return
+    let mounted = true
+    fetchProfile(user.id).then(p => {
+      if (mounted) setProfile(p)
+    })
+    return () => { mounted = false }
+  }, [user?.id])
 
   async function signIn(email, password) {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
