@@ -234,6 +234,40 @@ export default function GeneratePage() {
     return m > 0 ? `${m}m ${s}s` : `${s}s`
   }
 
+  // ── Reusable sub-batch generator: calls Claude API for N questions ──
+  async function generateSubBatch({ requestCount, systemPrompt, maxTokens }) {
+    const prompt = buildUserPrompt({ count: requestCount, mode, category, theme, difficulty })
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': import.meta.env.VITE_ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: GENERATION_MODEL,
+        max_tokens: maxTokens,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    })
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}))
+      throw new Error(`API error ${res.status}: ${errData.error?.message || 'Unknown'}`)
+    }
+    const data = await res.json()
+    const text = data.content?.[0]?.text || ''
+    console.log(`[GEN] Sub-batch raw response: ${text.length} chars`)
+    const questions = parsePartialJSON(text)
+    if (!Array.isArray(questions)) throw new Error('Parsed result is not an array')
+    return {
+      questions,
+      inputTokens: data.usage?.input_tokens || 0,
+      outputTokens: data.usage?.output_tokens || 0,
+    }
+  }
+
   /* ──────────────── HOTFIX A: 2-step generation ──────────────── */
   async function handleGenerate(resumeFrom = 0) {
     if (!import.meta.env.VITE_ANTHROPIC_API_KEY) {
@@ -271,14 +305,6 @@ export default function GeneratePage() {
 
     const startTime = Date.now()
     const systemPrompt = customPrompt || AI_SYSTEM_PROMPT
-
-    // Split into batches of 5
-    const BATCH_SIZE = 5
-    const remaining = totalRequested - resumeFrom
-    const batches = []
-    for (let i = 0; i < remaining; i += BATCH_SIZE) {
-      batches.push(Math.min(BATCH_SIZE, remaining - i))
-    }
 
     setProgress({ done: resumeFrom, total: totalRequested })
 
@@ -320,266 +346,225 @@ export default function GeneratePage() {
     let totalInputTokens = 0
     let totalOutputTokens = 0
 
-    // ── Process each batch sequentially ──
-    for (let bIdx = 0; bIdx < batches.length; bIdx++) {
-      if (abortRef.current) break
+    try {
+      // ── STEP 1: Generate EN questions in sub-batches of max 8 ──
+      const SUB_BATCH_SIZE = 8
+      const remaining = totalRequested - resumeFrom
+      const subBatches = []
+      let rem = remaining
+      while (rem > 0) {
+        const size = Math.min(rem, SUB_BATCH_SIZE)
+        subBatches.push(size)
+        rem -= size
+      }
+      console.log(`[GEN] Using model: ${GENERATION_MODEL}`)
+      console.log(`[GEN] Will generate ${remaining} questions in ${subBatches.length} sub-batches:`, subBatches)
 
-      const batchCount = batches[bIdx]
+      let allEnQuestions = []
 
-      try {
-        // ── STEP 1: Generate EN-only questions ──
-        // Request count+1 because LLMs systematically under-generate by 1
-        const requestCount = batchCount + 1
-        const userPrompt = buildUserPrompt({
-          count: requestCount,
-          mode,
-          category,
-          theme,
-          difficulty,
-        })
+      for (let sIdx = 0; sIdx < subBatches.length; sIdx++) {
+        if (abortRef.current) break
+        const wantCount = subBatches[sIdx]
+        const requestCount = wantCount + 1 // +1 to compensate LLM under-generation
 
-        const maxTokensStep1 = batchCount <= 5 ? 6000 : 8000
-        console.log(`[GEN] Using model: ${GENERATION_MODEL}`)
-        console.log(`[GEN] Requesting ${requestCount} (want ${batchCount}), maxTokens=${maxTokensStep1}`)
+        const subLabel = needsTranslation
+          ? `Step 1/2 — 🧠 Generating questions (batch ${sIdx + 1}/${subBatches.length})...`
+          : `🧠 Generating questions (batch ${sIdx + 1}/${subBatches.length})...`
+        if (sIdx === 0) switchStreamingUX(STEP1_MESSAGES, subLabel)
+        else setStepLabel(subLabel)
 
-        const response = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': import.meta.env.VITE_ANTHROPIC_API_KEY,
-            'anthropic-version': '2023-06-01',
-            'anthropic-dangerous-direct-browser-access': 'true',
-          },
-          body: JSON.stringify({
-            model: GENERATION_MODEL,
-            max_tokens: maxTokensStep1,
-            system: systemPrompt,
-            messages: [{ role: 'user', content: userPrompt }],
-          }),
-        })
+        console.log(`[GEN] Sub-batch ${sIdx + 1}: requesting ${requestCount} (want ${wantCount})`)
+        const result = await generateSubBatch({ requestCount, systemPrompt, maxTokens: 8000 })
+        totalInputTokens += result.inputTokens
+        totalOutputTokens += result.outputTokens
 
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({}))
-          throw new Error(`API error ${response.status}: ${errData.error?.message || 'Unknown'}`)
+        let subQuestions = result.questions
+        console.log(`[GEN] Sub-batch ${sIdx + 1}: parsed ${subQuestions.length}/${requestCount}`)
+
+        // Truncate to wanted count
+        if (subQuestions.length > wantCount) {
+          subQuestions = subQuestions.slice(0, wantCount)
         }
 
-        const data = await response.json()
-        const text = data.content?.[0]?.text || ''
-
-        totalInputTokens += data.usage?.input_tokens || 0
-        totalOutputTokens += data.usage?.output_tokens || 0
-
-        // Robust JSON parsing
-        console.log(`[GEN] Raw response length: ${text.length} chars`)
-        let enQuestions = parsePartialJSON(text)
-        if (!Array.isArray(enQuestions)) throw new Error('Parsed result is not an array')
-        console.log(`[GEN] Parsed ${enQuestions.length}/${requestCount} questions (want ${batchCount})`)
-
-        // Truncate to user-requested count first
-        if (enQuestions.length > batchCount) {
-          enQuestions = enQuestions.slice(0, batchCount)
-          console.log(`[GEN] Truncated to ${batchCount} questions`)
-        }
-
-        // ── RETRY: If we still got fewer than the user wanted, generate the missing ones ──
-        if (enQuestions.length < batchCount && !abortRef.current) {
-          const missing = batchCount - enQuestions.length
-          console.log(`[GEN] Got ${enQuestions.length}/${batchCount}, generating ${missing} more...`)
-          setStepLabel(`⚠️ Got ${enQuestions.length}/${batchCount} questions, generating ${missing} more...`)
-
-          const retryPrompt = buildUserPrompt({
-            count: missing,
-            mode,
-            category,
-            theme,
-            difficulty,
-          })
-          const retryRes = await fetch('https://api.anthropic.com/v1/messages', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-api-key': import.meta.env.VITE_ANTHROPIC_API_KEY,
-              'anthropic-version': '2023-06-01',
-              'anthropic-dangerous-direct-browser-access': 'true',
-            },
-            body: JSON.stringify({
-              model: GENERATION_MODEL,
-              max_tokens: maxTokensStep1,
-              system: systemPrompt,
-              messages: [{ role: 'user', content: retryPrompt }],
-            }),
-          })
-          if (retryRes.ok) {
-            const retryData = await retryRes.json()
-            totalInputTokens += retryData.usage?.input_tokens || 0
-            totalOutputTokens += retryData.usage?.output_tokens || 0
-            try {
-              const extraQs = parsePartialJSON(retryData.content?.[0]?.text || '')
-              if (Array.isArray(extraQs) && extraQs.length > 0) {
-                enQuestions = [...enQuestions, ...extraQs]
-              }
-            } catch (retryErr) {
-              console.warn('Retry parse failed:', retryErr.message)
+        // Retry if still short
+        if (subQuestions.length < wantCount && !abortRef.current) {
+          const missing = wantCount - subQuestions.length
+          console.log(`[GEN] Sub-batch ${sIdx + 1}: retrying for ${missing} missing questions`)
+          setStepLabel(`⚠️ Got ${subQuestions.length}/${wantCount}, generating ${missing} more...`)
+          try {
+            const retry = await generateSubBatch({ requestCount: missing + 1, systemPrompt, maxTokens: 6000 })
+            totalInputTokens += retry.inputTokens
+            totalOutputTokens += retry.outputTokens
+            if (retry.questions.length > 0) {
+              subQuestions = [...subQuestions, ...retry.questions]
             }
+          } catch (retryErr) {
+            console.warn(`[GEN] Retry failed:`, retryErr.message)
           }
         }
-        // Truncate if we got too many
-        if (enQuestions.length > batchCount) {
-          enQuestions = enQuestions.slice(0, batchCount)
+
+        // Final truncate
+        if (subQuestions.length > wantCount) {
+          subQuestions = subQuestions.slice(0, wantCount)
         }
-        console.log(`[GEN] Final question count: ${enQuestions.length}/${batchCount}`)
 
-        // ── STEP 2: Translate in PARALLEL (one API call per language) ──
-        if (needsTranslation && !abortRef.current) {
-          const langLabels = { fr: '🇫🇷 FR', it: '🇮🇹 IT', es: '🇪🇸 ES' }
-          const targetLangs = languages.filter(l => l !== 'en')
-          const langList = targetLangs.map(l => langLabels[l] || l).join(', ')
-          switchStreamingUX(STEP2_MESSAGES, `Step 2/2 — 🌍 Translating to ${langList} in parallel...`)
+        allEnQuestions = [...allEnQuestions, ...subQuestions]
+        setProgress({ done: resumeFrom + allEnQuestions.length, total: totalRequested })
+        console.log(`[GEN] Sub-batch ${sIdx + 1} done: ${subQuestions.length}/${wantCount}, total so far: ${allEnQuestions.length}`)
+      }
 
-          // Fire all translation calls simultaneously
-          console.log(`[TRANSLATE] Using model: ${TRANSLATION_MODEL}`)
-          const translationPromises = targetLangs.map(async (lang) => {
-            try {
-              const prompt = buildSingleLangTranslationPrompt(enQuestions, lang)
-              const res = await fetch('https://api.anthropic.com/v1/messages', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'x-api-key': import.meta.env.VITE_ANTHROPIC_API_KEY,
-                  'anthropic-version': '2023-06-01',
-                  'anthropic-dangerous-direct-browser-access': 'true',
-                },
-                body: JSON.stringify({
-                  model: TRANSLATION_MODEL,
-                  max_tokens: 4096,
-                  messages: [{ role: 'user', content: prompt }],
-                }),
-              })
-              if (!res.ok) {
-                const errBody = await res.json().catch(() => ({}))
-                throw new Error(`API ${res.status}: ${errBody.error?.message || 'Unknown'}`)
-              }
-              const data = await res.json()
-              console.log(`[TRANSLATE] ${lang} OK — ${data.usage?.output_tokens || 0} tokens`)
-              return { lang, data }
-            } catch (err) {
-              console.error(`[TRANSLATE] ${lang} FAILED:`, err.message)
-              return { lang, data: null }
+      // Final truncate to exact requested count
+      if (allEnQuestions.length > remaining) {
+        allEnQuestions = allEnQuestions.slice(0, remaining)
+      }
+      console.log(`[GEN] All EN questions: ${allEnQuestions.length}/${remaining}`)
+
+      // ── STEP 2: Translate ALL questions in parallel ──
+      if (needsTranslation && allEnQuestions.length > 0 && !abortRef.current) {
+        const langLabels = { fr: '🇫🇷 FR', it: '🇮🇹 IT', es: '🇪🇸 ES' }
+        const targetLangs = languages.filter(l => l !== 'en')
+        const langList = targetLangs.map(l => langLabels[l] || l).join(', ')
+        switchStreamingUX(STEP2_MESSAGES, `Step 2/2 — 🌍 Translating to ${langList} in parallel...`)
+
+        console.log(`[TRANSLATE] Using model: ${TRANSLATION_MODEL}`)
+        const translationPromises = targetLangs.map(async (lang) => {
+          try {
+            const prompt = buildSingleLangTranslationPrompt(allEnQuestions, lang)
+            const res = await fetch('https://api.anthropic.com/v1/messages', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': import.meta.env.VITE_ANTHROPIC_API_KEY,
+                'anthropic-version': '2023-06-01',
+                'anthropic-dangerous-direct-browser-access': 'true',
+              },
+              body: JSON.stringify({
+                model: TRANSLATION_MODEL,
+                max_tokens: 4096,
+                messages: [{ role: 'user', content: prompt }],
+              }),
+            })
+            if (!res.ok) {
+              const errBody = await res.json().catch(() => ({}))
+              throw new Error(`API ${res.status}: ${errBody.error?.message || 'Unknown'}`)
             }
-          })
+            const data = await res.json()
+            console.log(`[TRANSLATE] ${lang} OK — ${data.usage?.output_tokens || 0} tokens`)
+            return { lang, data }
+          } catch (err) {
+            console.error(`[TRANSLATE] ${lang} FAILED:`, err.message)
+            return { lang, data: null }
+          }
+        })
 
-          const results = await Promise.allSettled(translationPromises)
+        const results = await Promise.allSettled(translationPromises)
 
-          // Merge each language's translations into EN questions
-          for (const result of results) {
-            if (result.status !== 'fulfilled' || !result.value.data) continue
-            const { lang, data } = result.value
-            totalInputTokens += data.usage?.input_tokens || 0
-            totalOutputTokens += data.usage?.output_tokens || 0
-            try {
-              const transText = data.content?.[0]?.text || ''
-              const translations = parsePartialJSON(transText)
-              if (Array.isArray(translations)) {
-                for (const tr of translations) {
-                  const idx = tr.index
-                  if (idx >= 0 && idx < enQuestions.length) {
-                    if (tr[`question_${lang}`]) enQuestions[idx][`question_${lang}`] = tr[`question_${lang}`]
-                    if (tr[`answers_${lang}`]) enQuestions[idx][`answers_${lang}`] = tr[`answers_${lang}`]
-                    if (tr[`explanation_${lang}`]) enQuestions[idx][`explanation_${lang}`] = tr[`explanation_${lang}`]
-                  }
+        for (const result of results) {
+          if (result.status !== 'fulfilled' || !result.value.data) continue
+          const { lang, data } = result.value
+          totalInputTokens += data.usage?.input_tokens || 0
+          totalOutputTokens += data.usage?.output_tokens || 0
+          try {
+            const transText = data.content?.[0]?.text || ''
+            const translations = parsePartialJSON(transText)
+            if (Array.isArray(translations)) {
+              for (const tr of translations) {
+                const idx = tr.index
+                if (idx >= 0 && idx < allEnQuestions.length) {
+                  if (tr[`question_${lang}`]) allEnQuestions[idx][`question_${lang}`] = tr[`question_${lang}`]
+                  if (tr[`answers_${lang}`]) allEnQuestions[idx][`answers_${lang}`] = tr[`answers_${lang}`]
+                  if (tr[`explanation_${lang}`]) allEnQuestions[idx][`explanation_${lang}`] = tr[`explanation_${lang}`]
                 }
               }
-            } catch (parseErr) {
-              console.warn(`Translation parse ${lang} failed:`, parseErr.message)
             }
-          }
-
-          // Switch back label for next batch if any
-          if (bIdx < batches.length - 1) {
-            switchStreamingUX(STEP1_MESSAGES, 'Step 1/2 — 🧠 Generating questions in English...')
+          } catch (parseErr) {
+            console.warn(`Translation parse ${lang} failed:`, parseErr.message)
           }
         }
-
-        // ── Insert into Supabase immediately ──
-        const insertPayloads = []
-        const prefixes = []
-
-        for (const q of enQuestions) {
-          const prefix = (q.question_en || '').slice(0, 50)
-          prefixes.push(prefix)
-          insertPayloads.push({
-            question_en: q.question_en,
-            question_fr: q.question_fr || null,
-            question_it: q.question_it || null,
-            question_es: q.question_es || null,
-            answers_en: q.answers_en,
-            answers_fr: q.answers_fr || null,
-            answers_it: q.answers_it || null,
-            answers_es: q.answers_es || null,
-            explanation_en: q.explanation_en,
-            explanation_fr: q.explanation_fr || null,
-            explanation_it: q.explanation_it || null,
-            explanation_es: q.explanation_es || null,
-            correct_answer_index: q.correct_answer_index,
-            macro_category: q.macro_category,
-            sub_category: q.sub_category || null,
-            topic: q.topic || null,
-            difficulty: q.difficulty || 'medium',
-            status: 'pending_review',
-            source: 'ai',
-            generation_batch_id: batchRecord.id,
-          })
-        }
-
-        // Duplicate check
-        const dupeSet = new Set()
-        if (prefixes.filter(Boolean).length > 0) {
-          const dupeChecks = await Promise.all(
-            prefixes.filter(Boolean).map((p) =>
-              supabase.from('questions').select('id').ilike('question_en', `${p}%`).limit(1)
-            )
-          )
-          dupeChecks.forEach((res, idx) => {
-            if (res.data?.length > 0) dupeSet.add(idx)
-          })
-        }
-
-        const toInsert = insertPayloads.filter((_, idx) => !dupeSet.has(idx))
-
-        if (toInsert.length > 0) {
-          const { data: inserted, error: iErr } = await supabase
-            .from('questions')
-            .insert(toInsert)
-            .select()
-
-          if (!iErr && inserted) {
-            allGenerated = [...allGenerated, ...inserted]
-            setGenerated((prev) => [...prev, ...inserted])
-            setProgress({ done: allGenerated.length, total: totalRequested })
-            // Staggered slide-in
-            inserted.forEach((_, qi) => {
-              setTimeout(() => {
-                setVisibleCount((v) => v + 1)
-              }, qi * 300)
-            })
-          }
-        }
-
-        // Update progress
-        setProgress({ done: allGenerated.length, total: totalRequested })
-
-      } catch (err) {
-        console.error('Generation batch error:', err)
-        setError(err.message)
-        // Save resume info so user can continue
-        setResumeInfo({
-          resumeFrom: allGenerated.length,
-          totalRequested,
-          batchId: batchRecord.id,
-          mode, category, theme, difficulty, languages,
-        })
-        break
       }
+
+      // ── Deduplicate against existing DB questions ──
+      if (allEnQuestions.length > 0) {
+        const { data: existingQs } = await supabase
+          .from('questions')
+          .select('question_en')
+          .limit(5000)
+
+        const existingSet = new Set(
+          (existingQs || []).map(q => q.question_en?.toLowerCase().trim())
+        )
+
+        const beforeCount = allEnQuestions.length
+        const localSeen = new Set()
+        allEnQuestions = allEnQuestions.filter(q => {
+          const key = q.question_en?.toLowerCase().trim()
+          if (!key || existingSet.has(key) || localSeen.has(key)) {
+            console.log('[GEN] Duplicate skipped:', key?.substring(0, 50))
+            return false
+          }
+          existingSet.add(key)
+          localSeen.add(key)
+          return true
+        })
+
+        const dupeCount = beforeCount - allEnQuestions.length
+        if (dupeCount > 0) {
+          console.log(`[GEN] ${beforeCount} generated, ${allEnQuestions.length} unique, ${dupeCount} duplicates skipped`)
+          setStepLabel(`⚠️ ${dupeCount} duplicate question${dupeCount > 1 ? 's' : ''} skipped`)
+        }
+      }
+
+      // ── Insert into Supabase ──
+      if (allEnQuestions.length > 0 && !abortRef.current) {
+        const insertPayloads = allEnQuestions.map(q => ({
+          question_en: q.question_en,
+          question_fr: q.question_fr || null,
+          question_it: q.question_it || null,
+          question_es: q.question_es || null,
+          answers_en: q.answers_en,
+          answers_fr: q.answers_fr || null,
+          answers_it: q.answers_it || null,
+          answers_es: q.answers_es || null,
+          explanation_en: q.explanation_en,
+          explanation_fr: q.explanation_fr || null,
+          explanation_it: q.explanation_it || null,
+          explanation_es: q.explanation_es || null,
+          correct_answer_index: q.correct_answer_index,
+          macro_category: q.macro_category,
+          sub_category: q.sub_category || null,
+          topic: q.topic || null,
+          difficulty: q.difficulty || 'medium',
+          status: 'pending_review',
+          source: 'ai',
+          generation_batch_id: batchRecord.id,
+        }))
+
+        const { data: inserted, error: iErr } = await supabase
+          .from('questions')
+          .insert(insertPayloads)
+          .select()
+
+        if (!iErr && inserted) {
+          allGenerated = [...allGenerated, ...inserted]
+          setGenerated(prev => [...prev, ...inserted])
+          setProgress({ done: allGenerated.length, total: totalRequested })
+          inserted.forEach((_, qi) => {
+            setTimeout(() => setVisibleCount(v => v + 1), qi * 300)
+          })
+        }
+      }
+
+      setProgress({ done: allGenerated.length, total: totalRequested })
+
+    } catch (err) {
+      console.error('Generation error:', err)
+      setError(err.message)
+      setResumeInfo({
+        resumeFrom: allGenerated.length,
+        totalRequested,
+        batchId: batchRecord.id,
+        mode, category, theme, difficulty, languages,
+      })
     }
 
     stopStreamingUX()
@@ -664,6 +649,36 @@ export default function GeneratePage() {
       }
     } catch (err) {
       setError('Approve all failed: ' + err.message)
+    }
+  }
+
+  async function approveBatch(questions) {
+    const ids = questions
+      .filter(q => q.status === 'pending_review')
+      .map(q => q.id)
+      .filter(Boolean)
+    if (ids.length === 0) return
+
+    try {
+      const { error: err } = await supabase
+        .from('questions')
+        .update({ status: 'approved', updated_at: new Date().toISOString() })
+        .in('id', ids)
+
+      if (err) {
+        console.error('Approve batch error:', err)
+        return
+      }
+
+      // Update current batch
+      setGenerated(prev => prev.map(q => ids.includes(q.id) ? { ...q, status: 'approved' } : q))
+      // Update archived batches
+      setBatchHistory(prev => prev.map(batch => ({
+        ...batch,
+        questions: batch.questions.map(q => ids.includes(q.id) ? { ...q, status: 'approved' } : q),
+      })))
+    } catch (err) {
+      console.error('Approve batch error:', err)
     }
   }
 
@@ -1018,10 +1033,22 @@ export default function GeneratePage() {
           {/* Generated questions list */}
           {generated.length > 0 && (
             <Card className="p-0 overflow-hidden">
-              <div className="px-4 py-3 border-b border-[#D1D5DB] bg-gray-50/50">
+              <div className="px-4 py-3 border-b border-[#D1D5DB] bg-gray-50/50 flex items-center justify-between">
                 <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
                   Generated Questions ({generated.length})
                 </p>
+                <div className="flex items-center gap-2">
+                  {generated.some(q => q.status === 'pending_review') && (
+                    <button
+                      onClick={() => approveBatch(generated)}
+                      className="flex items-center gap-1 px-2 py-1 text-xs text-green-600 hover:bg-green-50 rounded-lg transition-colors cursor-pointer"
+                      title="Approve all questions in this batch"
+                    >
+                      <CheckCircle size={12} />
+                      Approve All
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="divide-y divide-gray-100 max-h-[500px] overflow-y-auto">
                 {generated.map((q, idx) => (
@@ -1107,9 +1134,19 @@ export default function GeneratePage() {
                   <span className="text-[10px] text-gray-400">
                     {new Date(batch.timestamp).toLocaleTimeString()}
                   </span>
+                  {batch.questions.some(q => q.status === 'pending_review') && (
+                    <button
+                      onClick={() => approveBatch(batch.questions)}
+                      className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-green-600 hover:bg-green-50 rounded transition-colors cursor-pointer"
+                      title="Approve all questions in this batch"
+                    >
+                      <CheckCircle size={10} />
+                      Approve All
+                    </button>
+                  )}
                   <button
                     onClick={() => setBatchHistory(prev => prev.filter((_, idx) => idx !== batchIndex))}
-                    className="p-1 text-gray-400 hover:text-red-400 transition-colors"
+                    className="p-1 text-gray-400 hover:text-red-400 transition-colors cursor-pointer"
                     title="Remove batch from view (questions stay in database)"
                   >
                     <Trash2 size={12} />

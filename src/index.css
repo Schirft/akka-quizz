@@ -105,3 +105,11 @@ textarea {
 .animate-float-up {
   animation: float-up 1s ease-out forwards;
 }
+
+/* Force cursor pointer on all interactive elements */
+button,
+[role="button"],
+a,
+summary {
+  cursor: pointer;
+}
