@@ -94,6 +94,9 @@ export default function GeneratePage() {
   const [error, setError] = useState(null)
   const abortRef = useRef(false)
 
+  // Batch history — accumulates across generations in same session
+  const [batchHistory, setBatchHistory] = useState([])
+
   // Streaming UX state
   const [stepLabel, setStepLabel] = useState('')
   const [stepIndex, setStepIndex] = useState(0)
@@ -134,24 +137,28 @@ export default function GeneratePage() {
             setResumeInfo(data.resumeInfo)
           }
         }
+        if (data.batchHistory?.length > 0) {
+          setBatchHistory(data.batchHistory)
+        }
       }
     } catch {}
   }, [])
 
   // Persist to localStorage
   useEffect(() => {
-    if (generated.length > 0) {
+    if (generated.length > 0 || batchHistory.length > 0) {
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify({
           generated,
           summary,
           batchId,
           resumeInfo,
+          batchHistory,
           savedAt: Date.now(),
         }))
       } catch {}
     }
-  }, [generated, summary, batchId, resumeInfo])
+  }, [generated, summary, batchId, resumeInfo, batchHistory])
 
   // Load custom prompt on mount
   useEffect(() => {
@@ -190,6 +197,7 @@ export default function GeneratePage() {
     setBatchId(null)
     setError(null)
     setResumeInfo(null)
+    setBatchHistory([])
     localStorage.removeItem(STORAGE_KEY)
   }
 
@@ -238,6 +246,16 @@ export default function GeneratePage() {
     setGenerating(true)
     setError(null)
     if (!isResume) {
+      // Archive current batch to history before clearing
+      if (generated.length > 0 && summary) {
+        setBatchHistory(prev => [{
+          id: batchId || Date.now(),
+          questions: generated,
+          timestamp: new Date().toISOString(),
+          duration: summary.duration ? `${summary.duration}s` : '—',
+          cost: summary.cost ? `$${summary.cost.toFixed(4)}` : '—',
+        }, ...prev])
+      }
       setGenerated([])
       setSummary(null)
       setResumeInfo(null)
@@ -348,6 +366,53 @@ export default function GeneratePage() {
         // Robust JSON parsing
         let enQuestions = parsePartialJSON(text)
         if (!Array.isArray(enQuestions)) throw new Error('Parsed result is not an array')
+
+        // ── RETRY: If we got fewer questions than requested, generate the missing ones ──
+        if (enQuestions.length < batchCount && !abortRef.current) {
+          const missing = batchCount - enQuestions.length
+          console.log(`Got ${enQuestions.length}/${batchCount}, generating ${missing} more...`)
+          setStepLabel(`⚠️ Got ${enQuestions.length}/${batchCount} questions, generating ${missing} more...`)
+
+          const retryPrompt = buildUserPrompt({
+            count: missing,
+            mode,
+            category,
+            theme,
+            difficulty,
+          })
+          const retryRes = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': import.meta.env.VITE_ANTHROPIC_API_KEY,
+              'anthropic-version': '2023-06-01',
+              'anthropic-dangerous-direct-browser-access': 'true',
+            },
+            body: JSON.stringify({
+              model: 'claude-sonnet-4-5-20250929',
+              max_tokens: maxTokensStep1,
+              system: systemPrompt,
+              messages: [{ role: 'user', content: retryPrompt }],
+            }),
+          })
+          if (retryRes.ok) {
+            const retryData = await retryRes.json()
+            totalInputTokens += retryData.usage?.input_tokens || 0
+            totalOutputTokens += retryData.usage?.output_tokens || 0
+            try {
+              const extraQs = parsePartialJSON(retryData.content?.[0]?.text || '')
+              if (Array.isArray(extraQs) && extraQs.length > 0) {
+                enQuestions = [...enQuestions, ...extraQs]
+              }
+            } catch (retryErr) {
+              console.warn('Retry parse failed:', retryErr.message)
+            }
+          }
+        }
+        // Truncate if we got too many
+        if (enQuestions.length > batchCount) {
+          enQuestions = enQuestions.slice(0, batchCount)
+        }
 
         // ── STEP 2: Translate in PARALLEL (one API call per language) ──
         if (needsTranslation && !abortRef.current) {
@@ -995,8 +1060,48 @@ export default function GeneratePage() {
             </Card>
           )}
 
+          {/* Previous batch history */}
+          {batchHistory.map((batch, batchIndex) => (
+            <Card key={batch.id} className="p-0 overflow-hidden opacity-75">
+              <div className="px-4 py-2.5 border-b border-[#D1D5DB] bg-gray-50/80 flex items-center justify-between">
+                <p className="text-xs font-semibold text-[#6B7280]">
+                  Batch {batchHistory.length - batchIndex} — {batch.questions.length} questions — {batch.duration} — {batch.cost}
+                </p>
+                <span className="text-[10px] text-gray-400">
+                  {new Date(batch.timestamp).toLocaleTimeString()}
+                </span>
+              </div>
+              <div className="divide-y divide-gray-100 max-h-[300px] overflow-y-auto">
+                {batch.questions.map((q) => (
+                  <div
+                    key={q.id}
+                    onClick={() => setEditQuestion(q)}
+                    className="flex items-center justify-between px-4 py-2.5 hover:bg-gray-50/50 cursor-pointer"
+                  >
+                    <div className="flex-1 min-w-0 mr-3">
+                      <p className="text-sm text-[#1A1A1A] truncate">
+                        {q.question_en?.slice(0, 80)}{q.question_en?.length > 80 ? '...' : ''}
+                      </p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-xs text-[#6B7280]">{q.macro_category}</span>
+                        <span className={`text-xs font-medium capitalize ${
+                          q.difficulty === 'hard' ? 'text-red-600' : q.difficulty === 'medium' ? 'text-amber-600' : 'text-green-600'
+                        }`}>{q.difficulty}</span>
+                        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
+                          q.status === 'approved' ? 'bg-green-100 text-green-700'
+                            : q.status === 'rejected' ? 'bg-red-100 text-red-700'
+                            : 'bg-amber-100 text-amber-700'
+                        }`}>{q.status?.replace('_', ' ')}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          ))}
+
           {/* Empty state */}
-          {!generating && generated.length === 0 && !error && (
+          {!generating && generated.length === 0 && batchHistory.length === 0 && !error && (
             <Card className="py-16 text-center">
               <div className="w-16 h-16 mx-auto rounded-2xl bg-purple-50 flex items-center justify-center mb-4">
                 <Sparkles size={32} className="text-purple-400" />

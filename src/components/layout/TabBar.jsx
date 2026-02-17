@@ -1,17 +1,16 @@
 import { NavLink } from 'react-router-dom'
-import { House, Brain, Newspaper, Trophy, Settings } from 'lucide-react'
+import { House, Brain, Newspaper, Settings } from 'lucide-react'
 import { useLang } from '../../hooks/useLang'
 import { useProfile } from '../../hooks/useProfile'
 
 /**
- * Tabs configuration — 4 bottom navigation items (Profile merged into Home).
+ * Tabs configuration — 3 bottom navigation items (Profile merged into Home).
  * Labels use i18n keys resolved inside the component.
  */
 const TABS = [
   { to: '/', labelKey: 'home', icon: House },
   { to: '/quiz', labelKey: 'quiz', icon: Brain },
   { to: '/news', labelKey: 'news', icon: Newspaper },
-  { to: '/leaderboard', labelKey: 'ranking', icon: Trophy },
 ]
 
 /**

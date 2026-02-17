@@ -13,7 +13,7 @@ import ProgressBar from '../../components/ui/ProgressBar'
 import Button from '../../components/ui/Button'
 import {
   Flame, Play, CheckCircle, Trophy, Loader2, RotateCcw,
-  LogOut, Shield,
+  LogOut, Shield, Medal,
 } from 'lucide-react'
 
 const DAY_LABELS_I18N = {
@@ -39,6 +39,7 @@ export default function HomePage() {
   const [streakHistory, setStreakHistory] = useState([])
   const [replaying, setReplaying] = useState(false)
   const [replayResult, setReplayResult] = useState(null)
+  const [leaders, setLeaders] = useState([])
 
   const dayLabels = DAY_LABELS_I18N[lang] || DAY_LABELS_I18N.en
 
@@ -102,6 +103,14 @@ export default function HomePage() {
         }
       })
       setStreakHistory(history)
+
+      // Fetch top 10 for leaderboard
+      const { data: topPlayers } = await supabase
+        .from('profiles')
+        .select('id, display_name, total_xp, level, current_streak')
+        .order('total_xp', { ascending: false })
+        .limit(10)
+      setLeaders(topPlayers || [])
     }
 
     loadHomeData()
@@ -295,6 +304,70 @@ export default function HomePage() {
           <span className="text-sm font-medium text-akka-text-secondary"> / 1000</span>
         </p>
       </Card>
+
+      {/* Leaderboard */}
+      {leaders.length > 0 && (
+        <Card className="mb-3">
+          <div className="flex items-center gap-2 mb-3">
+            <Trophy size={16} className="text-amber-500" />
+            <p className="text-xs font-semibold uppercase tracking-wide text-akka-text-secondary">
+              {t('ranking')}
+            </p>
+          </div>
+          <div className="space-y-0">
+            {(() => {
+              const myIndex = leaders.findIndex(l => l.id === profile?.id)
+              const medalColors = ['text-amber-500', 'text-gray-400', 'text-orange-400']
+              const medalBg = ['bg-amber-50', 'bg-gray-50', 'bg-orange-50']
+              return leaders.map((leader, i) => {
+                const isMe = leader.id === profile?.id
+                return (
+                  <div
+                    key={leader.id}
+                    className={`flex items-center gap-2.5 py-2 px-2 rounded-lg ${
+                      isMe ? 'bg-[#2ECC71]/10' : ''
+                    } ${i < 3 ? medalBg[i] + ' mb-0.5' : ''}`}
+                  >
+                    <div className="w-6 text-center flex-shrink-0">
+                      {i < 3 ? (
+                        <Medal size={16} className={medalColors[i]} />
+                      ) : (
+                        <span className="text-xs font-semibold text-akka-text-secondary">{i + 1}</span>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm font-medium truncate ${isMe ? 'text-[#1B3D2F] font-semibold' : 'text-akka-text'}`}>
+                        {isMe && <span className="text-[#2ECC71] mr-1">★</span>}
+                        {leader.display_name}
+                      </p>
+                    </div>
+                    <p className="text-sm font-bold text-akka-text tabular-nums flex-shrink-0">
+                      {leader.total_xp?.toLocaleString()} <span className="text-[10px] font-medium text-akka-text-secondary">XP</span>
+                    </p>
+                  </div>
+                )
+              })
+            })()}
+            {/* Show user position if not in top 10 */}
+            {profile && !leaders.find(l => l.id === profile.id) && (
+              <div className="flex items-center gap-2.5 py-2 px-2 rounded-lg bg-[#2ECC71]/10 mt-1 border-t border-gray-100">
+                <div className="w-6 text-center flex-shrink-0">
+                  <span className="text-xs font-semibold text-akka-text-secondary">…</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-[#1B3D2F] truncate">
+                    <span className="text-[#2ECC71] mr-1">★</span>
+                    {displayName}
+                  </p>
+                </div>
+                <p className="text-sm font-bold text-akka-text tabular-nums flex-shrink-0">
+                  {totalXP.toLocaleString()} <span className="text-[10px] font-medium text-akka-text-secondary">XP</span>
+                </p>
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
 
       {/* Recent Badges */}
       {recentBadges.length > 0 && (
