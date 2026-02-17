@@ -102,7 +102,7 @@ export default function ArticleDetailPage() {
 
   const gradient = CATEGORY_GRADIENTS[article.category] || 'from-emerald-600 to-teal-700'
   // Split content into paragraphs
-  const paragraphs = (article.content || article.description || '')
+  const paragraphs = ((article.content || article.description || '').replace(/\s*\[\d+ chars\]$/, ''))
     .split(/\n\n|\n/)
     .filter(Boolean)
 
@@ -172,7 +172,7 @@ export default function ArticleDetailPage() {
           {/* Description highlight */}
           {article.description && article.content && (
             <p className="text-white/70 text-sm font-medium leading-relaxed mb-6 pb-6 border-b border-white/10">
-              {article.description}
+              {(article.description || '').replace(/\s*\[\d+ chars\]$/, '')}
             </p>
           )}
 
@@ -193,7 +193,7 @@ export default function ArticleDetailPage() {
           {/* No content fallback */}
           {paragraphs.length === 0 && article.description && (
             <p className="text-white/60 text-sm leading-relaxed first-letter:text-3xl first-letter:font-bold first-letter:text-[#2ECC71] first-letter:float-left first-letter:mr-1.5 first-letter:mt-0.5 first-letter:leading-none">
-              {article.description}
+              {(article.description || '').replace(/\s*\[\d+ chars\]$/, '')}
             </p>
           )}
         </div>
