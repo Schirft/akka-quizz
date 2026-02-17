@@ -69,17 +69,23 @@ export default function DailyQuizPage() {
       if (quizData) {
         for (const q of quizData) {
           // Fetch the 5 questions
-          const qIds = [
+          const qIdsRaw = [
             q.question_1_id, q.question_2_id, q.question_3_id,
             q.question_4_id, q.question_5_id,
           ]
+          // Filter out null/undefined before querying — .in() with nulls can fail silently
+          const qIds = qIdsRaw.filter(Boolean)
+          if (qIds.length === 0) {
+            quizMap[q.quiz_date] = { id: q.id, questions: [] }
+            continue
+          }
           const { data: questions } = await supabase
             .from('questions')
             .select('id, question_en, macro_category, difficulty')
             .in('id', qIds)
 
-          // Order them by the original order
-          const ordered = qIds.map((id) => questions?.find((qst) => qst.id === id)).filter(Boolean)
+          // Order them by the original slot order (preserving position)
+          const ordered = qIdsRaw.map((id) => questions?.find((qst) => qst.id === id)).filter(Boolean)
           quizMap[q.quiz_date] = { id: q.id, questions: ordered }
         }
       }
@@ -424,10 +430,10 @@ export default function DailyQuizPage() {
                               </span>
                             </div>
                           </div>
-                          {/* HOTFIX E: Remove single question */}
+                          {/* HOTFIX E: Remove single question — always visible for mobile */}
                           <button
-                            onClick={() => removeOneQuestion(date, q.id)}
-                            className="p-1.5 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                            onClick={(e) => { e.stopPropagation(); removeOneQuestion(date, q.id) }}
+                            className="p-1.5 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-all shrink-0"
                             title="Remove this question"
                           >
                             <X size={14} />

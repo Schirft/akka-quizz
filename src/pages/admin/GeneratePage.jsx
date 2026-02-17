@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import { supabase } from '../../lib/supabase'
 import { CATEGORIES } from '../../config/constants'
-import { AI_SYSTEM_PROMPT, buildUserPrompt, buildTranslationPrompt, estimateCost } from '../../config/aiPrompts'
+import { AI_SYSTEM_PROMPT, buildUserPrompt, buildSingleLangTranslationPrompt, estimateCost } from '../../config/aiPrompts'
 import Card from '../../components/ui/Card'
 import QuestionModal from '../../components/admin/QuestionModal'
 import AISettingsPanel from '../../components/admin/AISettingsPanel'
@@ -349,57 +349,64 @@ export default function GeneratePage() {
         let enQuestions = parsePartialJSON(text)
         if (!Array.isArray(enQuestions)) throw new Error('Parsed result is not an array')
 
-        // ── STEP 2: Translate if needed ──
+        // ── STEP 2: Translate in PARALLEL (one API call per language) ──
         if (needsTranslation && !abortRef.current) {
-          const langLabels = { fr: '🇫🇷 French', it: '🇮🇹 Italian', es: '🇪🇸 Spanish' }
+          const langLabels = { fr: '🇫🇷 FR', it: '🇮🇹 IT', es: '🇪🇸 ES' }
           const targetLangs = languages.filter(l => l !== 'en')
           const langList = targetLangs.map(l => langLabels[l] || l).join(', ')
-          switchStreamingUX(STEP2_MESSAGES, `Step 2/2 — 🌍 Translating to ${langList}...`)
+          switchStreamingUX(STEP2_MESSAGES, `Step 2/2 — 🌍 Translating to ${langList} in parallel...`)
 
-          try {
-            const translationPrompt = buildTranslationPrompt(enQuestions, languages)
+          // Fire all translation calls simultaneously
+          const translationPromises = targetLangs.map(async (lang) => {
+            try {
+              const prompt = buildSingleLangTranslationPrompt(enQuestions, lang)
+              const res = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'x-api-key': import.meta.env.VITE_ANTHROPIC_API_KEY,
+                  'anthropic-version': '2023-06-01',
+                  'anthropic-dangerous-direct-browser-access': 'true',
+                },
+                body: JSON.stringify({
+                  model: 'claude-sonnet-4-5-20250929',
+                  max_tokens: 4096,
+                  messages: [{ role: 'user', content: prompt }],
+                }),
+              })
+              if (!res.ok) throw new Error(`API ${res.status}`)
+              const data = await res.json()
+              return { lang, data }
+            } catch (err) {
+              console.warn(`Translation ${lang} failed:`, err.message)
+              return { lang, data: null }
+            }
+          })
 
-            const transResponse = await fetch('https://api.anthropic.com/v1/messages', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'x-api-key': import.meta.env.VITE_ANTHROPIC_API_KEY,
-                'anthropic-version': '2023-06-01',
-                'anthropic-dangerous-direct-browser-access': 'true',
-              },
-              body: JSON.stringify({
-                model: 'claude-sonnet-4-5-20250929',
-                max_tokens: 6000,
-                messages: [{ role: 'user', content: translationPrompt }],
-              }),
-            })
+          const results = await Promise.allSettled(translationPromises)
 
-            if (transResponse.ok) {
-              const transData = await transResponse.json()
-              const transText = transData.content?.[0]?.text || ''
-
-              totalInputTokens += transData.usage?.input_tokens || 0
-              totalOutputTokens += transData.usage?.output_tokens || 0
-
+          // Merge each language's translations into EN questions
+          for (const result of results) {
+            if (result.status !== 'fulfilled' || !result.value.data) continue
+            const { lang, data } = result.value
+            totalInputTokens += data.usage?.input_tokens || 0
+            totalOutputTokens += data.usage?.output_tokens || 0
+            try {
+              const transText = data.content?.[0]?.text || ''
               const translations = parsePartialJSON(transText)
               if (Array.isArray(translations)) {
-                // Merge translations into EN questions
-                for (const t of translations) {
-                  const idx = t.index
+                for (const tr of translations) {
+                  const idx = tr.index
                   if (idx >= 0 && idx < enQuestions.length) {
-                    for (const lang of targetLangs) {
-                      if (t[`question_${lang}`]) enQuestions[idx][`question_${lang}`] = t[`question_${lang}`]
-                      if (t[`answers_${lang}`]) enQuestions[idx][`answers_${lang}`] = t[`answers_${lang}`]
-                      if (t[`explanation_${lang}`]) enQuestions[idx][`explanation_${lang}`] = t[`explanation_${lang}`]
-                    }
+                    if (tr[`question_${lang}`]) enQuestions[idx][`question_${lang}`] = tr[`question_${lang}`]
+                    if (tr[`answers_${lang}`]) enQuestions[idx][`answers_${lang}`] = tr[`answers_${lang}`]
+                    if (tr[`explanation_${lang}`]) enQuestions[idx][`explanation_${lang}`] = tr[`explanation_${lang}`]
                   }
                 }
               }
-            } else {
-              console.warn('Translation API failed, saving EN-only')
+            } catch (parseErr) {
+              console.warn(`Translation parse ${lang} failed:`, parseErr.message)
             }
-          } catch (transErr) {
-            console.warn('Translation failed, saving EN-only:', transErr.message)
           }
 
           // Switch back label for next batch if any

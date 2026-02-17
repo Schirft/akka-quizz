@@ -110,6 +110,36 @@ ${JSON.stringify(slimQuestions)}`
 }
 
 /**
+ * Build a translation prompt for a SINGLE target language (Step 2 parallel).
+ * Used by GeneratePage to fire one API call per language in parallel.
+ */
+export function buildSingleLangTranslationPrompt(questions, targetLang) {
+  const langLabels = { fr: 'French', it: 'Italian', es: 'Spanish' }
+  const label = langLabels[targetLang] || targetLang
+
+  const slimQuestions = questions.map((q, i) => ({
+    index: i,
+    question_en: q.question_en,
+    answers_en: q.answers_en,
+    explanation_en: q.explanation_en,
+  }))
+
+  return `Translate the following ${questions.length} quiz questions to ${label}.
+
+Return a JSON array where each object has:
+- "index": the same index as the input (starting from 0)
+- question_${targetLang}, answers_${targetLang} (array of 4 answers in SAME ORDER as answers_en), explanation_${targetLang}
+
+IMPORTANT RULES:
+- Keep the SAME answer order. Do NOT reorder answers.
+- Translations must be native-quality, not Google Translate style.
+- Return ONLY valid JSON, no markdown, no backticks, no preamble.
+
+Questions to translate:
+${JSON.stringify(slimQuestions)}`
+}
+
+/**
  * Estimate cost for a Claude API call based on token counts.
  * Using Claude Sonnet pricing: $3/M input, $15/M output
  */

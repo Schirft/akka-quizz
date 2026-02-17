@@ -12,6 +12,8 @@ import {
   Globe,
   TrendingUp,
   Zap,
+  Newspaper,
+  Loader2,
 } from 'lucide-react'
 
 const STATUS_CONFIG = {
@@ -25,6 +27,8 @@ export default function DashboardPage() {
   const [stats, setStats] = useState(null)
   const [batches, setBatches] = useState([])
   const [loading, setLoading] = useState(true)
+  const [seeding, setSeeding] = useState(false)
+  const [seedResult, setSeedResult] = useState(null)
 
   useEffect(() => {
     loadDashboard()
@@ -87,6 +91,85 @@ export default function DashboardPage() {
     }
   }
 
+  /**
+   * Seed test news articles from GNews API (6 categories × EN only for speed).
+   * Uses CORS proxy via GNews API directly from browser.
+   */
+  async function seedTestArticles() {
+    setSeeding(true)
+    setSeedResult(null)
+
+    const GNEWS_KEY = '53798e3ace1583384a27a73cdfb2bd19'
+    const categories = [
+      { cat: 'startup', q: 'startup' },
+      { cat: 'vc', q: 'venture capital' },
+      { cat: 'fintech', q: 'fintech' },
+      { cat: 'ai', q: 'artificial intelligence' },
+      { cat: 'crypto', q: 'cryptocurrency' },
+      { cat: 'deeptech', q: 'deeptech biotech' },
+    ]
+
+    let inserted = 0
+    let errors = 0
+
+    for (const { cat, q } of categories) {
+      try {
+        const url = `https://gnews.io/api/v4/search?q=${encodeURIComponent(q)}&lang=en&max=3&apikey=${GNEWS_KEY}`
+        const res = await fetch(url)
+        if (!res.ok) { errors++; continue }
+        const data = await res.json()
+
+        for (const article of (data.articles || [])) {
+          const payload = {
+            title: article.title,
+            description: article.description || null,
+            content: article.content || null,
+            source_name: article.source?.name || null,
+            source_url: article.url,
+            image_url: article.image || null,
+            language: 'en',
+            category: cat,
+            published_at: article.publishedAt || new Date().toISOString(),
+            is_active: true,
+            is_featured: false,
+          }
+
+          const { error: uErr } = await supabase
+            .from('news_articles')
+            .upsert(payload, { onConflict: 'source_url', ignoreDuplicates: true })
+
+          if (!uErr) inserted++
+          else errors++
+        }
+      } catch {
+        errors++
+      }
+
+      // Small delay between categories
+      await new Promise((r) => setTimeout(r, 500))
+    }
+
+    // Feature the latest article
+    const { data: latest } = await supabase
+      .from('news_articles')
+      .select('id')
+      .eq('language', 'en')
+      .eq('is_active', true)
+      .order('published_at', { ascending: false })
+      .limit(1)
+      .single()
+
+    if (latest) {
+      await supabase
+        .from('news_articles')
+        .update({ is_featured: true })
+        .eq('id', latest.id)
+    }
+
+    setSeedResult({ inserted, errors })
+    setSeeding(false)
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -103,14 +186,39 @@ export default function DashboardPage() {
           <h1 className="text-2xl font-bold text-[#1A1A1A]">Dashboard</h1>
           <p className="text-sm text-[#6B7280] mt-1">Overview of your question bank</p>
         </div>
-        <button
-          onClick={() => navigate('/admin/generate')}
-          className="flex items-center gap-2 px-4 py-2.5 bg-[#1B3D2F] text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity"
-        >
-          <Sparkles size={16} />
-          Generate 5 Questions
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={seedTestArticles}
+            disabled={seeding}
+            className="flex items-center gap-2 px-4 py-2.5 border border-[#D1D5DB] text-[#1A1A1A] text-sm font-semibold rounded-xl hover:bg-gray-50 disabled:opacity-50 transition-all"
+          >
+            {seeding ? <Loader2 size={16} className="animate-spin" /> : <Newspaper size={16} />}
+            {seeding ? 'Seeding...' : '🗞️ Seed Test News'}
+          </button>
+          <button
+            onClick={() => navigate('/admin/generate')}
+            className="flex items-center gap-2 px-4 py-2.5 bg-[#1B3D2F] text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity"
+          >
+            <Sparkles size={16} />
+            Generate 5 Questions
+          </button>
+        </div>
       </div>
+
+      {/* Seed result feedback */}
+      {seedResult && (
+        <div className="mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between">
+          <p className="text-sm text-emerald-700 font-medium">
+            ✅ Seeded {seedResult.inserted} articles{seedResult.errors > 0 ? ` (${seedResult.errors} errors)` : ''}
+          </p>
+          <button
+            onClick={() => setSeedResult(null)}
+            className="text-xs text-emerald-600 hover:underline"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Main stats row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">

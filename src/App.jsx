@@ -7,6 +7,7 @@ import HomePage from './pages/player/HomePage'
 import QuizPage from './pages/player/QuizPage'
 import NewsPage from './pages/player/NewsPage'
 import LeaderboardPage from './pages/player/LeaderboardPage'
+import ArticleDetailPage from './pages/player/ArticleDetailPage'
 import QuizResultsPage from './pages/player/QuizResultsPage'
 import DashboardPage from './pages/admin/DashboardPage'
 import QuestionsPage from './pages/admin/QuestionsPage'
@@ -66,6 +67,16 @@ export default function App() {
         <Route path="news" element={<NewsPage />} />
         <Route path="leaderboard" element={<LeaderboardPage />} />
       </Route>
+
+      {/* Article detail route — no TabBar */}
+      <Route
+        path="/news/:id"
+        element={
+          <ProtectedRoute>
+            <ArticleDetailPage />
+          </ProtectedRoute>
+        }
+      />
 
       {/* Quiz route — no TabBar */}
       <Route
