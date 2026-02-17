@@ -7,13 +7,15 @@ import TabBar from './TabBar'
  */
 export default function PlayerLayout() {
   return (
-    <div className="min-h-screen bg-akka-bg">
-      {/* Page content — pb-20 accounts for the fixed bottom tab bar */}
-      <main className="max-w-[480px] mx-auto pb-20">
-        <Outlet />
-      </main>
+    <div className="min-h-screen bg-[#E5E7EB] md:bg-[#E5E7EB]">
+      <div className="max-w-md mx-auto bg-[#F8F9FA] min-h-screen shadow-xl relative">
+        {/* Page content — pb-20 accounts for the fixed bottom tab bar */}
+        <main className="pb-20">
+          <Outlet />
+        </main>
 
-      <TabBar />
+        <TabBar />
+      </div>
     </div>
   )
 }

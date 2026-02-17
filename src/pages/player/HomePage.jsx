@@ -200,7 +200,7 @@ export default function HomePage() {
 
   if (!profile) return (
     <div className="flex items-center justify-center min-h-[60vh]">
-      <div className="w-8 h-8 border-4 border-[#2ECC71] border-t-transparent rounded-full animate-spin" />
+      <div className="w-8 h-8 border-4 border-[#1B3D2F] border-t-transparent rounded-full animate-spin" />
     </div>
   )
 
@@ -296,10 +296,10 @@ export default function HomePage() {
                 : day.isFuture
                   ? 'bg-gray-50 text-gray-300'
                   : 'bg-gray-100 text-akka-text-secondary'
-              const ringStyle = day.isToday ? 'ring-2 ring-[#2ECC71] ring-offset-2' : ''
+              const ringStyle = day.isToday ? 'ring-2 ring-[#1B3D2F] ring-offset-2' : ''
               return (
                 <div key={i} className="flex flex-col items-center gap-1">
-                  <span className={`text-[10px] font-semibold ${day.isToday ? 'text-[#2ECC71]' : 'text-akka-text-secondary'}`}>{day.label}</span>
+                  <span className={`text-[10px] font-semibold ${day.isToday ? 'text-[#1B3D2F]' : 'text-akka-text-secondary'}`}>{day.label}</span>
                   <div
                     className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${circleStyle} ${ringStyle}`}
                   >
@@ -319,16 +319,16 @@ export default function HomePage() {
             <div className="w-8 h-8 rounded-full bg-[#1B3D2F] flex items-center justify-center">
               <span className="text-white text-xs font-bold">{level?.level}</span>
             </div>
-            <p className="text-sm font-bold text-[#2ECC71]">{level?.name}</p>
+            <p className="text-sm font-bold text-[#1B3D2F]">{level?.name}</p>
           </div>
-          <p className="text-sm font-bold text-[#2ECC71] tabular-nums">
+          <p className="text-sm font-bold text-[#1B3D2F] tabular-nums">
             {totalXP.toLocaleString()} XP
           </p>
         </div>
         {/* XP progress bar — thick gradient with percentage */}
         <div className="relative h-5 w-full rounded-full bg-gray-100 overflow-hidden">
           <div
-            className="h-full rounded-full bg-gradient-to-r from-[#2ECC71] to-[#27AE60] transition-all duration-500 ease-out"
+            className="h-full rounded-full bg-gradient-to-r from-[#1B3D2F] to-[#2D5A45] transition-all duration-500 ease-out"
             style={{ width: `${Math.min(Math.max(levelProgress, 0), 1) * 100}%` }}
           />
           <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-akka-text">
@@ -353,21 +353,21 @@ export default function HomePage() {
           <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center mb-1">
             <span className="text-xl">📊</span>
           </div>
-          <p className="text-xl font-bold text-[#2ECC71]">{avgScore}</p>
+          <p className="text-xl font-bold text-[#1B3D2F]">{avgScore}</p>
           <p className="text-[10px] text-akka-text-secondary">{t('avg_score')}</p>
         </Card>
         <Card className="flex-1 flex flex-col items-center py-3 px-2">
           <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center mb-1">
             <span className="text-xl">🎯</span>
           </div>
-          <p className="text-xl font-bold text-[#3498DB]">{accuracy}%</p>
+          <p className="text-xl font-bold text-[#1B3D2F]">{accuracy}%</p>
           <p className="text-[10px] text-akka-text-secondary">{t('accuracy')}</p>
         </Card>
         <Card className="flex-1 flex flex-col items-center py-3 px-2">
           <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center mb-1">
             <span className="text-xl">🏆</span>
           </div>
-          <p className="text-xl font-bold text-[#F39C12]">{profile.longest_streak || 0}</p>
+          <p className="text-xl font-bold text-[#1B3D2F]">{profile.longest_streak || 0}</p>
           <p className="text-[10px] text-akka-text-secondary">{t('best_streak')}</p>
         </Card>
       </div>
@@ -383,7 +383,7 @@ export default function HomePage() {
             const r = 40
             const circumference = 2 * Math.PI * r
             const offset = circumference * (1 - pct)
-            const gaugeColor = pct >= 0.7 ? '#2ECC71' : pct >= 0.4 ? '#F39C12' : '#E74C3C'
+            const gaugeColor = pct >= 0.7 ? '#1B3D2F' : pct >= 0.4 ? '#F39C12' : '#E74C3C'
             return (
               <div className="relative w-24 h-24 shrink-0">
                 <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
@@ -416,7 +416,7 @@ export default function HomePage() {
             </div>
             <p className="text-sm font-semibold leading-snug">
               {(profile.investor_score || 0) >= 700
-                ? <span className="text-[#2ECC71]">🟢 {t('score_excellent')}</span>
+                ? <span className="text-[#1B3D2F]">🟢 {t('score_excellent')}</span>
                 : (profile.investor_score || 0) >= 400
                   ? <span className="text-[#F39C12]">🟡 {t('score_good')}</span>
                   : <span className="text-[#E74C3C]">🔴 {t('score_improving')}</span>}
@@ -450,7 +450,7 @@ export default function HomePage() {
                   <div
                     key={leader.id}
                     className={`flex items-center gap-2.5 py-2 px-2 rounded-lg ${
-                      isMe ? 'bg-[#2ECC71]/10' : ''
+                      isMe ? 'bg-[#1B3D2F]/10' : ''
                     } ${i < 3 ? medalBg[i] + ' mb-0.5' : ''}`}
                   >
                     <div className="w-6 text-center flex-shrink-0">
@@ -462,7 +462,7 @@ export default function HomePage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className={`text-sm font-medium truncate ${isMe ? 'text-[#1B3D2F] font-semibold' : 'text-akka-text'}`}>
-                        {isMe && <span className="text-[#2ECC71] mr-1">★</span>}
+                        {isMe && <span className="text-[#1B3D2F] mr-1">★</span>}
                         {leader.display_name}
                       </p>
                     </div>
@@ -475,13 +475,13 @@ export default function HomePage() {
             })()}
             {/* Show user position if not in top 10 */}
             {profile && !leaders.find(l => l.id === profile.id) && (
-              <div className="flex items-center gap-2.5 py-2 px-2 rounded-lg bg-[#2ECC71]/10 mt-1 border-t border-gray-100">
+              <div className="flex items-center gap-2.5 py-2 px-2 rounded-lg bg-[#1B3D2F]/10 mt-1 border-t border-gray-100">
                 <div className="w-6 text-center flex-shrink-0">
                   <span className="text-xs font-semibold text-akka-text-secondary">…</span>
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-[#1B3D2F] truncate">
-                    <span className="text-[#2ECC71] mr-1">★</span>
+                    <span className="text-[#1B3D2F] mr-1">★</span>
                     {displayName}
                   </p>
                 </div>

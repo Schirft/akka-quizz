@@ -14,6 +14,19 @@ import GeneratePage from './pages/admin/GeneratePage'
 import DailyQuizPage from './pages/admin/DailyQuizPage'
 
 /**
+ * PlayerShell — centered mobile container for standalone player pages.
+ */
+function PlayerShell({ children }) {
+  return (
+    <div className="min-h-screen bg-[#E5E7EB]">
+      <div className="max-w-md mx-auto min-h-screen shadow-xl relative">
+        {children}
+      </div>
+    </div>
+  )
+}
+
+/**
  * ProtectedRoute — redirects to /login if user is not authenticated.
  */
 function ProtectedRoute({ children }) {
@@ -50,7 +63,7 @@ export default function App() {
       {/* Public route */}
       <Route
         path="/login"
-        element={user ? <Navigate to="/" replace /> : <LoginPage />}
+        element={user ? <Navigate to="/" replace /> : <PlayerShell><LoginPage /></PlayerShell>}
       />
 
       {/* Player routes with TabBar */}
@@ -71,7 +84,9 @@ export default function App() {
         path="/news/:id"
         element={
           <ProtectedRoute>
-            <ArticleDetailPage />
+            <PlayerShell>
+              <ArticleDetailPage />
+            </PlayerShell>
           </ProtectedRoute>
         }
       />
@@ -81,7 +96,9 @@ export default function App() {
         path="/quiz"
         element={
           <ProtectedRoute>
-            <QuizPage />
+            <PlayerShell>
+              <QuizPage />
+            </PlayerShell>
           </ProtectedRoute>
         }
       />
@@ -91,7 +108,9 @@ export default function App() {
         path="/quiz/results"
         element={
           <ProtectedRoute>
-            <QuizResultsPage />
+            <PlayerShell>
+              <QuizResultsPage />
+            </PlayerShell>
           </ProtectedRoute>
         }
       />

@@ -698,9 +698,9 @@ export default function QuizPage() {
       {/* Speech Bubble Encouragement */}
       {showEncouragement && (
         <div className="fixed top-20 left-0 right-0 z-50 flex justify-center pointer-events-none">
-          <div className="animate-speech-bubble bg-[#2ECC71] text-white font-bold text-lg px-6 py-3 rounded-2xl shadow-lg relative">
+          <div className="animate-speech-bubble bg-[#1B3D2F] text-white font-bold text-lg px-6 py-3 rounded-2xl shadow-lg relative">
             {showEncouragement}
-            <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-[#2ECC71] rotate-45" />
+            <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-[#1B3D2F] rotate-45" />
           </div>
         </div>
       )}
@@ -708,7 +708,7 @@ export default function QuizPage() {
       {/* Combo Counter */}
       {combo >= 2 && (
         <div className="animate-combo animate-glow text-center py-1">
-          <span className="text-2xl font-black text-[#2ECC71]">
+          <span className="text-2xl font-black text-[#1B3D2F]">
             {combo}x {getQuizText('combo', lang)}
           </span>
         </div>
@@ -834,7 +834,7 @@ export default function QuizPage() {
                 const pct = memberStats[i]
                 const isCorrectIdx = i === question.correct_answer_index - 1
                 const isSelectedIdx = i === selectedAnswer - 1
-                const barColor = isCorrectIdx ? 'bg-[#2ECC71]' : isSelectedIdx ? 'bg-[#E74C3C]' : 'bg-[#E5E7EB]'
+                const barColor = isCorrectIdx ? 'bg-[#1B3D2F]' : isSelectedIdx ? 'bg-[#E74C3C]' : 'bg-[#E5E7EB]'
                 const textColor = isCorrectIdx || isSelectedIdx ? 'text-white' : 'text-akka-text'
                 const letter = String.fromCharCode(65 + i)
                 return (
@@ -862,7 +862,7 @@ export default function QuizPage() {
           {/* XP Float animation */}
           {xpFloat && (
             <div key={xpFloat.key} className="flex justify-center mb-3 animate-float-up">
-              <span className="text-akka-green font-bold text-lg">+{xpFloat.amount} XP</span>
+              <span className="text-[#1B3D2F] font-bold text-lg">+{xpFloat.amount} XP</span>
             </div>
           )}
 

@@ -12,6 +12,8 @@ import {
   Loader2,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   Save,
   Trash2,
   Plus,
@@ -19,14 +21,14 @@ import {
 } from 'lucide-react'
 
 /**
- * Get next 7 days as YYYY-MM-DD strings.
+ * Get all days in a given month as YYYY-MM-DD strings.
  */
-function getNext7Days() {
+function getDaysInMonth(year, month) {
   const days = []
-  for (let i = 0; i < 7; i++) {
-    const d = new Date()
-    d.setDate(d.getDate() + i)
-    days.push(d.toISOString().split('T')[0])
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  for (let d = 1; d <= daysInMonth; d++) {
+    const date = new Date(year, month, d)
+    days.push(date.toISOString().split('T')[0])
   }
   return days
 }
@@ -35,6 +37,7 @@ const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 export default function DailyQuizPage() {
   const { user } = useAuth()
+  const [viewMonth, setViewMonth] = useState(new Date())
   const [days, setDays] = useState([])
   const [quizzes, setQuizzes] = useState({}) // { 'YYYY-MM-DD': { id, questions: [...] } }
   const [loading, setLoading] = useState(true)
@@ -62,19 +65,19 @@ export default function DailyQuizPage() {
 
   useEffect(() => {
     loadData()
-  }, [])
+  }, [viewMonth])
 
   async function loadData() {
     setLoading(true)
     try {
-      const next7 = getNext7Days()
-      setDays(next7)
+      const monthDays = getDaysInMonth(viewMonth.getFullYear(), viewMonth.getMonth())
+      setDays(monthDays)
 
       // Fetch existing quizzes for these dates
       const { data: quizData } = await supabase
         .from('daily_quizzes')
         .select('*')
-        .in('quiz_date', next7)
+        .in('quiz_date', monthDays)
 
       const quizMap = {}
       if (quizData) {
@@ -499,7 +502,7 @@ export default function DailyQuizPage() {
         <div>
           <h1 className="text-2xl font-bold text-[#1A1A1A]">Daily Quiz Planner</h1>
           <p className="text-sm text-[#6B7280] mt-1">
-            Schedule the quiz of the day for the next 7 days
+            Schedule the quiz of the day
           </p>
         </div>
         <button
@@ -508,6 +511,33 @@ export default function DailyQuizPage() {
         >
           <Calendar size={16} />
           Auto-fill Calendar
+        </button>
+      </div>
+
+      {/* Month navigation */}
+      <div className="flex items-center justify-between mb-4">
+        <button
+          onClick={() => {
+            const prev = new Date(viewMonth)
+            prev.setMonth(prev.getMonth() - 1)
+            setViewMonth(prev)
+          }}
+          className="p-2 hover:bg-gray-100 rounded-lg cursor-pointer transition-colors"
+        >
+          <ChevronLeft size={20} className="text-[#1A1A1A]" />
+        </button>
+        <h3 className="text-lg font-bold text-[#1A1A1A]">
+          {viewMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+        </h3>
+        <button
+          onClick={() => {
+            const next = new Date(viewMonth)
+            next.setMonth(next.getMonth() + 1)
+            setViewMonth(next)
+          }}
+          className="p-2 hover:bg-gray-100 rounded-lg cursor-pointer transition-colors"
+        >
+          <ChevronRight size={20} className="text-[#1A1A1A]" />
         </button>
       </div>
 
