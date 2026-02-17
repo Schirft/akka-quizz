@@ -25,6 +25,8 @@ import {
 
 const STORAGE_KEY = 'akka_last_generation'
 const STORAGE_EXPIRY = 2 * 60 * 60 * 1000 // 2 hours
+const GENERATION_MODEL = 'claude-sonnet-4-5-20250929' // For generating EN questions
+const TRANSLATION_MODEL = 'claude-3-5-haiku-20241022' // For translating FR/IT/ES
 
 /* ── HOTFIX A: Robust JSON parsing ── */
 function parsePartialJSON(text) {
@@ -326,8 +328,10 @@ export default function GeneratePage() {
 
       try {
         // ── STEP 1: Generate EN-only questions ──
+        // Request count+1 because LLMs systematically under-generate by 1
+        const requestCount = batchCount + 1
         const userPrompt = buildUserPrompt({
-          count: batchCount,
+          count: requestCount,
           mode,
           category,
           theme,
@@ -335,7 +339,8 @@ export default function GeneratePage() {
         })
 
         const maxTokensStep1 = batchCount <= 5 ? 6000 : 8000
-        console.log(`[GEN] Requesting ${batchCount} questions, maxTokens=${maxTokensStep1}`)
+        console.log(`[GEN] Using model: ${GENERATION_MODEL}`)
+        console.log(`[GEN] Requesting ${requestCount} (want ${batchCount}), maxTokens=${maxTokensStep1}`)
 
         const response = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
@@ -346,7 +351,7 @@ export default function GeneratePage() {
             'anthropic-dangerous-direct-browser-access': 'true',
           },
           body: JSON.stringify({
-            model: 'claude-sonnet-4-5-20250929',
+            model: GENERATION_MODEL,
             max_tokens: maxTokensStep1,
             system: systemPrompt,
             messages: [{ role: 'user', content: userPrompt }],
@@ -368,12 +373,18 @@ export default function GeneratePage() {
         console.log(`[GEN] Raw response length: ${text.length} chars`)
         let enQuestions = parsePartialJSON(text)
         if (!Array.isArray(enQuestions)) throw new Error('Parsed result is not an array')
-        console.log(`[GEN] Parsed ${enQuestions.length}/${batchCount} questions from initial call`)
+        console.log(`[GEN] Parsed ${enQuestions.length}/${requestCount} questions (want ${batchCount})`)
 
-        // ── RETRY: If we got fewer questions than requested, generate the missing ones ──
+        // Truncate to user-requested count first
+        if (enQuestions.length > batchCount) {
+          enQuestions = enQuestions.slice(0, batchCount)
+          console.log(`[GEN] Truncated to ${batchCount} questions`)
+        }
+
+        // ── RETRY: If we still got fewer than the user wanted, generate the missing ones ──
         if (enQuestions.length < batchCount && !abortRef.current) {
           const missing = batchCount - enQuestions.length
-          console.log(`Got ${enQuestions.length}/${batchCount}, generating ${missing} more...`)
+          console.log(`[GEN] Got ${enQuestions.length}/${batchCount}, generating ${missing} more...`)
           setStepLabel(`⚠️ Got ${enQuestions.length}/${batchCount} questions, generating ${missing} more...`)
 
           const retryPrompt = buildUserPrompt({
@@ -392,7 +403,7 @@ export default function GeneratePage() {
               'anthropic-dangerous-direct-browser-access': 'true',
             },
             body: JSON.stringify({
-              model: 'claude-sonnet-4-5-20250929',
+              model: GENERATION_MODEL,
               max_tokens: maxTokensStep1,
               system: systemPrompt,
               messages: [{ role: 'user', content: retryPrompt }],
@@ -426,6 +437,7 @@ export default function GeneratePage() {
           switchStreamingUX(STEP2_MESSAGES, `Step 2/2 — 🌍 Translating to ${langList} in parallel...`)
 
           // Fire all translation calls simultaneously
+          console.log(`[TRANSLATE] Using model: ${TRANSLATION_MODEL}`)
           const translationPromises = targetLangs.map(async (lang) => {
             try {
               const prompt = buildSingleLangTranslationPrompt(enQuestions, lang)
@@ -438,7 +450,7 @@ export default function GeneratePage() {
                   'anthropic-dangerous-direct-browser-access': 'true',
                 },
                 body: JSON.stringify({
-                  model: 'claude-3-5-haiku-20241022',
+                  model: TRANSLATION_MODEL,
                   max_tokens: 4096,
                   messages: [{ role: 'user', content: prompt }],
                 }),
@@ -656,14 +668,23 @@ export default function GeneratePage() {
   }
 
   async function quickAction(id, status) {
+    console.log(`[ACTION] ${status} clicked for question:`, id)
     try {
       await supabase
         .from('questions')
         .update({ status, updated_at: new Date().toISOString() })
         .eq('id', id)
 
+      // Update current batch
       setGenerated((prev) =>
         prev.map((q) => (q.id === id ? { ...q, status } : q))
+      )
+      // Update archived batches too
+      setBatchHistory((prev) =>
+        prev.map((batch) => ({
+          ...batch,
+          questions: batch.questions.map((q) => (q.id === id ? { ...q, status } : q)),
+        }))
       )
     } catch (err) {
       console.error('Quick action error:', err)
@@ -681,6 +702,13 @@ export default function GeneratePage() {
           if (data) {
             setGenerated((prev) =>
               prev.map((q) => (q.id === data.id ? data : q))
+            )
+            // Also refresh in archived batches
+            setBatchHistory((prev) =>
+              prev.map((batch) => ({
+                ...batch,
+                questions: batch.questions.map((q) => (q.id === data.id ? data : q)),
+              }))
             )
           }
         })
@@ -1075,9 +1103,18 @@ export default function GeneratePage() {
                 <p className="text-xs font-semibold text-[#6B7280]">
                   Batch {batchHistory.length - batchIndex} — {batch.questions.length} questions — {batch.duration} — {batch.cost}
                 </p>
-                <span className="text-[10px] text-gray-400">
-                  {new Date(batch.timestamp).toLocaleTimeString()}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-gray-400">
+                    {new Date(batch.timestamp).toLocaleTimeString()}
+                  </span>
+                  <button
+                    onClick={() => setBatchHistory(prev => prev.filter((_, idx) => idx !== batchIndex))}
+                    className="p-1 text-gray-400 hover:text-red-400 transition-colors"
+                    title="Remove batch from view (questions stay in database)"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
               </div>
               <div className="divide-y divide-gray-100 max-h-[300px] overflow-y-auto">
                 {batch.questions.map((q) => (
