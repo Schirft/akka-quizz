@@ -10,6 +10,7 @@ import { LANGUAGES } from '../../config/constants'
 import { replayQuiz } from '../../lib/seedQuiz'
 import Card from '../../components/ui/Card'
 import Button from '../../components/ui/Button'
+import WeeklyRecapModal from '../../components/player/WeeklyRecapModal'
 import {
   Flame, Play, CheckCircle, Trophy, Loader2, RotateCcw,
   LogOut, Shield, Medal,
@@ -40,8 +41,22 @@ export default function HomePage() {
   const [replayResult, setReplayResult] = useState(null)
   const [leaders, setLeaders] = useState([])
   const [showScoreTooltip, setShowScoreTooltip] = useState(false)
+  const [showWeeklyRecap, setShowWeeklyRecap] = useState(false)
 
   const dayLabels = DAY_LABELS_I18N[lang] || DAY_LABELS_I18N.en
+
+  // Weekly recap modal — show on Mondays
+  useEffect(() => {
+    const now = new Date()
+    const isMonday = now.getDay() === 1
+    const lastShown = localStorage.getItem('akka_weekly_recap_shown')
+    const lastDate = lastShown ? new Date(lastShown) : null
+
+    if (isMonday && (!lastDate || (now - lastDate) > 6 * 24 * 60 * 60 * 1000)) {
+      setTimeout(() => setShowWeeklyRecap(true), 1000)
+      localStorage.setItem('akka_weekly_recap_shown', now.toISOString())
+    }
+  }, [])
 
   // Check if quiz already played today + fetch recent badges + streak history
   useEffect(() => {
@@ -543,6 +558,15 @@ export default function HomePage() {
           </p>
         )}
       </div>
+
+      {/* Weekly Recap Modal */}
+      {showWeeklyRecap && (
+        <WeeklyRecapModal
+          profile={profile}
+          lang={lang}
+          onClose={() => setShowWeeklyRecap(false)}
+        />
+      )}
     </div>
   )
 }

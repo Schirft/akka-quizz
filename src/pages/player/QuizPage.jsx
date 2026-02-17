@@ -498,6 +498,7 @@ export default function QuizPage() {
         totalXP,
         avgTime,
         quizId,
+        maxCombo,
       },
       replace: true,
     })

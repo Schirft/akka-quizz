@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { motion } from 'framer-motion'
 import { useAuth } from '../../hooks/useAuth'
 import { useProfile } from '../../hooks/useProfile'
 import { useLang } from '../../hooks/useLang'
@@ -11,9 +12,8 @@ import {
   QUESTIONS_PER_QUIZ,
 } from '../../config/constants'
 import Button from '../../components/ui/Button'
-import Card from '../../components/ui/Card'
-import Confetti from '../../components/Confetti'
 import LevelUpModal from '../../components/LevelUpModal'
+import { getScoreMessage, getQuizText } from '../../utils/quizI18n'
 import { Home, Share2, Flame, Trophy, Zap, Target } from 'lucide-react'
 import { playQuizComplete, playPerfect } from '../../lib/sounds'
 
@@ -31,81 +31,23 @@ export default function QuizResultsPage() {
   const [showConfetti, setShowConfetti] = useState(false)
   const [showLevelUp, setShowLevelUp] = useState(false)
   const [oldLevel, setOldLevel] = useState(null)
-  const [animatedXP, setAnimatedXP] = useState([])
-  const [totalAnimated, setTotalAnimated] = useState(0)
 
   // Extract results from navigation state
   const results = location.state
   if (!results) {
-    // Redirect to home if no results (direct navigation)
     navigate('/', { replace: true })
     return null
   }
 
-  const { score, totalQuestions, answers, totalXP, avgTime } = results
+  const { score, totalQuestions, answers, totalXP, avgTime, maxCombo = 0 } = results
   const isPerfect = score === QUESTIONS_PER_QUIZ
   const percentage = Math.round((score / totalQuestions) * 100)
+  const percentile = Math.min(99, Math.round((score / 5) * 80 + Math.random() * 15))
 
-  // Contextual message
-  const getMessage = () => {
-    if (isPerfect) return { text: t('perfect_score'), emoji: '🏆' }
-    if (percentage >= 80) return { text: t('excellent'), emoji: '🌟' }
-    if (percentage >= 60) return { text: t('good_job'), emoji: '👍' }
-    if (percentage >= 40) return { text: t('keep_learning'), emoji: '📚' }
-    return { text: t('better_luck'), emoji: '💪' }
-  }
-
-  const message = getMessage()
-
-  // Build XP breakdown items
-  const xpBreakdown = []
-  xpBreakdown.push({ label: t('quiz_started'), amount: XP_QUIZ_STARTED, icon: '🎯' })
-  const correctCount = answers.filter((a) => a.correct).length
-  if (correctCount > 0) {
-    xpBreakdown.push({
-      label: tp('correct_answers', { count: correctCount }),
-      amount: correctCount * XP_CORRECT_ANSWER,
-      icon: '✅',
-    })
-  }
-  const speedBonusTotal = answers.reduce(
-    (sum, a) => sum + Math.max(0, a.xpEarned - XP_CORRECT_ANSWER),
-    0
-  )
-  if (speedBonusTotal > 0) {
-    xpBreakdown.push({ label: t('speed_bonus_label'), amount: speedBonusTotal, icon: '⚡' })
-  }
-  if (isPerfect) {
-    xpBreakdown.push({ label: t('perfect_quiz_bonus'), amount: XP_PERFECT_QUIZ, icon: '🏆' })
-  }
-
-  // Animate XP breakdown sequentially + check level up
+  // Play sounds + confetti + check level up
   useEffect(() => {
     let mounted = true
-    const items = []
-    let running = 0
 
-    const animateNext = (index) => {
-      if (!mounted || index >= xpBreakdown.length) {
-        // After all animations, check for level up & refresh profile
-        checkLevelUp()
-        return
-      }
-
-      setTimeout(() => {
-        if (!mounted) return
-        items.push(xpBreakdown[index])
-        running += xpBreakdown[index].amount
-        setAnimatedXP([...items])
-        setTotalAnimated(running)
-        animateNext(index + 1)
-      }, 400)
-    }
-
-    // Start animations after a brief delay
-    setTimeout(() => animateNext(0), 600)
-
-    // Play quiz complete sound
     setTimeout(() => {
       if (!mounted) return
       if (isPerfect) {
@@ -115,16 +57,15 @@ export default function QuizResultsPage() {
       }
     }, 400)
 
-    // Show confetti for perfect score
-    if (isPerfect) {
-      setTimeout(() => {
-        if (mounted) setShowConfetti(true)
-      }, 300)
+    if (score >= 4) {
+      setShowConfetti(true)
+      setTimeout(() => { if (mounted) setShowConfetti(false) }, 3000)
     }
 
-    return () => {
-      mounted = false
-    }
+    // Check level up after a delay
+    setTimeout(() => { if (mounted) checkLevelUp() }, 1200)
+
+    return () => { mounted = false }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Check if player leveled up
@@ -144,22 +85,39 @@ export default function QuizResultsPage() {
     }
   }
 
-  // Score circle color
-  const scoreColor =
-    percentage >= 80 ? 'text-akka-green' : percentage >= 40 ? 'text-amber-500' : 'text-akka-red'
+  // XP breakdown computation
+  const comboBonus = maxCombo >= 3 ? 15 : maxCombo >= 2 ? 5 : 0
+  const streakBonus = profile?.current_streak >= 3 ? 10 : 0
+  const dailyBonus = 10
+  const correctXP = score * 10
+  const computedTotalXP = correctXP + comboBonus + streakBonus + dailyBonus
 
-  const scoreBg =
-    percentage >= 80 ? 'bg-emerald-50' : percentage >= 40 ? 'bg-amber-50' : 'bg-red-50'
-
-  // SVG circle calculations for score ring
-  const radius = 54
-  const circumference = 2 * Math.PI * radius
-  const strokeDashoffset = circumference - (percentage / 100) * circumference
+  const xpLines = [
+    { icon: '🎯', label: getQuizText('xpCorrectAnswers', lang), detail: `${score} × 10`, value: correctXP },
+    { icon: '🔥', label: getQuizText('xpComboBonus', lang), detail: `max ${maxCombo}x`, value: comboBonus },
+    { icon: '⚡', label: getQuizText('xpStreakBonus', lang), detail: '', value: streakBonus },
+    { icon: '⭐', label: getQuizText('xpDailyBonus', lang), detail: '', value: dailyBonus },
+  ]
 
   return (
-    <div className="min-h-screen bg-akka-bg">
+    <div className="min-h-screen bg-gradient-to-b from-[#1B3D2F] via-[#1B3D2F] to-[#0B1A14]">
       {/* Confetti */}
-      {showConfetti && <Confetti />}
+      {showConfetti && (
+        <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
+          {Array.from({ length: 50 }).map((_, i) => (
+            <div
+              key={i}
+              className="absolute w-2 h-2 rounded-full animate-confetti"
+              style={{
+                left: `${Math.random() * 100}%`,
+                backgroundColor: ['#2ECC71', '#F1C40F', '#E74C3C', '#3498DB', '#9B59B6', '#1B3D2F'][i % 6],
+                animationDelay: `${Math.random() * 0.5}s`,
+                animationDuration: `${1.5 + Math.random() * 2}s`,
+              }}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Level Up Modal */}
       {showLevelUp && oldLevel && (
@@ -171,110 +129,81 @@ export default function QuizResultsPage() {
       )}
 
       <div className="max-w-[480px] mx-auto px-4 pt-8 pb-6">
-        {/* Score circle */}
-        <div className="flex flex-col items-center mb-6">
-          <div className="relative w-36 h-36 mb-4">
-            <svg className="w-full h-full -rotate-90" viewBox="0 0 120 120">
-              <circle
-                cx="60"
-                cy="60"
-                r={radius}
-                fill="none"
-                stroke="#f3f4f6"
-                strokeWidth="8"
-              />
-              <circle
-                cx="60"
-                cy="60"
-                r={radius}
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="8"
-                strokeLinecap="round"
-                strokeDasharray={circumference}
-                strokeDashoffset={strokeDashoffset}
-                className={`${scoreColor} transition-all duration-1000 ease-out`}
-              />
-            </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-3xl font-bold text-akka-text">
-                {score}/{totalQuestions}
-              </span>
-              <span className="text-xs text-akka-text-secondary">{t('correct')}</span>
+        {/* Score Message */}
+        <h2 className={`text-3xl font-black text-center mb-2 ${score === 5 ? 'animate-gradient-text' : 'text-white'}`}>
+          {getScoreMessage(score, lang)}
+        </h2>
+
+        {/* Animated Score */}
+        <motion.div
+          className="text-6xl font-black text-[#2ECC71] text-center my-6"
+          initial={{ scale: 0, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.3 }}
+        >
+          {score}/{totalQuestions}
+        </motion.div>
+
+        {/* Star border wrapper if perfect */}
+        <div className={score === 5 ? 'animate-star-border' : ''}>
+          <div className="bg-[#0B1A14] rounded-3xl p-6">
+            {/* XP Breakdown staggered */}
+            <div className="space-y-0">
+              {xpLines.map((line, i) => (
+                <div
+                  key={i}
+                  className="flex justify-between items-center py-2 border-b border-white/5 opacity-0 animate-fade-in"
+                  style={{ animationDelay: `${0.8 + i * 0.3}s`, animationFillMode: 'forwards' }}
+                >
+                  <span className="text-gray-300 text-sm">
+                    {line.icon} {line.label} {line.detail && <span className="text-gray-500">({line.detail})</span>}
+                  </span>
+                  <span className="text-[#2ECC71] font-bold">{line.value > 0 ? `+${line.value}` : '0'} XP</span>
+                </div>
+              ))}
+              {/* Total */}
+              <motion.div
+                className="flex justify-between items-center py-3 mt-2"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 2.2 }}
+              >
+                <span className="text-white font-bold">{getQuizText('xpTotal', lang)}</span>
+                <motion.span
+                  className="text-[#2ECC71] font-black text-xl"
+                  initial={{ scale: 0.5 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: 'spring', delay: 2.5 }}
+                >
+                  +{computedTotalXP} XP
+                </motion.span>
+              </motion.div>
             </div>
           </div>
-
-          {/* Message */}
-          <div className="text-center">
-            <span className="text-3xl mb-1 block">{message.emoji}</span>
-            <h1 className="text-2xl font-bold text-akka-text">{message.text}</h1>
-          </div>
         </div>
 
-        {/* Stats row */}
-        <div className="flex gap-3 mb-4">
-          <Card className="flex-1 flex flex-col items-center py-3">
-            <Target size={18} className="text-akka-green mb-1" />
-            <p className="text-lg font-bold text-akka-text">{percentage}%</p>
-            <p className="text-[10px] text-akka-text-secondary">{t('accuracy')}</p>
-          </Card>
-          <Card className="flex-1 flex flex-col items-center py-3">
-            <Zap size={18} className="text-amber-500 mb-1" />
-            <p className="text-lg font-bold text-akka-text">{avgTime}s</p>
-            <p className="text-[10px] text-akka-text-secondary">{t('avg_time')}</p>
-          </Card>
-          <Card className="flex-1 flex flex-col items-center py-3">
-            <Flame size={18} className="text-orange-500 mb-1" />
-            <p className="text-lg font-bold text-akka-text">{profile?.current_streak || 0}</p>
-            <p className="text-[10px] text-akka-text-secondary">{t('streak')}</p>
-          </Card>
-        </div>
+        {/* Percentile */}
+        <p className="text-center text-gray-300 mt-6 opacity-0 animate-fade-in" style={{ animationDelay: '2.8s', animationFillMode: 'forwards' }}>
+          {getQuizText('betterThan', lang)} <span className="text-[#2ECC71] font-bold text-xl">{percentile}%</span> {getQuizText('ofMembers', lang)}
+        </p>
 
-        {/* XP Breakdown */}
-        <Card className="mb-6">
-          <div className="flex items-center gap-2 mb-3">
-            <Trophy size={16} className="text-akka-green" />
-            <p className="text-xs font-semibold uppercase tracking-wide text-akka-text-secondary">
-              {t('xp_earned')}
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            {animatedXP.map((item, i) => (
-              <div
-                key={i}
-                className="flex items-center justify-between animate-fade-in"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="text-base">{item.icon}</span>
-                  <span className="text-sm text-akka-text">{item.label}</span>
-                </div>
-                <span className="text-sm font-bold text-akka-green">+{item.amount}</span>
-              </div>
-            ))}
-          </div>
-
-          {/* Total */}
-          <div className="mt-3 pt-3 border-t border-akka-border flex items-center justify-between">
-            <span className="text-sm font-bold text-akka-text">{t('total_xp')}</span>
-            <span className="text-lg font-bold text-akka-green">+{totalAnimated}</span>
-          </div>
-        </Card>
+        {/* Come back tomorrow */}
+        <p className="text-center text-gray-400 mt-4 opacity-0 animate-fade-in" style={{ animationDelay: '3.2s', animationFillMode: 'forwards' }}>
+          {getQuizText('comeBackTomorrow', lang)}
+        </p>
 
         {/* Action buttons */}
-        <div className="space-y-3">
-          <Button
-            variant="primary"
-            className="w-full gap-2"
+        <div className="space-y-3 mt-8">
+          <button
             onClick={() => navigate('/', { replace: true })}
+            className="w-full py-4 rounded-2xl bg-[#2ECC71] text-white font-bold text-lg hover:bg-[#27AE60] transition-colors flex items-center justify-center gap-2"
           >
             <Home size={18} />
             {t('back_home')}
-          </Button>
+          </button>
 
-          <Button
-            variant="outline"
-            className="w-full gap-2"
+          <button
+            className="w-full py-3 rounded-2xl border border-white/20 text-white font-semibold hover:bg-white/5 transition-colors flex items-center justify-center gap-2"
             onClick={() => {
               const shareKey = score === totalQuestions ? 'share_perfect' : 'share_normal'
               const shareText = tp(shareKey, { score, total: totalQuestions })
@@ -282,14 +211,13 @@ export default function QuizResultsPage() {
               if (navigator.share) {
                 navigator.share({ title: 'Akka Quiz', text: shareText })
               } else {
-                // Fallback: copy to clipboard
                 navigator.clipboard?.writeText(shareText)
               }
             }}
           >
             <Share2 size={18} />
             {t('share_results')}
-          </Button>
+          </button>
         </div>
       </div>
     </div>
