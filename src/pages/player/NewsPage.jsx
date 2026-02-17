@@ -39,35 +39,48 @@ export default function NewsPage() {
   const [activeCategory, setActiveCategory] = useState('all')
 
   useEffect(() => {
-    loadArticles()
-  }, [lang])
+    let cancelled = false
 
-  async function loadArticles() {
-    setLoading(true)
-    try {
-      const { data } = await supabase
-        .from('news_articles')
-        .select('*')
-        .eq('is_active', true)
-        .eq('language', lang)
-        .order('published_at', { ascending: false })
-        .limit(50)
+    async function loadArticles() {
+      setLoading(true)
+      try {
+        let query = supabase
+          .from('news_articles')
+          .select('*')
+          .eq('is_active', true)
+          .eq('language', lang)
+          .order('published_at', { ascending: false })
+          .limit(50)
 
-      if (data && data.length > 0) {
-        // Find featured article
-        const feat = data.find((a) => a.is_featured) || data[0]
-        setFeatured(feat)
-        setArticles(data.filter((a) => a.id !== feat.id))
-      } else {
-        setFeatured(null)
-        setArticles([])
+        if (activeCategory && activeCategory !== 'all') {
+          query = query.eq('category', activeCategory)
+        }
+
+        const { data } = await query
+        if (cancelled) return
+
+        if (data && data.length > 0) {
+          const feat = data.find((a) => a.is_featured) || data[0]
+          setFeatured(feat)
+          setArticles(data.filter((a) => a.id !== feat.id))
+        } else {
+          setFeatured(null)
+          setArticles([])
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error('Load news error:', err)
+          setFeatured(null)
+          setArticles([])
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
       }
-    } catch (err) {
-      console.error('Load news error:', err)
-    } finally {
-      setLoading(false)
     }
-  }
+
+    loadArticles()
+    return () => { cancelled = true }
+  }, [lang, activeCategory])
 
   const filtered = activeCategory === 'all'
     ? articles

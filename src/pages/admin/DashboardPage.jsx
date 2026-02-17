@@ -29,6 +29,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [seeding, setSeeding] = useState(false)
   const [seedResult, setSeedResult] = useState(null)
+  const [seedStatus, setSeedStatus] = useState('')
 
   useEffect(() => {
     loadDashboard()
@@ -92,80 +93,88 @@ export default function DashboardPage() {
   }
 
   /**
-   * Seed test news articles from GNews API (6 categories × EN only for speed).
-   * Uses CORS proxy via GNews API directly from browser.
+   * Seed test news articles from GNews API — 6 categories × 4 languages.
    */
   async function seedTestArticles() {
     setSeeding(true)
     setSeedResult(null)
+    setSeedStatus('')
 
     const GNEWS_KEY = '53798e3ace1583384a27a73cdfb2bd19'
+    const langs = ['en', 'fr', 'it', 'es']
     const categories = [
-      { cat: 'startup', q: 'startup' },
-      { cat: 'vc', q: 'venture capital' },
-      { cat: 'fintech', q: 'fintech' },
-      { cat: 'ai', q: 'artificial intelligence' },
-      { cat: 'crypto', q: 'cryptocurrency' },
-      { cat: 'deeptech', q: 'deeptech biotech' },
+      { cat: 'startup', queries: { en: 'startup funding series A', fr: 'startup levée de fonds', it: 'startup finanziamento', es: 'startup financiación' } },
+      { cat: 'ai', queries: { en: 'artificial intelligence startup', fr: 'intelligence artificielle startup', it: 'intelligenza artificiale startup', es: 'inteligencia artificial startup' } },
+      { cat: 'vc', queries: { en: 'venture capital private equity', fr: 'capital risque investissement', it: 'venture capital private equity', es: 'capital riesgo privado' } },
+      { cat: 'crypto', queries: { en: 'startup IPO acquisition unicorn', fr: 'startup IPO acquisition licorne', it: 'startup IPO acquisizione unicorno', es: 'startup IPO adquisición unicornio' } },
+      { cat: 'deeptech', queries: { en: 'startup Europe funding', fr: 'startup Europe financement', it: 'startup Europa finanziamento', es: 'startup Europa financiación' } },
+      { cat: 'fintech', queries: { en: 'fintech startup funding', fr: 'fintech startup banque', it: 'fintech startup banca', es: 'fintech startup banco' } },
     ]
 
     let inserted = 0
     let errors = 0
 
-    for (const { cat, q } of categories) {
-      try {
-        const url = `https://gnews.io/api/v4/search?q=${encodeURIComponent(q)}&lang=en&max=3&apikey=${GNEWS_KEY}`
-        const res = await fetch(url)
-        if (!res.ok) { errors++; continue }
-        const data = await res.json()
+    for (const lang of langs) {
+      for (const { cat, queries } of categories) {
+        const label = `${lang.toUpperCase()} — ${cat}`
+        setSeedStatus(`Seeding ${label}...`)
+        try {
+          const url = `https://gnews.io/api/v4/search?q=${encodeURIComponent(queries[lang])}&lang=${lang}&max=3&apikey=${GNEWS_KEY}`
+          const res = await fetch(url)
+          if (!res.ok) { errors++; continue }
+          const data = await res.json()
 
-        for (const article of (data.articles || [])) {
-          const payload = {
-            title: article.title,
-            description: article.description || null,
-            content: article.content || null,
-            source_name: article.source?.name || null,
-            source_url: article.url,
-            image_url: article.image || null,
-            language: 'en',
-            category: cat,
-            published_at: article.publishedAt || new Date().toISOString(),
-            is_active: true,
-            is_featured: false,
+          for (const article of (data.articles || [])) {
+            const payload = {
+              title: article.title,
+              description: article.description || null,
+              content: article.content || null,
+              source_name: article.source?.name || null,
+              source_url: article.url,
+              image_url: article.image || null,
+              language: lang,
+              category: cat,
+              published_at: article.publishedAt || new Date().toISOString(),
+              is_active: true,
+              is_featured: false,
+            }
+
+            const { error: uErr } = await supabase
+              .from('news_articles')
+              .upsert(payload, { onConflict: 'source_url', ignoreDuplicates: true })
+
+            if (!uErr) inserted++
+            else errors++
           }
-
-          const { error: uErr } = await supabase
-            .from('news_articles')
-            .upsert(payload, { onConflict: 'source_url', ignoreDuplicates: true })
-
-          if (!uErr) inserted++
-          else errors++
+        } catch {
+          errors++
         }
-      } catch {
-        errors++
+
+        // Rate limit between requests
+        await new Promise((r) => setTimeout(r, 1100))
       }
-
-      // Small delay between categories
-      await new Promise((r) => setTimeout(r, 500))
     }
 
-    // Feature the latest article
-    const { data: latest } = await supabase
-      .from('news_articles')
-      .select('id')
-      .eq('language', 'en')
-      .eq('is_active', true)
-      .order('published_at', { ascending: false })
-      .limit(1)
-      .single()
-
-    if (latest) {
-      await supabase
+    // Feature the latest article per language
+    for (const lang of langs) {
+      const { data: latest } = await supabase
         .from('news_articles')
-        .update({ is_featured: true })
-        .eq('id', latest.id)
+        .select('id')
+        .eq('language', lang)
+        .eq('is_active', true)
+        .order('published_at', { ascending: false })
+        .limit(1)
+        .single()
+
+      if (latest) {
+        await supabase
+          .from('news_articles')
+          .update({ is_featured: true })
+          .eq('id', latest.id)
+      }
     }
 
+    setSeedStatus('')
     setSeedResult({ inserted, errors })
     setSeeding(false)
   }
@@ -193,14 +202,14 @@ export default function DashboardPage() {
             className="flex items-center gap-2 px-4 py-2.5 border border-[#D1D5DB] text-[#1A1A1A] text-sm font-semibold rounded-xl hover:bg-gray-50 disabled:opacity-50 transition-all"
           >
             {seeding ? <Loader2 size={16} className="animate-spin" /> : <Newspaper size={16} />}
-            {seeding ? 'Seeding...' : '🗞️ Seed Test News'}
+            {seeding ? (seedStatus || 'Seeding...') : '🗞️ Seed Test News'}
           </button>
           <button
             onClick={() => navigate('/admin/generate')}
             className="flex items-center gap-2 px-4 py-2.5 bg-[#1B3D2F] text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity"
           >
             <Sparkles size={16} />
-            Generate 5 Questions
+            Generate Questions
           </button>
         </div>
       </div>
