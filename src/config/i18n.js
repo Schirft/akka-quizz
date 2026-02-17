@@ -78,6 +78,7 @@ export const translations = {
     score_excellent: 'Excellent investor profile',
     score_good: 'Growing investor profile',
     score_improving: 'Building your investor profile',
+    score_tooltip_text: 'Your Investor Score reflects your learning progress: quiz accuracy, streak consistency, XP earned, and overall engagement. Max 1000.',
   },
   fr: {
     welcome_back: 'Bienvenue,',
@@ -153,6 +154,7 @@ export const translations = {
     score_excellent: 'Excellent profil investisseur',
     score_good: 'Profil investisseur en croissance',
     score_improving: 'Construction de votre profil investisseur',
+    score_tooltip_text: 'Ton Score Investisseur refl\u00e8te ta progression : pr\u00e9cision des quiz, r\u00e9gularit\u00e9 de ta s\u00e9rie, XP gagn\u00e9s et engagement global. Max 1000.',
   },
   it: {
     welcome_back: 'Bentornato,',
@@ -228,6 +230,7 @@ export const translations = {
     score_excellent: 'Eccellente profilo investitore',
     score_good: 'Profilo investitore in crescita',
     score_improving: 'Costruisci il tuo profilo investitore',
+    score_tooltip_text: 'Il tuo Punteggio Investitore riflette i tuoi progressi: precisione nei quiz, costanza della serie, XP guadagnati e coinvolgimento generale. Max 1000.',
   },
   es: {
     welcome_back: 'Bienvenido,',
@@ -303,6 +306,7 @@ export const translations = {
     score_excellent: 'Excelente perfil inversor',
     score_good: 'Perfil inversor en crecimiento',
     score_improving: 'Construyendo tu perfil inversor',
+    score_tooltip_text: 'Tu Puntuación de Inversor refleja tu progreso de aprendizaje: precisión en los quiz, constancia de tu racha, XP ganados y participación general. Máx 1000.',
   },
 }
 

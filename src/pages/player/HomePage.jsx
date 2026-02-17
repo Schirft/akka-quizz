@@ -39,6 +39,7 @@ export default function HomePage() {
   const [replaying, setReplaying] = useState(false)
   const [replayResult, setReplayResult] = useState(null)
   const [leaders, setLeaders] = useState([])
+  const [showScoreTooltip, setShowScoreTooltip] = useState(false)
 
   const dayLabels = DAY_LABELS_I18N[lang] || DAY_LABELS_I18N.en
 
@@ -98,6 +99,7 @@ export default function HomePage() {
       const history = days.map((date, idx) => ({
         label: dayLabels[idx],
         date,
+        dayOfMonth: parseInt(date.split('-')[2], 10),
         played: playedDates.has(date),
         isToday: date === today,
         isFuture: date > today,
@@ -202,7 +204,7 @@ export default function HomePage() {
     .slice(0, 2)
 
   return (
-    <div className="px-4 pt-6 pb-4">
+    <div className="px-4 pt-6 pb-4 bg-[#F8F9FA] min-h-screen">
       {/* Greeting with avatar */}
       <div className="flex items-center gap-3 mb-6">
         <div className="w-12 h-12 rounded-full bg-[#1B3D2F] flex items-center justify-center">
@@ -240,12 +242,12 @@ export default function HomePage() {
               const ringStyle = day.isToday ? 'ring-2 ring-[#2ECC71] ring-offset-2' : ''
               return (
                 <div key={i} className="flex flex-col items-center gap-1">
+                  <span className={`text-[10px] font-semibold ${day.isToday ? 'text-[#2ECC71]' : 'text-akka-text-secondary'}`}>{day.label}</span>
                   <div
                     className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${circleStyle} ${ringStyle}`}
                   >
-                    {day.played ? '✓' : day.label}
+                    {day.played ? '✓' : day.dayOfMonth}
                   </div>
-                  <span className={`text-[10px] font-medium ${day.isToday ? 'text-[#2ECC71] font-bold' : 'text-akka-text-secondary'}`}>{day.label}</span>
                 </div>
               )
             })}
@@ -262,7 +264,7 @@ export default function HomePage() {
             </div>
             <p className="text-sm font-bold text-[#2ECC71]">{level?.name}</p>
           </div>
-          <p className="text-sm font-bold text-akka-text tabular-nums">
+          <p className="text-sm font-bold text-[#2ECC71] tabular-nums">
             {totalXP.toLocaleString()} XP
           </p>
         </div>
@@ -281,7 +283,7 @@ export default function HomePage() {
             {t('level')} {level?.level}
           </p>
           {nextLevel && (
-            <p className="text-[10px] text-akka-text-secondary">
+            <p className="text-[10px] text-gray-600 font-medium">
               {nextLevel.xpRequired.toLocaleString()} XP → {t('level')} {nextLevel.level}
             </p>
           )}
@@ -337,25 +339,38 @@ export default function HomePage() {
                   />
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-lg font-bold text-akka-text">{score}</span>
+                  <span className="text-3xl font-black text-[#1B3D2F]">{score}</span>
                   <span className="text-[9px] text-akka-text-secondary">/ {max}</span>
                 </div>
               </div>
             )
           })()}
           <div className="flex-1">
-            <p className="text-xs font-semibold uppercase tracking-wide text-akka-text-secondary mb-1">
-              {t('investor_score')}
-            </p>
-            <p className="text-sm text-akka-text-secondary leading-snug">
+            <div className="flex items-center gap-2 mb-1">
+              <p className="text-sm font-bold text-[#1B3D2F] uppercase tracking-wide">
+                {t('investor_score')}
+              </p>
+              <button
+                onClick={() => setShowScoreTooltip(!showScoreTooltip)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ℹ️
+              </button>
+            </div>
+            <p className="text-sm font-semibold leading-snug">
               {(profile.investor_score || 0) >= 700
-                ? '🟢 ' + t('score_excellent')
+                ? <span className="text-[#2ECC71]">🟢 {t('score_excellent')}</span>
                 : (profile.investor_score || 0) >= 400
-                  ? '🟡 ' + t('score_good')
-                  : '🔴 ' + t('score_improving')}
+                  ? <span className="text-[#F39C12]">🟡 {t('score_good')}</span>
+                  : <span className="text-[#E74C3C]">🔴 {t('score_improving')}</span>}
             </p>
           </div>
         </div>
+        {showScoreTooltip && (
+          <div className="mt-3 bg-[#1B3D2F] text-white text-xs rounded-xl p-3 leading-relaxed">
+            {t('score_tooltip_text') || 'Your Investor Score reflects your learning progress: quiz accuracy, streak consistency, XP earned, and overall engagement. Max 1000.'}
+          </div>
+        )}
       </Card>
 
       {/* Leaderboard */}
