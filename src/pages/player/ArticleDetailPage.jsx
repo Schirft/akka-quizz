@@ -41,6 +41,7 @@ export default function ArticleDetailPage() {
   const navigate = useNavigate()
   const [article, setArticle] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [showFullArticle, setShowFullArticle] = useState(false)
 
   useEffect(() => {
     loadArticle()
@@ -207,19 +208,47 @@ export default function ArticleDetailPage() {
                   {article.source_name || 'Source'}
                 </p>
               </div>
-              <a
-                href={article.source_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 px-4 py-2.5 bg-[#2ECC71] text-white text-sm font-bold rounded-xl hover:bg-[#27AE60] transition-colors shrink-0"
+              <button
+                onClick={() => setShowFullArticle(true)}
+                className="flex items-center gap-2 px-4 py-2.5 bg-[#2ECC71] text-white text-sm font-bold rounded-xl hover:bg-[#27AE60] transition-colors shrink-0 cursor-pointer"
               >
                 Read Full Article
                 <ExternalLink size={14} />
-              </a>
+              </button>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Full article iframe overlay */}
+      {showFullArticle && (
+        <div className="fixed inset-0 z-50 bg-white flex flex-col">
+          <div className="flex items-center justify-between px-3 py-2 bg-[#1B3D2F] shrink-0">
+            <button
+              onClick={() => setShowFullArticle(false)}
+              className="text-white font-bold text-sm cursor-pointer flex items-center gap-1"
+            >
+              <ArrowLeft size={16} />
+              Back
+            </button>
+            <span className="text-white text-xs truncate max-w-[180px] mx-2">{article.title}</span>
+            <a
+              href={article.source_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[#2ECC71] text-xs font-semibold shrink-0"
+            >
+              Open ↗
+            </a>
+          </div>
+          <iframe
+            src={article.source_url}
+            className="flex-1 w-full border-none"
+            title={article.title}
+            sandbox="allow-scripts allow-same-origin allow-popups"
+          />
+        </div>
+      )}
     </div>
   )
 }

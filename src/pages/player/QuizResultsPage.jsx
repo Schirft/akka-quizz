@@ -26,7 +26,7 @@ export default function QuizResultsPage() {
   const location = useLocation()
   const { refreshProfile } = useAuth()
   const { profile, level } = useProfile()
-  const { t, tp } = useLang()
+  const { lang, t, tp } = useLang()
 
   const [showConfetti, setShowConfetti] = useState(false)
   const [showLevelUp, setShowLevelUp] = useState(false)
