@@ -198,3 +198,12 @@ summary {
   -webkit-text-fill-color: transparent;
   animation: gradient-shift 2s ease-in-out infinite;
 }
+
+/* Shimmer effect for CTA buttons */
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+.animate-shimmer {
+  animation: shimmer 2s ease-in-out infinite;
+}

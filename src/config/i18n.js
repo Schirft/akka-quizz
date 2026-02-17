@@ -75,6 +75,9 @@ export const translations = {
     language: 'Language',
     share_perfect: '🏆 Perfect score {score}/{total} on the Akka Quiz!\nI aced a startup investment quiz. Think you can do better?\n👉 Discover Akka: https://www.akka.app/',
     share_normal: '💡 I scored {score}/{total} on the Akka Quiz!\nTest your startup investment knowledge and join the club.\n👉 Discover Akka: https://www.akka.app/',
+    score_excellent: 'Excellent investor profile',
+    score_good: 'Growing investor profile',
+    score_improving: 'Building your investor profile',
   },
   fr: {
     welcome_back: 'Bienvenue,',
@@ -147,6 +150,9 @@ export const translations = {
     language: 'Langue',
     share_perfect: '🏆 Score parfait {score}/{total} au Quiz Akka !\nJ\'ai tout bon sur un quiz d\'investissement startup. Tu penses pouvoir faire mieux ?\n👉 D\u00e9couvre Akka : https://www.akka.app/',
     share_normal: '💡 J\'ai scor\u00e9 {score}/{total} au Quiz Akka !\nTeste tes connaissances en investissement startup et rejoins le club.\n👉 D\u00e9couvre Akka : https://www.akka.app/',
+    score_excellent: 'Excellent profil investisseur',
+    score_good: 'Profil investisseur en croissance',
+    score_improving: 'Construction de votre profil investisseur',
   },
   it: {
     welcome_back: 'Bentornato,',
@@ -219,6 +225,9 @@ export const translations = {
     language: 'Lingua',
     share_perfect: '🏆 Punteggio perfetto {score}/{total} al Quiz Akka!\nHo risposto tutto correttamente in un quiz sugli investimenti startup. Pensi di fare meglio?\n👉 Scopri Akka: https://www.akka.app/',
     share_normal: '💡 Ho ottenuto {score}/{total} al Quiz Akka!\nMetti alla prova le tue conoscenze sugli investimenti startup.\n👉 Scopri Akka: https://www.akka.app/',
+    score_excellent: 'Eccellente profilo investitore',
+    score_good: 'Profilo investitore in crescita',
+    score_improving: 'Costruisci il tuo profilo investitore',
   },
   es: {
     welcome_back: 'Bienvenido,',
@@ -291,6 +300,9 @@ export const translations = {
     language: 'Idioma',
     share_perfect: '🏆 \u00a1Puntuaci\u00f3n perfecta {score}/{total} en el Quiz Akka!\nAcert\u00e9 todas en un quiz de inversi\u00f3n en startups. \u00bfCrees que puedes hacerlo mejor?\n👉 Descubre Akka: https://www.akka.app/',
     share_normal: '💡 \u00a1Obtuve {score}/{total} en el Quiz Akka!\nPon a prueba tus conocimientos en inversi\u00f3n en startups.\n👉 Descubre Akka: https://www.akka.app/',
+    score_excellent: 'Excelente perfil inversor',
+    score_good: 'Perfil inversor en crecimiento',
+    score_improving: 'Construyendo tu perfil inversor',
   },
 }
 

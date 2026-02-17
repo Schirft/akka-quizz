@@ -9,7 +9,6 @@ import { BADGES, TIER_COLORS } from '../../config/badges'
 import { LANGUAGES } from '../../config/constants'
 import { replayQuiz } from '../../lib/seedQuiz'
 import Card from '../../components/ui/Card'
-import ProgressBar from '../../components/ui/ProgressBar'
 import Button from '../../components/ui/Button'
 import {
   Flame, Play, CheckCircle, Trophy, Loader2, RotateCcw,
@@ -78,11 +77,14 @@ export default function HomePage() {
         setRecentBadges(badgeDetails)
       }
 
-      // Build 7-day streak history (6 days ago → today)
+      // Build current week Mon→Sun
+      const nowDate = new Date()
+      const jsDay = nowDate.getDay() // 0=Sun
+      const mondayOffset = jsDay === 0 ? -6 : 1 - jsDay
       const days = []
-      for (let i = 6; i >= 0; i--) {
-        const d = new Date()
-        d.setDate(d.getDate() - i)
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(nowDate)
+        d.setDate(nowDate.getDate() + mondayOffset + i)
         days.push(d.toISOString().split('T')[0])
       }
 
@@ -93,15 +95,13 @@ export default function HomePage() {
         .in('quiz_date', days)
 
       const playedDates = new Set((weekSessions || []).map((s) => s.quiz_date))
-      const history = days.map((date) => {
-        const jsDay = new Date(date + 'T12:00:00').getDay() // 0=Sun
-        const idx = jsDay === 0 ? 6 : jsDay - 1 // Mon=0..Sun=6
-        return {
-          label: dayLabels[idx],
-          date,
-          played: playedDates.has(date),
-        }
-      })
+      const history = days.map((date, idx) => ({
+        label: dayLabels[idx],
+        date,
+        played: playedDates.has(date),
+        isToday: date === today,
+        isFuture: date > today,
+      }))
       setStreakHistory(history)
 
       // Fetch top 10 for leaderboard
@@ -228,23 +228,27 @@ export default function HomePage() {
             <p className="text-xs text-akka-text-secondary">{t('current_streak')}</p>
           </div>
         </div>
-        {/* 7-day circles */}
+        {/* Weekly calendar Mon→Sun */}
         {streakHistory.length > 0 && (
-          <div className="flex items-center justify-between px-2">
-            {streakHistory.map((day, i) => (
-              <div key={i} className="flex flex-col items-center gap-1">
-                <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold transition-colors ${
-                    day.played
-                      ? 'bg-akka-green text-white'
-                      : 'bg-gray-100 text-akka-text-secondary'
-                  }`}
-                >
-                  {day.played ? '✓' : day.label}
+          <div className="flex items-center justify-between px-1">
+            {streakHistory.map((day, i) => {
+              const circleStyle = day.played
+                ? 'bg-akka-green text-white'
+                : day.isFuture
+                  ? 'bg-gray-50 text-gray-300'
+                  : 'bg-gray-100 text-akka-text-secondary'
+              const ringStyle = day.isToday ? 'ring-2 ring-[#2ECC71] ring-offset-2' : ''
+              return (
+                <div key={i} className="flex flex-col items-center gap-1">
+                  <div
+                    className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${circleStyle} ${ringStyle}`}
+                  >
+                    {day.played ? '✓' : day.label}
+                  </div>
+                  <span className={`text-[10px] font-medium ${day.isToday ? 'text-[#2ECC71] font-bold' : 'text-akka-text-secondary'}`}>{day.label}</span>
                 </div>
-                <span className="text-[10px] text-akka-text-secondary">{day.label}</span>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </Card>
@@ -262,7 +266,16 @@ export default function HomePage() {
             {totalXP.toLocaleString()} XP
           </p>
         </div>
-        <ProgressBar value={levelProgress} />
+        {/* XP progress bar — thick gradient with percentage */}
+        <div className="relative h-5 w-full rounded-full bg-gray-100 overflow-hidden">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-[#2ECC71] to-[#27AE60] transition-all duration-500 ease-out"
+            style={{ width: `${Math.min(Math.max(levelProgress, 0), 1) * 100}%` }}
+          />
+          <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-akka-text">
+            {Math.round(levelProgress * 100)}%
+          </span>
+        </div>
         <div className="flex items-center justify-between mt-1.5">
           <p className="text-[10px] text-akka-text-secondary">
             {t('level')} {level?.level}
@@ -275,34 +288,74 @@ export default function HomePage() {
         </div>
       </Card>
 
-      {/* Stats — 3 pill cards with colors */}
+      {/* Stats — 3 pill cards with colored icon backgrounds */}
       <div className="flex gap-2 mb-3">
         <Card className="flex-1 flex flex-col items-center py-3 px-2">
-          <span className="text-base mb-0.5">📊</span>
-          <p className="text-lg font-bold text-[#2ECC71]">{avgScore}</p>
+          <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center mb-1">
+            <span className="text-xl">📊</span>
+          </div>
+          <p className="text-xl font-bold text-[#2ECC71]">{avgScore}</p>
           <p className="text-[10px] text-akka-text-secondary">{t('avg_score')}</p>
         </Card>
         <Card className="flex-1 flex flex-col items-center py-3 px-2">
-          <span className="text-base mb-0.5">🎯</span>
-          <p className="text-lg font-bold text-[#3498DB]">{accuracy}%</p>
+          <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center mb-1">
+            <span className="text-xl">🎯</span>
+          </div>
+          <p className="text-xl font-bold text-[#3498DB]">{accuracy}%</p>
           <p className="text-[10px] text-akka-text-secondary">{t('accuracy')}</p>
         </Card>
         <Card className="flex-1 flex flex-col items-center py-3 px-2">
-          <span className="text-base mb-0.5">🏆</span>
-          <p className="text-lg font-bold text-[#F39C12]">{profile.longest_streak || 0}</p>
+          <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center mb-1">
+            <span className="text-xl">🏆</span>
+          </div>
+          <p className="text-xl font-bold text-[#F39C12]">{profile.longest_streak || 0}</p>
           <p className="text-[10px] text-akka-text-secondary">{t('best_streak')}</p>
         </Card>
       </div>
 
-      {/* Investor Score */}
+      {/* Investor Score — circular SVG gauge */}
       <Card className="mb-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-akka-text-secondary mb-1">
-          {t('investor_score')}
-        </p>
-        <p className="text-2xl font-bold text-akka-text">
-          {profile.investor_score || 0}
-          <span className="text-sm font-medium text-akka-text-secondary"> / 1000</span>
-        </p>
+        <div className="flex items-center gap-4">
+          {/* SVG circular gauge */}
+          {(() => {
+            const score = profile.investor_score || 0
+            const max = 1000
+            const pct = Math.min(score / max, 1)
+            const r = 40
+            const circumference = 2 * Math.PI * r
+            const offset = circumference * (1 - pct)
+            const gaugeColor = pct >= 0.7 ? '#2ECC71' : pct >= 0.4 ? '#F39C12' : '#E74C3C'
+            return (
+              <div className="relative w-24 h-24 shrink-0">
+                <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
+                  <circle cx="50" cy="50" r={r} fill="none" stroke="#E5E7EB" strokeWidth="8" />
+                  <circle
+                    cx="50" cy="50" r={r} fill="none"
+                    stroke={gaugeColor} strokeWidth="8" strokeLinecap="round"
+                    strokeDasharray={circumference} strokeDashoffset={offset}
+                    className="transition-all duration-700 ease-out"
+                  />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="text-lg font-bold text-akka-text">{score}</span>
+                  <span className="text-[9px] text-akka-text-secondary">/ {max}</span>
+                </div>
+              </div>
+            )
+          })()}
+          <div className="flex-1">
+            <p className="text-xs font-semibold uppercase tracking-wide text-akka-text-secondary mb-1">
+              {t('investor_score')}
+            </p>
+            <p className="text-sm text-akka-text-secondary leading-snug">
+              {(profile.investor_score || 0) >= 700
+                ? '🟢 ' + t('score_excellent')
+                : (profile.investor_score || 0) >= 400
+                  ? '🟡 ' + t('score_good')
+                  : '🔴 ' + t('score_improving')}
+            </p>
+          </div>
+        </div>
       </Card>
 
       {/* Leaderboard */}

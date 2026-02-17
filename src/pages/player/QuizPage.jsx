@@ -594,25 +594,43 @@ export default function QuizPage() {
     )
   }
 
-  // Ready state
+  // Ready state — dark green gradient with glow
   if (quizState === 'ready') {
+    const streak = profile?.current_streak || 0
     return (
-      <div className="min-h-screen bg-akka-bg flex flex-col">
-        <QuizHeader onBack={() => navigate('/')} muted={muted} onToggleMute={handleToggleMute} title={t('quiz_of_the_day')} />
+      <div className="min-h-screen bg-gradient-to-b from-[#1B3D2F] via-[#1B3D2F] to-[#0B1A14] flex flex-col">
+        <QuizHeader onBack={() => navigate('/')} muted={muted} onToggleMute={handleToggleMute} title={t('quiz_of_the_day')} dark />
         <div className="flex-1 flex flex-col items-center justify-center px-6">
-          <div className="w-20 h-20 rounded-3xl bg-emerald-50 flex items-center justify-center mb-6">
-            <span className="text-4xl">🧠</span>
+          {/* Glowing emoji */}
+          <div className="relative mb-6">
+            <div className="absolute inset-0 rounded-full bg-[#2ECC71] opacity-20 blur-2xl scale-150" />
+            <div className="relative w-24 h-24 rounded-3xl bg-[#2ECC71]/15 flex items-center justify-center border border-[#2ECC71]/20">
+              <span className="text-5xl drop-shadow-lg">🧠</span>
+            </div>
           </div>
-          <h2 className="text-2xl font-bold text-akka-text mb-2">{t('quiz_of_the_day')}</h2>
-          <p className="text-akka-text-secondary text-center mb-1">
+          <h2 className="text-2xl font-bold text-white mb-2">{t('quiz_of_the_day')}</h2>
+          <p className="text-[#A7C4B8] text-center mb-1">
             {tp('questions_per_question', { count: questions.length, timer: QUESTION_TIMER_SECONDS })}
           </p>
-          <p className="text-xs text-akka-text-secondary mb-8">
+          <p className="text-xs text-[#A7C4B8] mb-4">
             {t('answer_quickly')}
           </p>
-          <Button variant="primary" className="w-full max-w-xs gap-2" onClick={handleStart}>
-            {t('start_quiz_short')}
-          </Button>
+          {/* Streak badge */}
+          {streak > 0 && (
+            <div className="flex items-center gap-2 mb-6 px-4 py-2 rounded-full bg-[#2ECC71]/10 border border-[#2ECC71]/20">
+              <span className="text-lg">🔥</span>
+              <span className="text-sm font-bold text-[#2ECC71]">{streak} {t('days')}</span>
+            </div>
+          )}
+          {!streak && <div className="mb-6" />}
+          {/* Shimmer CTA button */}
+          <button
+            onClick={handleStart}
+            className="relative w-full max-w-xs py-4 rounded-2xl bg-[#2ECC71] text-white font-bold text-lg shadow-lg shadow-[#2ECC71]/30 active:scale-[0.97] transition-transform overflow-hidden"
+          >
+            <span className="relative z-10">{t('start_quiz_short')}</span>
+            <div className="absolute inset-0 animate-shimmer bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+          </button>
         </div>
       </div>
     )
@@ -806,27 +824,33 @@ export default function QuizPage() {
           )
         })}
 
-        {/* How Akka members answered — fallback when no real community stats */}
+        {/* How Akka members answered — Kahoot-style bars */}
         {quizState === 'feedback' && !communityStats && memberStats && (
-          <div className="mt-4 space-y-1.5 px-1">
-            <p className="text-xs text-gray-400 mb-2">{getQuizText('membersAnswered', lang)}</p>
-            {answersArr.map((_, i) => {
-              const pct = memberStats[i]
-              const isCorrectIdx = i === question.correct_answer_index - 1
-              const isSelectedIdx = i === selectedAnswer - 1
-              const barColor = isCorrectIdx ? 'bg-[#2ECC71]' : isSelectedIdx ? 'bg-orange-400' : 'bg-gray-300'
-              return (
-                <div key={i} className="flex items-center gap-2">
-                  <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+          <div className="mt-5 px-1">
+            <p className="text-xs font-semibold text-akka-text-secondary uppercase tracking-wide mb-3">{getQuizText('membersAnswered', lang)}</p>
+            <div className="space-y-2">
+              {answersArr.map((ansText, i) => {
+                const pct = memberStats[i]
+                const isCorrectIdx = i === question.correct_answer_index - 1
+                const isSelectedIdx = i === selectedAnswer - 1
+                const barColor = isCorrectIdx ? 'bg-[#2ECC71]' : isSelectedIdx ? 'bg-[#E74C3C]' : 'bg-[#E5E7EB]'
+                const textColor = isCorrectIdx || isSelectedIdx ? 'text-white' : 'text-akka-text'
+                const letter = String.fromCharCode(65 + i)
+                return (
+                  <div key={i} className="relative h-10 rounded-xl overflow-hidden bg-gray-100">
                     <div
-                      className={`h-full rounded-full ${barColor} transition-all duration-700 ease-out`}
-                      style={{ width: `${pct}%` }}
+                      className={`absolute inset-y-0 left-0 rounded-xl ${barColor} transition-all duration-700 ease-out`}
+                      style={{ width: `${Math.max(pct, 8)}%` }}
                     />
+                    <div className="relative h-full flex items-center px-3 gap-2">
+                      <span className={`text-xs font-bold ${textColor} w-5 shrink-0`}>{letter}</span>
+                      <span className={`text-xs font-medium ${textColor} flex-1 truncate`}>{ansText}</span>
+                      <span className={`text-xs font-bold ${textColor} shrink-0`}>{pct}%</span>
+                    </div>
                   </div>
-                  <span className="text-xs text-gray-400 w-8 text-right">{pct}%</span>
-                </div>
-              )
-            })}
+                )
+              })}
+            </div>
           </div>
         )}
       </div>
@@ -891,21 +915,21 @@ export default function QuizPage() {
 /**
  * QuizHeader — back button + title + optional mute toggle.
  */
-function QuizHeader({ onBack, muted, onToggleMute, title }) {
+function QuizHeader({ onBack, muted, onToggleMute, title, dark }) {
   return (
-    <div className="flex items-center justify-between px-4 py-3 border-b border-akka-border">
+    <div className={`flex items-center justify-between px-4 py-3 border-b ${dark ? 'border-white/10' : 'border-akka-border'}`}>
       <button
         onClick={onBack}
-        className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl hover:bg-gray-50 transition-colors"
+        className={`min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl transition-colors ${dark ? 'hover:bg-white/10' : 'hover:bg-gray-50'}`}
       >
-        <ArrowLeft size={20} />
+        <ArrowLeft size={20} className={dark ? 'text-white' : ''} />
       </button>
-      <h1 className="text-lg font-bold text-akka-text">{title}</h1>
+      <h1 className={`text-lg font-bold ${dark ? 'text-white' : 'text-akka-text'}`}>{title}</h1>
       <button
         onClick={onToggleMute}
-        className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl hover:bg-gray-50 transition-colors"
+        className={`min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl transition-colors ${dark ? 'hover:bg-white/10' : 'hover:bg-gray-50'}`}
       >
-        {muted ? <VolumeX size={18} className="text-gray-400" /> : <Volume2 size={18} className="text-akka-text-secondary" />}
+        {muted ? <VolumeX size={18} className={dark ? 'text-white/40' : 'text-gray-400'} /> : <Volume2 size={18} className={dark ? 'text-white/60' : 'text-akka-text-secondary'} />}
       </button>
     </div>
   )
