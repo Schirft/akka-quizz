@@ -86,7 +86,7 @@ export default function DashboardPage() {
 
       setBatches(batchData || [])
     } catch (err) {
-      console.error('Dashboard load error:', err)
+      if (err?.name !== 'AbortError') console.error('Dashboard load error:', err)
     } finally {
       setLoading(false)
     }

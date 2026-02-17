@@ -150,7 +150,7 @@ export default function QuestionsPage() {
       setQuestions(data || [])
       setTotalCount(count || 0)
     } catch (err) {
-      console.error('Load questions error:', err)
+      if (err?.name !== 'AbortError') console.error('Load questions error:', err)
     } finally {
       setLoading(false)
     }

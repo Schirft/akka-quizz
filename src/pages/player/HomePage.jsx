@@ -63,71 +63,75 @@ export default function HomePage() {
     if (!user) return
 
     async function loadHomeData() {
-      const today = new Date().toISOString().split('T')[0]
+      try {
+        const today = new Date().toISOString().split('T')[0]
 
-      // Check for today's quiz session
-      const { data: sessions } = await supabase
-        .from('quiz_sessions')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('quiz_date', today)
-        .limit(1)
+        // Check for today's quiz session
+        const { data: sessions } = await supabase
+          .from('quiz_sessions')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('quiz_date', today)
+          .limit(1)
 
-      setQuizPlayedToday(sessions && sessions.length > 0)
+        setQuizPlayedToday(sessions && sessions.length > 0)
 
-      // Fetch recent badges (last 3)
-      const { data: earnedBadges } = await supabase
-        .from('badges_earned')
-        .select('badge_key, earned_at')
-        .eq('user_id', user.id)
-        .order('earned_at', { ascending: false })
-        .limit(3)
+        // Fetch recent badges (last 3)
+        const { data: earnedBadges } = await supabase
+          .from('badges_earned')
+          .select('badge_key, earned_at')
+          .eq('user_id', user.id)
+          .order('earned_at', { ascending: false })
+          .limit(3)
 
-      if (earnedBadges) {
-        const badgeDetails = earnedBadges
-          .map((eb) => {
-            const badge = BADGES.find((b) => b.id === eb.badge_key)
-            return badge ? { ...badge, earned_at: eb.earned_at } : null
-          })
-          .filter(Boolean)
-        setRecentBadges(badgeDetails)
+        if (earnedBadges) {
+          const badgeDetails = earnedBadges
+            .map((eb) => {
+              const badge = BADGES.find((b) => b.id === eb.badge_key)
+              return badge ? { ...badge, earned_at: eb.earned_at } : null
+            })
+            .filter(Boolean)
+          setRecentBadges(badgeDetails)
+        }
+
+        // Build current week Mon→Sun
+        const nowDate = new Date()
+        const jsDay = nowDate.getDay() // 0=Sun
+        const mondayOffset = jsDay === 0 ? -6 : 1 - jsDay
+        const days = []
+        for (let i = 0; i < 7; i++) {
+          const d = new Date(nowDate)
+          d.setDate(nowDate.getDate() + mondayOffset + i)
+          days.push(d.toISOString().split('T')[0])
+        }
+
+        const { data: weekSessions } = await supabase
+          .from('quiz_sessions')
+          .select('quiz_date')
+          .eq('user_id', user.id)
+          .in('quiz_date', days)
+
+        const playedDates = new Set((weekSessions || []).map((s) => s.quiz_date))
+        const history = days.map((date, idx) => ({
+          label: dayLabels[idx],
+          date,
+          dayOfMonth: parseInt(date.split('-')[2], 10),
+          played: playedDates.has(date),
+          isToday: date === today,
+          isFuture: date > today,
+        }))
+        setStreakHistory(history)
+
+        // Fetch top 10 for leaderboard
+        const { data: topPlayers } = await supabase
+          .from('profiles')
+          .select('id, display_name, total_xp, level, current_streak')
+          .order('total_xp', { ascending: false })
+          .limit(10)
+        setLeaders(topPlayers || [])
+      } catch (err) {
+        if (err?.name !== 'AbortError') console.error('Home data load error:', err)
       }
-
-      // Build current week Mon→Sun
-      const nowDate = new Date()
-      const jsDay = nowDate.getDay() // 0=Sun
-      const mondayOffset = jsDay === 0 ? -6 : 1 - jsDay
-      const days = []
-      for (let i = 0; i < 7; i++) {
-        const d = new Date(nowDate)
-        d.setDate(nowDate.getDate() + mondayOffset + i)
-        days.push(d.toISOString().split('T')[0])
-      }
-
-      const { data: weekSessions } = await supabase
-        .from('quiz_sessions')
-        .select('quiz_date')
-        .eq('user_id', user.id)
-        .in('quiz_date', days)
-
-      const playedDates = new Set((weekSessions || []).map((s) => s.quiz_date))
-      const history = days.map((date, idx) => ({
-        label: dayLabels[idx],
-        date,
-        dayOfMonth: parseInt(date.split('-')[2], 10),
-        played: playedDates.has(date),
-        isToday: date === today,
-        isFuture: date > today,
-      }))
-      setStreakHistory(history)
-
-      // Fetch top 10 for leaderboard
-      const { data: topPlayers } = await supabase
-        .from('profiles')
-        .select('id, display_name, total_xp, level, current_streak')
-        .order('total_xp', { ascending: false })
-        .limit(10)
-      setLeaders(topPlayers || [])
     }
 
     loadHomeData()

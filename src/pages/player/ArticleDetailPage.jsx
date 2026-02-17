@@ -58,7 +58,7 @@ export default function ArticleDetailPage() {
 
       setArticle(data)
     } catch (err) {
-      console.error('Load article error:', err)
+      if (err?.name !== 'AbortError') console.error('Load article error:', err)
     } finally {
       setLoading(false)
     }

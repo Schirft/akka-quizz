@@ -191,7 +191,7 @@ export default function QuizPage() {
         setQuestions(shuffledQuestions)
         setQuizState('ready')
       } catch (err) {
-        console.error('Quiz load error:', err)
+        if (err?.name !== 'AbortError') console.error('Quiz load error:', err)
         if (!cancelled) {
           setErrorMsg('load_failed')
           setQuizState('error')

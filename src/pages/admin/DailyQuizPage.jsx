@@ -103,7 +103,7 @@ export default function DailyQuizPage() {
 
       setQuizzes(quizMap)
     } catch (err) {
-      console.error('Load daily quiz error:', err)
+      if (err?.name !== 'AbortError') console.error('Load daily quiz error:', err)
     } finally {
       setLoading(false)
     }

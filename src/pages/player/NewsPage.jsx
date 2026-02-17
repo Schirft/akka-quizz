@@ -69,7 +69,7 @@ export default function NewsPage() {
         }
       } catch (err) {
         if (!cancelled) {
-          console.error('Load news error:', err)
+          if (err?.name !== 'AbortError') console.error('Load news error:', err)
           setFeatured(null)
           setArticles([])
         }
