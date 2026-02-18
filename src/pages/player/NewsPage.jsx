@@ -147,15 +147,11 @@ export default function NewsPage() {
                     {featured.title}
                   </h2>
                   <div className="flex items-center gap-2 text-white/50 text-xs">
-                    {featured.source_name && <span>{featured.source_name}</span>}
                     {featured.published_at && (
-                      <>
-                        <span>·</span>
-                        <span className="flex items-center gap-1">
-                          <Clock size={10} />
-                          {timeAgo(featured.published_at)}
-                        </span>
-                      </>
+                      <span className="flex items-center gap-1">
+                        <Clock size={10} />
+                        {timeAgo(featured.published_at)}
+                      </span>
                     )}
                   </div>
                 </div>
@@ -228,12 +224,8 @@ export default function NewsPage() {
                       </h3>
                     </div>
                     <div className="flex items-center gap-2 text-white/40 text-[10px] mt-1">
-                      {article.source_name && <span>{article.source_name}</span>}
                       {article.published_at && (
-                        <>
-                          <span>·</span>
-                          <span>{timeAgo(article.published_at)}</span>
-                        </>
+                        <span>{timeAgo(article.published_at)}</span>
                       )}
                     </div>
                   </div>

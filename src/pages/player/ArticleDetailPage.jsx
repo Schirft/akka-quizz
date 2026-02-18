@@ -62,8 +62,8 @@ export default function ArticleDetailPage() {
         {/* Title */}
         <h1 className="text-xl font-bold text-gray-900 mb-2">{article.title}</h1>
 
-        {/* Source + date */}
-        <p className="text-sm text-gray-500 mb-4">{article.source_name} · {date}</p>
+        {/* Date */}
+        {date && <p className="text-sm text-gray-500 mb-4">{date}</p>}
 
         <hr className="border-gray-200 mb-4" />
 
@@ -72,12 +72,6 @@ export default function ArticleDetailPage() {
           <p key={i} className="text-gray-700 leading-relaxed mb-4 text-[15px]">{p}</p>
         ))}
 
-        <hr className="border-gray-200 my-4" />
-
-        {/* Source link */}
-        <a href={article.source_url} target="_blank" rel="noopener noreferrer" className="text-sm text-[#1B3D2F] underline">
-          Read original article ↗
-        </a>
       </div>
     </div>
   )
