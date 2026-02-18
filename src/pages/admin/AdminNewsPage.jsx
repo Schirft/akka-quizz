@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import Card from '../../components/ui/Card'
 import {
@@ -15,6 +15,9 @@ import {
   Globe,
   Clock,
   Pencil,
+  FileText,
+  Upload,
+  Image as ImageIcon,
 } from 'lucide-react'
 
 // ── Default prompts ──
@@ -51,13 +54,18 @@ export default function AdminNewsPage() {
   const [progressMessage, setProgressMessage] = useState('')
   const [progressPercent, setProgressPercent] = useState(0)
   const [articleCount, setArticleCount] = useState(10)
-  const [selectedLangs, setSelectedLangs] = useState(['en', 'fr'])
+  const [selectedLangs, setSelectedLangs] = useState(['en', 'fr', 'it', 'es'])
 
-  // ── Section B: Manual add ──
+  // ── Section B: Manual add (URL + Text modes) ──
+  const [addMode, setAddMode] = useState('url') // 'url' | 'text'
   const [manualUrl, setManualUrl] = useState('')
+  const [manualText, setManualText] = useState('')
+  const [uploadedImage, setUploadedImage] = useState(null) // File object
+  const [uploadedImageUrl, setUploadedImageUrl] = useState('')
   const [addingManual, setAddingManual] = useState(false)
   const [manualResult, setManualResult] = useState(null)
   const [manualError, setManualError] = useState(null)
+  const fileInputRef = useRef(null)
 
   // ── Section C: Published articles ──
   const [articles, setArticles] = useState([])
@@ -87,6 +95,9 @@ export default function AdminNewsPage() {
   const [editSummaries, setEditSummaries] = useState({ en: '', fr: '', it: '', es: '' })
   const [saving, setSaving] = useState(false)
 
+  // ── Hidden langs dropdown ──
+  const [hideLangOpen, setHideLangOpen] = useState(null) // article id or null
+
   // ── Init ──
   useEffect(() => {
     fetchArticles()
@@ -99,7 +110,7 @@ export default function AdminNewsPage() {
     try {
       const { data } = await supabase
         .from('news_articles')
-        .select('id, title, description, content, source_url, source_name, image_url, category, language, published_at, created_at, is_published, is_featured, summary_en, summary_fr, summary_it, summary_es')
+        .select('id, title, description, content, source_url, source_name, image_url, category, language, published_at, created_at, is_published, is_featured, summary_en, summary_fr, summary_it, summary_es, hidden_langs')
         .eq('is_published', true)
         .order('published_at', { ascending: false })
         .limit(200)
@@ -204,8 +215,8 @@ export default function AdminNewsPage() {
     }
   }
 
-  // ── Section B: Manual add ──
-  async function handleManualAdd() {
+  // ── Section B: Manual add by URL ──
+  async function handleManualUrl() {
     if (!manualUrl.trim()) return
     setAddingManual(true)
     setManualResult(null)
@@ -225,7 +236,91 @@ export default function AdminNewsPage() {
     }
   }
 
-  // ── Section C: Unpublish ──
+  // ── Section B: Image upload to Supabase Storage ──
+  async function handleImageUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadedImage(file)
+    setUploadedImageUrl('') // clear previous
+
+    const ext = file.name.split('.').pop()
+    const fileName = `manual_${Date.now()}.${ext}`
+    const { data, error } = await supabase.storage
+      .from('news-images')
+      .upload(fileName, file, { cacheControl: '3600', upsert: false })
+
+    if (error) {
+      console.error('Upload error:', error)
+      setManualError('Image upload failed: ' + error.message)
+      setUploadedImage(null)
+      return
+    }
+
+    const { data: urlData } = supabase.storage.from('news-images').getPublicUrl(fileName)
+    setUploadedImageUrl(urlData?.publicUrl || '')
+  }
+
+  // ── Section B: Manual add by Text ──
+  async function handleManualText() {
+    if (!manualText.trim() || manualText.trim().length < 50) {
+      setManualError('Please enter at least 50 characters of text.')
+      return
+    }
+    setAddingManual(true)
+    setManualResult(null)
+    setManualError(null)
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-summaries`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            manualText: manualText.trim(),
+            manualImageUrl: uploadedImageUrl || '',
+          }),
+        },
+      )
+      const result = await res.json()
+      if (!res.ok || result.error) throw new Error(result.error || 'Failed to process text')
+      setManualResult('Article created from text successfully!')
+      setManualText('')
+      setUploadedImage(null)
+      setUploadedImageUrl('')
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      await fetchArticles()
+    } catch (err) {
+      setManualError(err.message || 'Failed to add article from text')
+    } finally {
+      setAddingManual(false)
+    }
+  }
+
+  // ── Section C: Toggle hidden language on an article ──
+  async function toggleHideLang(articleId, lang) {
+    const article = articles.find((a) => a.id === articleId)
+    if (!article) return
+    const current = article.hidden_langs || []
+    const updated = current.includes(lang)
+      ? current.filter((l) => l !== lang)
+      : [...current, lang]
+
+    const { error } = await supabase
+      .from('news_articles')
+      .update({ hidden_langs: updated })
+      .eq('id', articleId)
+
+    if (!error) {
+      setArticles((prev) =>
+        prev.map((a) => (a.id === articleId ? { ...a, hidden_langs: updated } : a)),
+      )
+    }
+  }
+
+  // ── Section C: Unpublish all languages ──
   async function handleUnpublish(articleId) {
     try {
       await supabase
@@ -233,6 +328,7 @@ export default function AdminNewsPage() {
         .update({ is_published: false })
         .eq('id', articleId)
       setArticles((prev) => prev.filter((a) => a.id !== articleId))
+      setHideLangOpen(null)
     } catch (err) {
       console.error('Unpublish error:', err)
     }
@@ -402,7 +498,7 @@ export default function AdminNewsPage() {
             </div>
           </div>
 
-          {/* Language checkboxes */}
+          {/* Language checkboxes — all 4 freely toggleable */}
           <div className="mb-4">
             <label className="block mb-1.5 text-xs font-medium text-[#6B7280]">
               Languages to generate
@@ -473,7 +569,7 @@ export default function AdminNewsPage() {
           )}
         </Card>
 
-        {/* ─── Section B: Manual Add ─── */}
+        {/* ─── Section B: Add Article Manually (URL / Text tabs) ─── */}
         <Card>
           <div className="flex items-center gap-2 mb-4">
             <LinkIcon size={16} className="text-blue-500" />
@@ -482,29 +578,129 @@ export default function AdminNewsPage() {
             </p>
           </div>
 
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={manualUrl}
-              onChange={(e) => setManualUrl(e.target.value)}
-              placeholder="Paste article URL here..."
-              disabled={addingManual}
-              className="flex-1 border border-[#D1D5DB] rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1B3D2F] disabled:opacity-50"
-              onKeyDown={(e) => e.key === 'Enter' && handleManualAdd()}
-            />
+          {/* Mode tabs */}
+          <div className="flex gap-2 mb-4">
             <button
-              onClick={handleManualAdd}
-              disabled={addingManual || !manualUrl.trim()}
-              className="flex items-center gap-2 px-4 py-2.5 bg-[#1B3D2F] text-white text-sm font-semibold rounded-xl hover:opacity-90 disabled:opacity-50 transition-opacity shrink-0"
+              onClick={() => { setAddMode('url'); setManualResult(null); setManualError(null) }}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                addMode === 'url'
+                  ? 'bg-[#1B3D2F] text-white'
+                  : 'bg-gray-100 text-[#6B7280] hover:bg-gray-200'
+              }`}
             >
-              {addingManual ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : (
-                <Sparkles size={16} />
-              )}
-              Generate Summary
+              <LinkIcon size={14} />
+              From URL
+            </button>
+            <button
+              onClick={() => { setAddMode('text'); setManualResult(null); setManualError(null) }}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                addMode === 'text'
+                  ? 'bg-[#1B3D2F] text-white'
+                  : 'bg-gray-100 text-[#6B7280] hover:bg-gray-200'
+              }`}
+            >
+              <FileText size={14} />
+              From Text
             </button>
           </div>
+
+          {/* URL mode */}
+          {addMode === 'url' && (
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={manualUrl}
+                onChange={(e) => setManualUrl(e.target.value)}
+                placeholder="Paste article URL here..."
+                disabled={addingManual}
+                className="flex-1 border border-[#D1D5DB] rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1B3D2F] disabled:opacity-50"
+                onKeyDown={(e) => e.key === 'Enter' && handleManualUrl()}
+              />
+              <button
+                onClick={handleManualUrl}
+                disabled={addingManual || !manualUrl.trim()}
+                className="flex items-center gap-2 px-4 py-2.5 bg-[#1B3D2F] text-white text-sm font-semibold rounded-xl hover:opacity-90 disabled:opacity-50 transition-opacity shrink-0"
+              >
+                {addingManual ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <Sparkles size={16} />
+                )}
+                Generate Summary
+              </button>
+            </div>
+          )}
+
+          {/* Text mode */}
+          {addMode === 'text' && (
+            <div className="space-y-3">
+              <textarea
+                value={manualText}
+                onChange={(e) => setManualText(e.target.value)}
+                placeholder="Paste or type your article text here (min. 50 characters)..."
+                disabled={addingManual}
+                rows={6}
+                className="w-full border border-[#D1D5DB] rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1B3D2F] disabled:opacity-50 resize-y"
+              />
+
+              {/* Image upload */}
+              <div className="flex items-center gap-3">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  className="hidden"
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={addingManual}
+                  className="flex items-center gap-2 px-4 py-2 border border-[#D1D5DB] rounded-xl text-sm font-medium text-[#6B7280] hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                >
+                  <Upload size={14} />
+                  {uploadedImage ? 'Change Image' : 'Upload Image'}
+                </button>
+                {uploadedImage && (
+                  <div className="flex items-center gap-2">
+                    <ImageIcon size={14} className="text-green-600" />
+                    <span className="text-xs text-green-700 font-medium truncate max-w-[200px]">
+                      {uploadedImage.name}
+                    </span>
+                    <button
+                      onClick={() => {
+                        setUploadedImage(null)
+                        setUploadedImageUrl('')
+                        if (fileInputRef.current) fileInputRef.current.value = ''
+                      }}
+                      className="text-gray-400 hover:text-red-500"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                )}
+                {uploadedImageUrl && (
+                  <img
+                    src={uploadedImageUrl}
+                    alt="preview"
+                    className="w-10 h-10 rounded-lg object-cover border border-gray-200"
+                  />
+                )}
+              </div>
+
+              <button
+                onClick={handleManualText}
+                disabled={addingManual || manualText.trim().length < 50}
+                className="flex items-center gap-2 px-6 py-3 bg-[#1B3D2F] text-white text-sm font-semibold rounded-xl hover:opacity-90 disabled:opacity-50 transition-opacity"
+              >
+                {addingManual ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <Sparkles size={16} />
+                )}
+                Generate from Text
+              </button>
+            </div>
+          )}
 
           {manualResult && (
             <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-xl">
@@ -569,6 +765,7 @@ export default function AdminNewsPage() {
               {sortedArticles.map((article) => {
                 const availLangs = getAvailableLanguages(article)
                 const originLang = (article.language || '').toUpperCase()
+                const hiddenLangs = article.hidden_langs || []
 
                 return (
                   <div
@@ -627,7 +824,11 @@ export default function AdminNewsPage() {
                         )}
                         {/* Origin language badge */}
                         {originLang && (
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-[#1B3D2F] text-white font-medium">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                            hiddenLangs.includes(originLang.toLowerCase())
+                              ? 'bg-red-100 text-red-500 line-through'
+                              : 'bg-[#1B3D2F] text-white'
+                          }`}>
                             {originLang}
                           </span>
                         )}
@@ -637,7 +838,11 @@ export default function AdminNewsPage() {
                           .map((lng) => (
                             <span
                               key={lng}
-                              className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium"
+                              className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                hiddenLangs.includes(lng.toLowerCase())
+                                  ? 'bg-red-100 text-red-500 line-through'
+                                  : 'bg-green-100 text-green-700'
+                              }`}
                             >
                               {lng}
                             </span>
@@ -656,7 +861,7 @@ export default function AdminNewsPage() {
                     </div>
 
                     {/* Actions */}
-                    <div className="flex items-center gap-1 shrink-0">
+                    <div className="flex items-center gap-1 shrink-0 relative">
                       <button
                         onClick={() => {
                           setPreviewArticle(article)
@@ -674,13 +879,59 @@ export default function AdminNewsPage() {
                       >
                         <Pencil size={16} />
                       </button>
-                      <button
-                        onClick={() => handleUnpublish(article.id)}
-                        className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
-                        title="Unpublish"
-                      >
-                        <EyeOff size={16} />
-                      </button>
+
+                      {/* Hide/Unpublish dropdown */}
+                      <div className="relative">
+                        <button
+                          onClick={() => setHideLangOpen(hideLangOpen === article.id ? null : article.id)}
+                          className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                          title="Hide / Unpublish"
+                        >
+                          <EyeOff size={16} />
+                        </button>
+
+                        {hideLangOpen === article.id && (
+                          <div className="absolute right-0 top-full mt-1 z-30 w-48 bg-white rounded-xl border border-[#D1D5DB] shadow-lg py-1">
+                            <p className="px-3 py-1.5 text-[10px] font-semibold text-[#6B7280] uppercase tracking-wide">
+                              Hide per language
+                            </p>
+                            {LANGS.map((lng) => {
+                              const isHidden = hiddenLangs.includes(lng)
+                              return (
+                                <button
+                                  key={lng}
+                                  onClick={() => toggleHideLang(article.id, lng)}
+                                  className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 transition-colors"
+                                >
+                                  <span className={`w-3 h-3 rounded-sm border ${
+                                    isHidden
+                                      ? 'bg-red-500 border-red-500'
+                                      : 'border-gray-300'
+                                  }`}>
+                                    {isHidden && (
+                                      <svg viewBox="0 0 12 12" className="w-3 h-3 text-white">
+                                        <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" fill="none" />
+                                      </svg>
+                                    )}
+                                  </span>
+                                  <span className="uppercase font-medium">{lng}</span>
+                                  {isHidden && (
+                                    <span className="text-[10px] text-red-500 ml-auto">Hidden</span>
+                                  )}
+                                </button>
+                              )
+                            })}
+                            <hr className="my-1 border-gray-100" />
+                            <button
+                              onClick={() => handleUnpublish(article.id)}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 font-medium hover:bg-red-50 transition-colors"
+                            >
+                              <EyeOff size={14} />
+                              Unpublish All
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )
@@ -942,6 +1193,14 @@ export default function AdminNewsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Close dropdown when clicking outside */}
+      {hideLangOpen && (
+        <div
+          className="fixed inset-0 z-20"
+          onClick={() => setHideLangOpen(null)}
+        />
       )}
     </div>
   )

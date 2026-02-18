@@ -31,6 +31,13 @@ export default function ArticleDetailPage() {
 
   // Get summary in user's language with fallback to EN
   const lang = userLang || 'en'
+
+  // Redirect if article is hidden in user's language
+  const hiddenLangs = article.hidden_langs || []
+  if (hiddenLangs.includes(lang)) {
+    navigate('/news', { replace: true })
+    return null
+  }
   const summary = article[`summary_${lang}`] || article.summary_en || article.description || ''
   const date = article.published_at ? new Date(article.published_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : ''
 

@@ -116,6 +116,8 @@ Deno.serve(async (req: Request) => {
     let customSelectionPrompt = "";
     let customSummaryPrompt = "";
     let manualUrl = "";
+    let manualText = "";
+    let manualImageUrl = "";
     let targetLang = "en";
 
     try {
@@ -123,6 +125,8 @@ Deno.serve(async (req: Request) => {
       customSelectionPrompt = body.selectionPrompt || "";
       customSummaryPrompt = body.summaryPrompt || "";
       manualUrl = body.manualUrl || "";
+      manualText = body.manualText || "";
+      manualImageUrl = body.manualImageUrl || "";
       targetLang = body.language || "en";
     } catch {
       // No body, that's fine (cron call)
@@ -206,7 +210,76 @@ Return ONLY valid JSON:
       });
     }
 
-    // --- MODE 2: Auto-generate from existing unsummarized articles ---
+    // --- MODE 2: Manual text input ---
+    if (manualText && manualText.length > 50) {
+      const manualTextPrompt = `You are a senior analyst writing for a premium startup investment newsletter.
+Given raw text content (could be a tweet, article excerpt, or original content) in ANY language, generate:
+1. Detect the original language of the text
+2. A compelling, professional title IN ENGLISH
+3. A newsletter-style summary in ENGLISH (250-350 words)
+4. A category
+
+The input text may be in French, Italian, Spanish, English, or any language.
+Always generate the English summary regardless of input language.
+
+Return ONLY valid JSON:
+{
+  "title": "Generated title in English",
+  "detected_language": "en or fr or it or es",
+  "summary_en": "English summary (250-350 words, analytical, with why-it-matters and a question at the end)",
+  "category": "one of: Funding, AI & Tech, M&A & Exits, Market Moves, European Tech, VC & Investors, Regulation"
+}
+Return ONLY the JSON object, no markdown, no code blocks.`;
+
+      const summaryResult = await callClaude(manualTextPrompt, `RAW TEXT CONTENT:\n\n${manualText.slice(0, 4000)}`, 2048);
+      let parsed = parseJSON(summaryResult);
+
+      // Translate to FR/IT/ES
+      let summary_fr = "", summary_it = "", summary_es = "";
+      if (parsed.summary_en && parsed.summary_en.length >= 50) {
+        try {
+          const transResult = await callClaude(
+            TRANSLATION_PROMPT,
+            `ENGLISH SUMMARY TO TRANSLATE:\n\n${parsed.summary_en}`,
+            4096
+          );
+          const frMatch = transResult.match(/"summary_fr"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"summary_it|"\s*,\s*"summary_es|"\s*\})/);
+          const itMatch = transResult.match(/"summary_it"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"summary_es|"\s*,\s*"summary_fr|"\s*\})/);
+          const esMatch = transResult.match(/"summary_es"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"summary_fr|"\s*,\s*"summary_it|"\s*\})/);
+          summary_fr = frMatch?.[1]?.replace(/\\n/g, "\n")?.replace(/\\"/g, '"') || "";
+          summary_it = itMatch?.[1]?.replace(/\\n/g, "\n")?.replace(/\\"/g, '"') || "";
+          summary_es = esMatch?.[1]?.replace(/\\n/g, "\n")?.replace(/\\"/g, '"') || "";
+        } catch (transErr) {
+          console.error("Translation failed:", (transErr as Error).message);
+        }
+      }
+
+      const { error } = await supabase.from("news_articles").insert({
+        title: parsed.title || "Untitled",
+        description: (parsed.summary_en || "").slice(0, 200),
+        content: manualText.slice(0, 2000),
+        full_content: manualText,
+        source_url: "",
+        source_name: "Akka Editorial",
+        language: "en",
+        category: parsed.category || "general",
+        published_at: new Date().toISOString(),
+        image_url: manualImageUrl || "",
+        is_active: true,
+        is_featured: false,
+        is_published: (parsed.summary_en || "").length >= 50,
+        summary_en: parsed.summary_en || "",
+        summary_fr: summary_fr,
+        summary_it: summary_it,
+        summary_es: summary_es,
+      });
+
+      return new Response(JSON.stringify({ success: !error, mode: "text", error: error?.message }), {
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
+    }
+
+    // --- MODE 3: Auto-generate from existing unsummarized articles ---
 
     // Step 1: Get unsummarized articles for target language from last 48h
     const summaryCol = `summary_${targetLang}`;

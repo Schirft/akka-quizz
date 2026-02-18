@@ -46,7 +46,7 @@ export default function NewsPage() {
       try {
         let query = supabase
           .from('news_articles')
-          .select('*, summary_en, summary_fr, summary_it, summary_es')
+          .select('*, summary_en, summary_fr, summary_it, summary_es, hidden_langs')
           .eq('is_active', true)
           .eq('is_published', true)
           .eq('language', lang)
@@ -60,11 +60,13 @@ export default function NewsPage() {
         const { data } = await query
         if (cancelled) return
 
-        // Filter: only show articles with a summary in the user's language
+        // Filter: only show articles with a summary in the user's language + not hidden
         const summaryField = `summary_${lang}`
-        const withSummary = (data || []).filter(
-          (a) => a[summaryField] && a[summaryField].length > 50,
-        )
+        const withSummary = (data || []).filter((a) => {
+          const hasContent = a[summaryField] && a[summaryField].length > 50
+          const notHidden = !(a.hidden_langs || []).includes(lang)
+          return hasContent && notHidden
+        })
 
         if (withSummary.length > 0) {
           const feat = withSummary.find((a) => a.is_featured) || withSummary[0]
