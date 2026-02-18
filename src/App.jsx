@@ -12,6 +12,7 @@ import DashboardPage from './pages/admin/DashboardPage'
 import QuestionsPage from './pages/admin/QuestionsPage'
 import GeneratePage from './pages/admin/GeneratePage'
 import DailyQuizPage from './pages/admin/DailyQuizPage'
+import AdminNewsPage from './pages/admin/AdminNewsPage'
 
 /**
  * PlayerShell — centered mobile container for standalone player pages.
@@ -128,6 +129,7 @@ export default function App() {
         <Route path="questions" element={<QuestionsPage />} />
         <Route path="generate" element={<GeneratePage />} />
         <Route path="daily" element={<DailyQuizPage />} />
+        <Route path="news" element={<AdminNewsPage />} />
       </Route>
 
       {/* Catch-all */}

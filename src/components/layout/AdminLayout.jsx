@@ -6,6 +6,7 @@ import {
   FileQuestion,
   Sparkles,
   Calendar,
+  Newspaper,
   ArrowLeft,
 } from 'lucide-react'
 import TabBar from './TabBar'
@@ -86,6 +87,11 @@ export default function AdminLayout() {
       icon: Calendar,
       badge: unplannedDays > 0 ? unplannedDays : null,
       badgeColor: 'amber',
+    },
+    {
+      to: '/admin/news',
+      label: 'News',
+      icon: Newspaper,
     },
   ]
 
