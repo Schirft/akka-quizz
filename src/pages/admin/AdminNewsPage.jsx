@@ -14,6 +14,7 @@ import {
   BarChart3,
   Globe,
   Clock,
+  Pencil,
 } from 'lucide-react'
 
 // ── Default prompts ──
@@ -31,6 +32,16 @@ Write in the language specified by the "language" parameter (en, fr, it, or es).
 
 const LANGS = ['en', 'fr', 'it', 'es']
 const ARTICLE_COUNTS = [5, 10, 15]
+
+// ── Helper: detect which summary languages are available ──
+function getAvailableLanguages(article) {
+  const langs = []
+  if (article.summary_en && article.summary_en.length > 50) langs.push('EN')
+  if (article.summary_fr && article.summary_fr.length > 50) langs.push('FR')
+  if (article.summary_it && article.summary_it.length > 50) langs.push('IT')
+  if (article.summary_es && article.summary_es.length > 50) langs.push('ES')
+  return langs
+}
 
 export default function AdminNewsPage() {
   // ── Section A: Auto generation ──
@@ -52,6 +63,7 @@ export default function AdminNewsPage() {
   const [articles, setArticles] = useState([])
   const [loadingArticles, setLoadingArticles] = useState(true)
   const [langFilter, setLangFilter] = useState('all')
+  const [sortOrder, setSortOrder] = useState('desc')
 
   // ── Section D: Prompts ──
   const [promptsExpanded, setPromptsExpanded] = useState(false)
@@ -67,19 +79,27 @@ export default function AdminNewsPage() {
   const [previewArticle, setPreviewArticle] = useState(null)
   const [previewLang, setPreviewLang] = useState('en')
 
+  // ── Edit modal ──
+  const [editArticle, setEditArticle] = useState(null)
+  const [editTitle, setEditTitle] = useState('')
+  const [editCategory, setEditCategory] = useState('')
+  const [editLang, setEditLang] = useState('en')
+  const [editSummaries, setEditSummaries] = useState({ en: '', fr: '', it: '', es: '' })
+  const [saving, setSaving] = useState(false)
+
   // ── Init ──
   useEffect(() => {
-    loadArticles()
+    fetchArticles()
     loadPrompts()
   }, [])
 
   // ── Load articles ──
-  async function loadArticles() {
+  async function fetchArticles() {
     setLoadingArticles(true)
     try {
       const { data } = await supabase
         .from('news_articles')
-        .select('*')
+        .select('id, title, description, content, source_url, source_name, image_url, category, language, published_at, created_at, is_published, is_featured, summary_en, summary_fr, summary_it, summary_es')
         .eq('is_published', true)
         .order('published_at', { ascending: false })
         .limit(200)
@@ -176,7 +196,7 @@ export default function AdminNewsPage() {
       setGenResult(
         `${totalSummarized} articles generated across ${selectedLangs.length} language${selectedLangs.length > 1 ? 's' : ''}`,
       )
-      await loadArticles()
+      await fetchArticles()
     } catch (err) {
       setGenError(err.message || 'Generation failed')
     } finally {
@@ -197,7 +217,7 @@ export default function AdminNewsPage() {
       if (error) throw error
       setManualResult('Article added successfully!')
       setManualUrl('')
-      await loadArticles()
+      await fetchArticles()
     } catch (err) {
       setManualError(err.message || 'Failed to add article')
     } finally {
@@ -215,6 +235,40 @@ export default function AdminNewsPage() {
       setArticles((prev) => prev.filter((a) => a.id !== articleId))
     } catch (err) {
       console.error('Unpublish error:', err)
+    }
+  }
+
+  // ── Edit modal ──
+  function openEditModal(article) {
+    setEditArticle(article)
+    setEditTitle(article.title)
+    setEditCategory(article.category || '')
+    setEditLang('en')
+    setEditSummaries({
+      en: article.summary_en || '',
+      fr: article.summary_fr || '',
+      it: article.summary_it || '',
+      es: article.summary_es || '',
+    })
+  }
+
+  async function handleSaveEdit() {
+    setSaving(true)
+    const { error } = await supabase
+      .from('news_articles')
+      .update({
+        title: editTitle,
+        category: editCategory,
+        summary_en: editSummaries.en,
+        summary_fr: editSummaries.fr,
+        summary_it: editSummaries.it,
+        summary_es: editSummaries.es,
+      })
+      .eq('id', editArticle.id)
+    setSaving(false)
+    if (!error) {
+      setEditArticle(null)
+      fetchArticles()
     }
   }
 
@@ -250,23 +304,17 @@ export default function AdminNewsPage() {
     setSummaryPrompt(DEFAULT_SUMMARY_PROMPT)
   }
 
-  // ── Helpers ──
-  function formatDate(dateStr) {
-    if (!dateStr) return ''
-    return new Date(dateStr).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  }
-
-  // ── Filtered articles by language ──
+  // ── Filtered + sorted articles ──
   const filteredArticles =
     langFilter === 'all'
       ? articles
       : articles.filter((a) => a.language === langFilter)
+
+  const sortedArticles = [...filteredArticles].sort((a, b) =>
+    sortOrder === 'desc'
+      ? new Date(b.published_at) - new Date(a.published_at)
+      : new Date(a.published_at) - new Date(b.published_at),
+  )
 
   return (
     <div>
@@ -309,7 +357,13 @@ export default function AdminNewsPage() {
           </div>
           <div>
             <p className="text-xs font-bold text-[#1A1A1A] leading-tight">
-              {stats.lastRun ? formatDate(stats.lastRun) : '—'}
+              {stats.lastRun
+                ? new Date(stats.lastRun).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                  })
+                : '—'}
             </p>
             <p className="text-[10px] text-[#6B7280] uppercase tracking-wide">Last Run</p>
           </div>
@@ -470,23 +524,34 @@ export default function AdminNewsPage() {
           <div className="px-4 py-3 border-b border-[#D1D5DB] bg-gray-50/50">
             <div className="flex items-center justify-between">
               <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
-                Published Articles ({filteredArticles.length})
+                Published Articles ({sortedArticles.length})
               </p>
-              {/* Language filter tabs */}
-              <div className="flex gap-1">
-                {['all', ...LANGS].map((lng) => (
-                  <button
-                    key={lng}
-                    onClick={() => setLangFilter(lng)}
-                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase transition-colors ${
-                      langFilter === lng
-                        ? 'bg-[#1B3D2F] text-white'
-                        : 'bg-gray-100 text-[#6B7280] hover:bg-gray-200'
-                    }`}
-                  >
-                    {lng}
-                  </button>
-                ))}
+              <div className="flex items-center gap-2">
+                {/* Sort button */}
+                <button
+                  onClick={() =>
+                    setSortOrder((prev) => (prev === 'desc' ? 'asc' : 'desc'))
+                  }
+                  className="px-3 py-1.5 rounded-full text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+                >
+                  {sortOrder === 'desc' ? '↓ Newest first' : '↑ Oldest first'}
+                </button>
+                {/* Language filter tabs */}
+                <div className="flex gap-1">
+                  {['all', ...LANGS].map((lng) => (
+                    <button
+                      key={lng}
+                      onClick={() => setLangFilter(lng)}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase transition-colors ${
+                        langFilter === lng
+                          ? 'bg-[#1B3D2F] text-white'
+                          : 'bg-gray-100 text-[#6B7280] hover:bg-gray-200'
+                      }`}
+                    >
+                      {lng}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
@@ -495,86 +560,131 @@ export default function AdminNewsPage() {
             <div className="flex items-center justify-center py-12">
               <Loader2 size={20} className="text-[#6B7280] animate-spin" />
             </div>
-          ) : filteredArticles.length === 0 ? (
+          ) : sortedArticles.length === 0 ? (
             <div className="py-12 text-center">
               <p className="text-sm text-[#6B7280]">No published articles yet</p>
             </div>
           ) : (
             <div className="divide-y divide-gray-100 max-h-[600px] overflow-y-auto">
-              {filteredArticles.map((article) => (
-                <div
-                  key={article.id}
-                  className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50/50 transition-colors"
-                >
-                  {/* Thumbnail */}
-                  {article.image_url ? (
-                    <img
-                      src={article.image_url}
-                      alt=""
-                      className="w-12 h-12 rounded-lg object-cover shrink-0"
-                      onError={(e) => {
-                        e.target.style.display = 'none'
-                      }}
-                    />
-                  ) : (
-                    <div className="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
-                      <span className="text-lg">📰</span>
-                    </div>
-                  )}
+              {sortedArticles.map((article) => {
+                const availLangs = getAvailableLanguages(article)
+                const originLang = (article.language || '').toUpperCase()
 
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 truncate">
-                      {article.title}
-                    </p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-xs text-gray-500">
-                        {formatDate(article.published_at)}
-                      </span>
-                      {article.category && (
-                        <>
-                          <span className="text-xs text-gray-400">·</span>
+                return (
+                  <div
+                    key={article.id}
+                    className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50/50 transition-colors"
+                  >
+                    {/* Thumbnail */}
+                    {article.image_url ? (
+                      <img
+                        src={article.image_url}
+                        alt=""
+                        className="w-12 h-12 rounded-lg object-cover shrink-0"
+                        onError={(e) => {
+                          e.target.style.display = 'none'
+                        }}
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
+                        <span className="text-lg">📰</span>
+                      </div>
+                    )}
+
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-900 truncate">
+                        {article.title}
+                      </p>
+
+                      {/* Dates: published + added */}
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        <span>
+                          {new Date(article.published_at).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                          })}
+                        </span>
+                        <span className="mx-1">·</span>
+                        <span className="text-gray-400">
+                          Added{' '}
+                          {new Date(article.created_at).toLocaleString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </span>
+                      </div>
+
+                      {/* Category + language badges */}
+                      <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                        {article.category && (
                           <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-600">
                             {article.category}
                           </span>
-                        </>
-                      )}
-                      {article.language && (
-                        <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-600 uppercase">
-                          {article.language}
-                        </span>
+                        )}
+                        {/* Origin language badge */}
+                        {originLang && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-[#1B3D2F] text-white font-medium">
+                            {originLang}
+                          </span>
+                        )}
+                        {/* Translated language badges */}
+                        {availLangs
+                          .filter((l) => l !== originLang)
+                          .map((lng) => (
+                            <span
+                              key={lng}
+                              className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium"
+                            >
+                              {lng}
+                            </span>
+                          ))}
+                      </div>
+
+                      {(article.summary_en || article.description) && (
+                        <p className="text-xs text-gray-600 mt-1 line-clamp-2">
+                          {(article.summary_en || article.description || '').slice(
+                            0,
+                            150,
+                          )}
+                          ...
+                        </p>
                       )}
                     </div>
-                    {(article.summary_en || article.description) && (
-                      <p className="text-xs text-gray-600 mt-1 line-clamp-2">
-                        {(article.summary_en || article.description || '').slice(0, 150)}
-                        ...
-                      </p>
-                    )}
-                  </div>
 
-                  {/* Actions */}
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      onClick={() => {
-                        setPreviewArticle(article)
-                        setPreviewLang('en')
-                      }}
-                      className="p-1.5 rounded-lg text-[#6B7280] hover:bg-gray-100 transition-colors"
-                      title="Preview summary"
-                    >
-                      <Eye size={16} />
-                    </button>
-                    <button
-                      onClick={() => handleUnpublish(article.id)}
-                      className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
-                      title="Unpublish"
-                    >
-                      <EyeOff size={16} />
-                    </button>
+                    {/* Actions */}
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => {
+                          setPreviewArticle(article)
+                          setPreviewLang('en')
+                        }}
+                        className="p-1.5 rounded-lg text-[#6B7280] hover:bg-gray-100 transition-colors"
+                        title="Preview summary"
+                      >
+                        <Eye size={16} />
+                      </button>
+                      <button
+                        onClick={() => openEditModal(article)}
+                        className="p-1.5 rounded-lg text-[#6B7280] hover:bg-blue-50 hover:text-blue-500 transition-colors"
+                        title="Edit"
+                      >
+                        <Pencil size={16} />
+                      </button>
+                      <button
+                        onClick={() => handleUnpublish(article.id)}
+                        className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                        title="Unpublish"
+                      >
+                        <EyeOff size={16} />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </Card>
@@ -700,9 +810,30 @@ export default function AdminNewsPage() {
               <p className="text-sm font-semibold text-[#1A1A1A] mb-1">
                 {previewArticle.title}
               </p>
-              <p className="text-xs text-[#6B7280] mb-4">
-                {formatDate(previewArticle.published_at)}
-              </p>
+              {/* Two dates */}
+              <div className="text-xs text-[#6B7280] mb-4">
+                <span>
+                  {new Date(previewArticle.published_at).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                  })}
+                </span>
+                {previewArticle.created_at && (
+                  <>
+                    <span className="mx-1">·</span>
+                    <span className="text-gray-400">
+                      Added{' '}
+                      {new Date(previewArticle.created_at).toLocaleString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
+                  </>
+                )}
+              </div>
               <div className="space-y-3">
                 {(
                   previewArticle[`summary_${previewLang}`] ||
@@ -727,6 +858,86 @@ export default function AdminNewsPage() {
                 className="px-4 py-2 text-sm text-[#6B7280] font-medium hover:bg-gray-100 rounded-lg transition-colors"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Edit Modal ─── */}
+      {editArticle && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 overflow-y-auto py-8 px-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-[#1A1A1A]">Edit Article</h3>
+              <button
+                onClick={() => setEditArticle(null)}
+                className="text-[#6B7280] hover:text-[#1A1A1A]"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Title */}
+            <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+            <input
+              value={editTitle}
+              onChange={(e) => setEditTitle(e.target.value)}
+              className="w-full border border-[#D1D5DB] rounded-lg px-3 py-2 mb-4 text-sm focus:outline-none focus:ring-2 focus:ring-[#1B3D2F]"
+            />
+
+            {/* Category */}
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Category
+            </label>
+            <input
+              value={editCategory}
+              onChange={(e) => setEditCategory(e.target.value)}
+              className="w-full border border-[#D1D5DB] rounded-lg px-3 py-2 mb-4 text-sm focus:outline-none focus:ring-2 focus:ring-[#1B3D2F]"
+            />
+
+            {/* Summary language tabs */}
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Summary
+            </label>
+            <div className="flex gap-2 mb-2">
+              {LANGS.map((lng) => (
+                <button
+                  key={lng}
+                  onClick={() => setEditLang(lng)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                    editLang === lng
+                      ? 'bg-[#1B3D2F] text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  {lng.toUpperCase()}
+                </button>
+              ))}
+            </div>
+            <textarea
+              value={editSummaries[editLang] || ''}
+              onChange={(e) =>
+                setEditSummaries((prev) => ({ ...prev, [editLang]: e.target.value }))
+              }
+              rows={12}
+              className="w-full border border-[#D1D5DB] rounded-lg px-3 py-2 mb-4 text-sm focus:outline-none focus:ring-2 focus:ring-[#1B3D2F] resize-y"
+            />
+
+            {/* Actions */}
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setEditArticle(null)}
+                className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveEdit}
+                disabled={saving}
+                className="px-4 py-2 text-sm bg-[#1B3D2F] text-white rounded-lg font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+              >
+                {saving ? 'Saving...' : 'Save Changes'}
               </button>
             </div>
           </div>

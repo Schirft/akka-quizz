@@ -32,7 +32,7 @@ export default function ArticleDetailPage() {
   // Get summary in user's language with fallback to EN
   const lang = userLang || 'en'
   const summary = article[`summary_${lang}`] || article.summary_en || article.description || ''
-  const date = article.published_at ? new Date(article.published_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : ''
+  const date = article.published_at ? new Date(article.published_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : ''
 
   return (
     <div className="min-h-screen bg-[#F8F9FA]">

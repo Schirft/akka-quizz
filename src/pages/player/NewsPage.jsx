@@ -60,10 +60,16 @@ export default function NewsPage() {
         const { data } = await query
         if (cancelled) return
 
-        if (data && data.length > 0) {
-          const feat = data.find((a) => a.is_featured) || data[0]
+        // Filter: only show articles with a summary in the user's language
+        const summaryField = `summary_${lang}`
+        const withSummary = (data || []).filter(
+          (a) => a[summaryField] && a[summaryField].length > 50,
+        )
+
+        if (withSummary.length > 0) {
+          const feat = withSummary.find((a) => a.is_featured) || withSummary[0]
           setFeatured(feat)
-          setArticles(data.filter((a) => a.id !== feat.id))
+          setArticles(withSummary.filter((a) => a.id !== feat.id))
         } else {
           setFeatured(null)
           setArticles([])
