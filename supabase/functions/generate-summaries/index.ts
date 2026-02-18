@@ -31,7 +31,7 @@ const corsHeaders = {
 
 // ---------- HELPERS ----------
 
-async function callClaude(system: string, user: string, maxTokens = 4096): Promise<string> {
+async function callClaude(system: string, user: string, maxTokens = 8192): Promise<string> {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -54,6 +54,29 @@ async function callClaude(system: string, user: string, maxTokens = 4096): Promi
 
   const data = await res.json();
   return data.content?.[0]?.text || "";
+}
+
+function parseJSON(raw: string): Record<string, string> {
+  const trimmed = raw.trim();
+  // Try direct parse
+  try { return JSON.parse(trimmed); } catch {}
+  // Try extracting from code blocks
+  try {
+    const codeBlock = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (codeBlock) return JSON.parse(codeBlock[1].trim());
+  } catch {}
+  // Try greedy match
+  try {
+    const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
+    if (jsonMatch) return JSON.parse(jsonMatch[0]);
+  } catch {}
+  // Safety: check if value contains nested JSON
+  try {
+    const obj = { summary_en: trimmed };
+    if (trimmed.startsWith("{")) return JSON.parse(trimmed);
+    return obj;
+  } catch {}
+  return { summary_en: trimmed };
 }
 
 async function scrapeArticle(url: string): Promise<string> {
@@ -116,8 +139,24 @@ Deno.serve(async (req: Request) => {
         });
       }
 
-      const summaryPrompt = customSummaryPrompt || DEFAULT_SUMMARY_PROMPT;
-      const summaryResult = await callClaude(summaryPrompt, `ARTICLE URL: ${manualUrl}\n\nARTICLE CONTENT:\n${fullContent}`);
+      const manualPrompt = `You are a senior analyst writing for a premium startup investment newsletter.
+Given an article, generate:
+1. An accurate, compelling title (extracted from the article content)
+2. A newsletter-style summary in 4 languages (300-400 words each)
+3. The article's category
+4. The article's original image URL if visible in the content
+
+Return ONLY valid JSON:
+{
+  "title": "Extracted article title",
+  "image_url": "URL of the main image if found, or empty string",
+  "summary_en": "English summary (300-400 words, analytical, with why-it-matters and a question at the end)",
+  "summary_fr": "French translation",
+  "summary_it": "Italian translation",
+  "summary_es": "Spanish translation",
+  "category": "one of: Funding, AI & Tech, M&A & Exits, Market Moves, European Tech, VC & Investors, Regulation"
+}`;
+      const summaryResult = await callClaude(manualPrompt, `ARTICLE URL: ${manualUrl}\n\nARTICLE CONTENT:\n${fullContent}`);
 
       let parsed;
       try {
@@ -143,12 +182,13 @@ Deno.serve(async (req: Request) => {
       }
 
       const { error } = await supabase.from("news_articles").insert({
-        title: parsed.title || "Manual Article",
+        title: parsed.title || "Untitled Article",
         description: parsed.summary_en?.slice(0, 200) || "",
+        image_url: parsed.image_url || "",
         content: fullContent.slice(0, 2000),
         full_content: fullContent,
         source_url: manualUrl,
-        source_name: "Manual",
+        source_name: new URL(manualUrl).hostname.replace("www.", ""),
         language: "en",
         category: parsed.category || "general",
         published_at: new Date().toISOString(),
@@ -217,7 +257,7 @@ Deno.serve(async (req: Request) => {
     const selectedArticles = selectedIndices
       .map(i => articles[i - 1])
       .filter(Boolean)
-      .slice(0, 5);
+      .slice(0, 3);
 
     if (!selectedArticles.length) {
       return new Response(JSON.stringify({ success: true, message: "No articles selected", count: 0 }), {
@@ -239,38 +279,34 @@ Deno.serve(async (req: Request) => {
         if (!fullContent || fullContent.length < 200) {
           fullContent = `Title: ${article.title}\nDescription: ${article.description || ""}\nContent: ${article.content || ""}`;
         }
-
-        // Generate summary
+        // --- CALL 1: Generate EN summary ---
         const summaryResult = await callClaude(
           summaryPrompt,
-          `ARTICLE TITLE: ${article.title}\nSOURCE: ${article.source_name}\nCATEGORY: ${article.category}\n\nFULL ARTICLE CONTENT:\n${fullContent}`
+          `ARTICLE TITLE: ${article.title}\nSOURCE: ${article.source_name}\nCATEGORY: ${article.category}\n\nFULL ARTICLE CONTENT:\n${fullContent}`,
+          2048
         );
-
-        let parsed;
-        try {
-          // Try direct JSON parse first
-          parsed = JSON.parse(summaryResult.trim());
-        } catch {
+        let parsed = parseJSON(summaryResult);
+        console.log("PARSED KEYS:", Object.keys(parsed), "EN length:", (parsed.summary_en || "").length);
+        
+        // --- CALL 2: Translate to FR/IT/ES (only for EN articles with real summary) ---
+        if (!isLocalLang && parsed.summary_en && parsed.summary_en.length >= 50) {
           try {
-            // Try extracting JSON from markdown code blocks
-            const codeBlock = summaryResult.match(/```(?:json)?\s*([\s\S]*?)```/);
-            if (codeBlock) {
-              parsed = JSON.parse(codeBlock[1].trim());
-            } else {
-              // Try greedy match
-              const jsonMatch = summaryResult.match(/\{[\s\S]*\}/);
-              parsed = JSON.parse(jsonMatch?.[0] || "{}");
-            }
-          } catch {
-            parsed = { summary_en: summaryResult };
+            const transResult = await callClaude(
+              TRANSLATION_PROMPT,
+              `ENGLISH SUMMARY TO TRANSLATE:\n\n${parsed.summary_en}`,
+              4096
+            );
+            // Extract each translation by regex - more robust than JSON.parse with special chars
+            const frMatch = transResult.match(/"summary_fr"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"summary_it|"\s*,\s*"summary_es|"\s*\})/);
+            const itMatch = transResult.match(/"summary_it"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"summary_es|"\s*,\s*"summary_fr|"\s*\})/);
+            const esMatch = transResult.match(/"summary_es"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"summary_fr|"\s*,\s*"summary_it|"\s*\})/);
+            parsed.summary_fr = frMatch?.[1]?.replace(/\\n/g, "\n")?.replace(/\\"/g, '"') || "";
+            parsed.summary_it = itMatch?.[1]?.replace(/\\n/g, "\n")?.replace(/\\"/g, '"') || "";
+            parsed.summary_es = esMatch?.[1]?.replace(/\\n/g, "\n")?.replace(/\\"/g, '"') || "";
+            console.log("REGEX FR:", parsed.summary_fr.length, "IT:", parsed.summary_it.length, "ES:", parsed.summary_es.length);
+          } catch (transErr) {
+            console.error("Translation failed:", (transErr as Error).message);
           }
-        }
-        // Safety: if summary_en contains raw JSON, extract it
-        if (parsed.summary_en && parsed.summary_en.trim().startsWith("{")) {
-          try {
-            const inner = JSON.parse(parsed.summary_en.trim());
-            parsed = { ...parsed, ...inner };
-          } catch { /* keep as-is */ }
         }
 
         // Update article with summary
@@ -282,7 +318,12 @@ Deno.serve(async (req: Request) => {
             summary_fr: isLocalLang && targetLang === "fr" ? (parsed.summary_fr || parsed.summary || "") : (parsed.summary_fr || ""),
             summary_it: isLocalLang && targetLang === "it" ? (parsed.summary_it || parsed.summary || "") : (parsed.summary_it || ""),
             summary_es: isLocalLang && targetLang === "es" ? (parsed.summary_es || parsed.summary || "") : (parsed.summary_es || ""),
-            is_published: true,
+            // Only publish if we have a real summary (min 50 chars)
+            is_published: (
+              isLocalLang
+                ? (parsed[`summary_${targetLang}`] || parsed.summary || "").length >= 50
+                : (parsed.summary_en || parsed.summary || "").length >= 50
+            ),
             is_featured: summarized === 0, // First article is featured
           })
           .eq("id", article.id);
@@ -344,12 +385,9 @@ Select the articles that a busy startup investor MUST know about today.`;
 
 const DEFAULT_SUMMARY_PROMPT = `You are a senior analyst writing for a premium startup investment newsletter (style: StrictlyVC meets The Human Guide).
 
-For each article, generate a newsletter-style summary in 4 languages. Return ONLY valid JSON with this exact structure:
+Generate a newsletter-style summary in ENGLISH ONLY. Return ONLY valid JSON:
 {
-  "summary_en": "English summary (2-3 paragraphs: what happened, context, why it matters. End with a thought-provoking question.)",
-  "summary_fr": "French translation of the summary",
-  "summary_it": "Italian translation of the summary",
-  "summary_es": "Spanish translation of the summary",
+  "summary_en": "Your English summary here",
   "category": "one of: Funding, AI & Tech, M&A & Exits, Market Moves, European Tech, VC & Investors, Regulation"
 }
 
@@ -357,9 +395,21 @@ WRITING STYLE:
 - Professional but engaging, like talking to a smart investor friend
 - Start with the key fact, then add context
 - Include specific numbers (amounts raised, valuations, percentages)
-- "Why it matters" perspective for investors
-- End with a reflective question
-- Each summary should be 150-250 words
+- Why it matters perspective for investors
+- End with a reflective question for investors
+- Summary MUST be 250-350 words. Not shorter. Not much longer.
+- Structure: 1) Key fact 2) Context 3) Market impact 4) Why it matters 5) Thought-provoking question
 - DO NOT just repeat the article. Add analytical value.
 
+Return ONLY the JSON object, no markdown, no code blocks.`;
+
+const TRANSLATION_PROMPT = `You are a professional translator for a startup investment newsletter.
+Translate the following newsletter summary into French, Italian, and Spanish.
+Keep the same professional tone, analytical style, and structure. Keep all numbers, company names, and technical terms unchanged.
+Return ONLY valid JSON:
+{
+  "summary_fr": "French translation here",
+  "summary_it": "Italian translation here",
+  "summary_es": "Spanish translation here"
+}
 Return ONLY the JSON object, no markdown, no code blocks.`;
