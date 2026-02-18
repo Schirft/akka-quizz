@@ -46,8 +46,9 @@ export default function NewsPage() {
       try {
         let query = supabase
           .from('news_articles')
-          .select('*')
+          .select('*, summary_en, summary_fr, summary_it, summary_es')
           .eq('is_active', true)
+          .eq('is_published', true)
           .eq('language', lang)
           .order('published_at', { ascending: false })
           .limit(50)
@@ -118,7 +119,7 @@ export default function NewsPage() {
             {/* Featured article hero */}
             {featured && (
               <div
-                onClick={() => navigate(`/news/${featured.id}`)}
+                onClick={() => navigate(`/news/${featured.id}`, { state: { article: featured } })}
                 className="relative rounded-2xl overflow-hidden mb-6 cursor-pointer group"
               >
                 {featured.image_url ? (
@@ -193,7 +194,7 @@ export default function NewsPage() {
               {filtered.map((article) => (
                 <div
                   key={article.id}
-                  onClick={() => navigate(`/news/${article.id}`)}
+                  onClick={() => navigate(`/news/${article.id}`, { state: { article } })}
                   className="flex gap-3 p-3 rounded-xl bg-[#1A3529]/40 backdrop-blur-sm border border-white/5 cursor-pointer hover:bg-[#1A3529]/60 transition-all group"
                 >
                   {/* Thumbnail */}
