@@ -44,13 +44,43 @@ const LANGUAGES = [
   { code: "es", gnewsLang: "es" },
 ];
 
-const CATEGORY_QUERIES: Record<string, string> = {
-  startup: "startup OR startups",
-  vc: "venture capital OR seed funding OR series A",
-  fintech: "fintech OR neobank OR digital payments",
-  ai: "artificial intelligence OR machine learning OR LLM",
-  crypto: "cryptocurrency OR blockchain OR web3",
-  deeptech: "deeptech OR quantum computing OR biotech startup",
+const CATEGORY_QUERIES: Record<string, Record<string, string>> = {
+  startup: {
+    en: "startup OR startups OR unicorn",
+    fr: "startup OR startups OR licorne OR levée de fonds",
+    it: "startup OR startups OR unicorno OR raccolta fondi",
+    es: "startup OR startups OR unicornio OR ronda de financiación",
+  },
+  vc: {
+    en: "venture capital OR seed funding OR series A",
+    fr: "capital-risque OR fonds investissement OR série A",
+    it: "venture capital OR capitale di rischio OR serie A",
+    es: "capital riesgo OR inversión OR serie A",
+  },
+  fintech: {
+    en: "fintech OR neobank OR digital payments",
+    fr: "fintech OR néobanque OR paiement numérique",
+    it: "fintech OR neobanca OR pagamenti digitali",
+    es: "fintech OR neobanco OR pagos digitales",
+  },
+  ai: {
+    en: "artificial intelligence OR machine learning OR LLM OR OpenAI OR Anthropic",
+    fr: "intelligence artificielle OR IA OR apprentissage automatique OR OpenAI",
+    it: "intelligenza artificiale OR IA OR apprendimento automatico OR OpenAI",
+    es: "inteligencia artificial OR IA OR aprendizaje automático OR OpenAI",
+  },
+  crypto: {
+    en: "cryptocurrency OR blockchain OR web3 OR bitcoin",
+    fr: "cryptomonnaie OR blockchain OR bitcoin OR crypto",
+    it: "criptovaluta OR blockchain OR bitcoin OR crypto",
+    es: "criptomoneda OR blockchain OR bitcoin OR crypto",
+  },
+  deeptech: {
+    en: "deeptech OR quantum computing OR biotech startup",
+    fr: "deeptech OR quantique OR biotech OR technologie de rupture",
+    it: "deeptech OR quantistico OR biotech OR tecnologia avanzata",
+    es: "deeptech OR cuántica OR biotech OR tecnología profunda",
+  },
 };
 
 /** Rate-limit helper: wait 1 second between calls */
@@ -66,7 +96,7 @@ Deno.serve(async (_req: Request) => {
 
   for (const lang of LANGUAGES) {
     for (const cat of CATEGORIES) {
-      const query = CATEGORY_QUERIES[cat];
+      const query = CATEGORY_QUERIES[cat][lang.gnewsLang] || CATEGORY_QUERIES[cat]["en"];
       const url = `https://gnews.io/api/v4/search?q=${encodeURIComponent(query)}&lang=${lang.gnewsLang}&max=5&apikey=${GNEWS_API_KEY}`;
 
       try {
