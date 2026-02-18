@@ -79,7 +79,7 @@ function parseJSON(raw: string): Record<string, string> {
   return { summary_en: trimmed };
 }
 
-async function scrapeArticle(url: string): Promise<string> {
+async function scrapeArticle(url: string): Promise<{ content: string; imageUrl: string }> {
   try {
     const res = await fetch("https://api.firecrawl.dev/v2/scrape", {
       method: "POST",
@@ -89,18 +89,16 @@ async function scrapeArticle(url: string): Promise<string> {
       },
       body: JSON.stringify({ url, formats: ["markdown"] }),
     });
-
-    if (!res.ok) return "";
-
+    if (!res.ok) return { content: "", imageUrl: "" };
     const data = await res.json();
     const markdown = data?.data?.markdown || "";
-    // Truncate to ~8000 chars to stay within Claude context limits
-    return markdown.slice(0, 4000);
+    const metadata = data?.data?.metadata || {};
+    const imageUrl = metadata?.ogImage || metadata?.["og:image"] || metadata?.image || "";
+    return { content: markdown.slice(0, 4000), imageUrl };
   } catch {
-    return "";
+    return { content: "", imageUrl: "" };
   }
 }
-
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -132,7 +130,9 @@ Deno.serve(async (req: Request) => {
 
     // --- MODE 1: Manual URL addition ---
     if (manualUrl) {
-      const fullContent = await scrapeArticle(manualUrl);
+      const scraped = await scrapeArticle(manualUrl);
+      const fullContent = scraped.content;
+      const scrapedImageUrl = scraped.imageUrl;
       if (!fullContent) {
         return new Response(JSON.stringify({ success: false, error: "Could not scrape URL" }), {
           headers: { "Content-Type": "application/json", ...corsHeaders },
@@ -184,7 +184,7 @@ Return ONLY valid JSON:
       const { error } = await supabase.from("news_articles").insert({
         title: parsed.title || "Untitled Article",
         description: parsed.summary_en?.slice(0, 200) || "",
-        image_url: parsed.image_url || "",
+        image_url: parsed.image_url || scrapedImageUrl || "",
         content: fullContent.slice(0, 2000),
         full_content: fullContent,
         source_url: manualUrl,
@@ -314,6 +314,7 @@ Return ONLY valid JSON:
           .from("news_articles")
           .update({
             full_content: fullContent.slice(0, 50000),
+            image_url: scrapedImageUrl || "",
             summary_en: isLocalLang ? (parsed.summary_en || "") : (parsed.summary_en || parsed.summary || ""),
             summary_fr: isLocalLang && targetLang === "fr" ? (parsed.summary_fr || parsed.summary || "") : (parsed.summary_fr || ""),
             summary_it: isLocalLang && targetLang === "it" ? (parsed.summary_it || parsed.summary || "") : (parsed.summary_it || ""),
