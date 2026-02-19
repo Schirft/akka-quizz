@@ -284,7 +284,7 @@ Return ONLY the JSON object, no markdown, no code blocks.`;
         description: (parsed.summary_en || "").slice(0, 200),
         content: manualText.slice(0, 2000),
         full_content: manualText,
-        source_url: "",
+        source_url: `text-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         source_name: "Akka Editorial",
         language: "en",
         category: parsed.category || "general",
