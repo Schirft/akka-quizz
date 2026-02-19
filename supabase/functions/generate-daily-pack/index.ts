@@ -211,7 +211,7 @@ Keep the same structure. Return ONLY valid JSON:
           explanation_fr: (tr.explanation_fr as string) || "",
           explanation_it: (tr.explanation_it as string) || "",
           explanation_es: (tr.explanation_es as string) || "",
-          category: theme,
+          macro_category: theme,
           theme: theme,
           difficulty: "medium",
           status: "approved",
@@ -271,10 +271,27 @@ Keep _en fields, add translations. Return ONLY the complete JSON with all fields
     const { data: insertedPuzzle, error: puzzleErr } = await supabase
       .from("puzzles")
       .insert({
-        type: puzzleType,
         theme: theme,
-        content: fullPuzzle,
         difficulty: "medium",
+        puzzle_type: fullPuzzle.puzzle_type || puzzleType || "cap_table",
+        interaction_type: fullPuzzle.interaction_type || puzzleType || "tap_to_spot",
+        title: fullPuzzle.title || fullPuzzle.title_en || "",
+        title_fr: fullPuzzle.title_fr || "",
+        title_it: fullPuzzle.title_it || "",
+        title_es: fullPuzzle.title_es || "",
+        subtitle: fullPuzzle.subtitle || "",
+        context_data: fullPuzzle.context_data || fullPuzzle,
+        hint: fullPuzzle.hint || fullPuzzle.hint_en || "",
+        hint_fr: fullPuzzle.hint_fr || "",
+        hint_it: fullPuzzle.hint_it || "",
+        hint_es: fullPuzzle.hint_es || "",
+        answer: fullPuzzle.answer || fullPuzzle.answer_element || "",
+        explanation: fullPuzzle.explanation || fullPuzzle.explanation_en || "",
+        explanation_fr: fullPuzzle.explanation_fr || "",
+        explanation_it: fullPuzzle.explanation_it || "",
+        explanation_es: fullPuzzle.explanation_es || "",
+        timer_seconds: fullPuzzle.timer_seconds || 90,
+        status: "active",
       })
       .select("id")
       .single();
@@ -313,15 +330,15 @@ Return ONLY valid JSON:
     const { data: insertedLesson, error: lessonErr } = await supabase
       .from("daily_lessons")
       .insert({
-        title_en: (lessonData.title_en as string) || "",
+        title: (lessonData.title_en as string) || "",
         title_fr: (lessonTrans.title_fr as string) || "",
         title_it: (lessonTrans.title_it as string) || "",
         title_es: (lessonTrans.title_es as string) || "",
-        content_en: (lessonData.content_en as string) || "",
+        content: (lessonData.content_en as string) || "",
         content_fr: (lessonTrans.content_fr as string) || "",
         content_it: (lessonTrans.content_it as string) || "",
         content_es: (lessonTrans.content_es as string) || "",
-        key_takeaway_en: (lessonData.key_takeaway_en as string) || "",
+        key_takeaway: (lessonData.key_takeaway_en as string) || "",
         key_takeaway_fr: (lessonTrans.key_takeaway_fr as string) || "",
         key_takeaway_it: (lessonTrans.key_takeaway_it as string) || "",
         key_takeaway_es: (lessonTrans.key_takeaway_es as string) || "",
