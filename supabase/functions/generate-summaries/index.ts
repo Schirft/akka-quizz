@@ -371,8 +371,9 @@ Return ONLY the JSON object, no markdown, no code blocks.`;
     for (const article of selectedArticles) {
       try {
         // Scrape full content
-        let fullContent = await scrapeArticle(article.source_url);
-        
+        const scraped3 = await scrapeArticle(article.source_url);
+        let fullContent = scraped3.content;
+        const scrapedImageUrl3 = scraped3.imageUrl;
         // Fallback to GNews content if scrape fails
         if (!fullContent || fullContent.length < 200) {
           fullContent = `Title: ${article.title}\nDescription: ${article.description || ""}\nContent: ${article.content || ""}`;
@@ -420,7 +421,7 @@ Return ONLY the JSON object, no markdown, no code blocks.`;
           .from("news_articles")
           .update({
             full_content: fullContent.slice(0, 50000),
-            image_url: scrapedImageUrl || "",
+            image_url: scrapedImageUrl3 || "",
             title_en: article.title,
             title_fr: parsed.title_fr || "",
             title_it: parsed.title_it || "",
