@@ -230,24 +230,24 @@ Keep the same structure. Return ONLY valid JSON:
       tap_to_spot: `Create a "Spot the Error" puzzle about "${theme}".
 Present a short statement (2-3 sentences) about startup investing that contains ONE factual error.
 The user must tap/identify the wrong part.
-Return JSON: { "statement_en": "...", "error_part_en": "the specific wrong phrase", "correction_en": "the correct phrase", "explanation_en": "why" }`,
+Return JSON: { "title": "catchy puzzle name", "subtitle": "Series A · SaaS · €5M (or similar context)", "hint": "a subtle clue", "statement_en": "...", "error_part_en": "the specific wrong phrase", "correction_en": "the correct phrase", "explanation_en": "why (200+ words)" }`,
       ab_choice: `Create an A/B choice puzzle about "${theme}".
 Present a startup scenario and two possible strategies. One is clearly better.
-Return JSON: { "scenario_en": "...", "option_a_en": "...", "option_b_en": "...", "correct_option": "a" or "b", "explanation_en": "..." }`,
+Return JSON: { "title": "catchy puzzle name", "subtitle": "context like Series A · Fintech", "hint": "a subtle clue", "scenario_en": "...", "option_a_en": "...", "option_b_en": "...", "correct_option": "a" or "b", "explanation_en": "detailed explanation (200+ words)" }`,
       fill_gap: `Create a fill-the-gap puzzle about "${theme}".
 Present a statement with one missing key term (shown as ___).
 Provide 3 options, one correct.
-Return JSON: { "statement_en": "... ___ ...", "options_en": ["opt1","opt2","opt3"], "correct_index": 0, "explanation_en": "..." }`,
+Return JSON: { "title": "catchy puzzle name", "subtitle": "context like Seed · B2B · €2M", "hint": "a subtle clue", "statement_en": "... ___ ...", "options_en": ["opt1","opt2","opt3"], "correct_index": 0, "explanation_en": "detailed explanation (200+ words)" }`,
       match_chart: `Create a chart matching puzzle about "${theme}".
 Describe a chart pattern (e.g. "J-curve in VC returns") and ask what it represents.
 Provide 3 options.
-Return JSON: { "chart_description_en": "...", "options_en": ["opt1","opt2","opt3"], "correct_index": 0, "explanation_en": "..." }`,
+Return JSON: { "title": "catchy puzzle name", "subtitle": "context", "hint": "a subtle clue", "chart_description_en": "...", "options_en": ["opt1","opt2","opt3"], "correct_index": 0, "explanation_en": "detailed explanation (200+ words)" }`,
       before_after: `Create a before/after puzzle about "${theme}".
 Show a startup metric before and after an event, ask what happened.
-Return JSON: { "before_en": "...", "after_en": "...", "question_en": "What happened?", "options_en": ["opt1","opt2","opt3"], "correct_index": 0, "explanation_en": "..." }`,
+Return JSON: { "title": "catchy puzzle name", "subtitle": "context", "hint": "a subtle clue", "before_en": "...", "after_en": "...", "question_en": "What happened?", "options_en": ["opt1","opt2","opt3"], "correct_index": 0, "explanation_en": "detailed explanation (200+ words)" }`,
       crash_point: `Create a "crash point" puzzle about "${theme}".
 Describe a startup timeline with a critical decision point.
-Return JSON: { "timeline_en": "...", "question_en": "Where did it go wrong?", "options_en": ["opt1","opt2","opt3"], "correct_index": 0, "explanation_en": "..." }`,
+Return JSON: { "title": "catchy puzzle name", "subtitle": "context", "hint": "a subtle clue", "timeline_en": "...", "question_en": "Where did it go wrong?", "options_en": ["opt1","opt2","opt3"], "correct_index": 0, "explanation_en": "detailed explanation (200+ words)" }`,
     };
 
     const puzzleRaw = await callClaude(
@@ -275,18 +275,18 @@ Keep _en fields, add translations. Return ONLY the complete JSON with all fields
         difficulty: "medium",
         puzzle_type: fullPuzzle.puzzle_type || puzzleType || "cap_table",
         interaction_type: fullPuzzle.interaction_type || puzzleType || "tap_to_spot",
-        title: fullPuzzle.title || fullPuzzle.title_en || "",
+        title: fullPuzzle.title || fullPuzzle.title_en || "Untitled Puzzle",
         title_fr: fullPuzzle.title_fr || "",
         title_it: fullPuzzle.title_it || "",
         title_es: fullPuzzle.title_es || "",
         subtitle: fullPuzzle.subtitle || "",
         context_data: fullPuzzle.context_data || fullPuzzle,
-        hint: fullPuzzle.hint || fullPuzzle.hint_en || "",
+        hint: fullPuzzle.hint || fullPuzzle.hint_en || "Look carefully at the data",
         hint_fr: fullPuzzle.hint_fr || "",
         hint_it: fullPuzzle.hint_it || "",
         hint_es: fullPuzzle.hint_es || "",
-        answer: fullPuzzle.answer || fullPuzzle.answer_element || "",
-        explanation: fullPuzzle.explanation || fullPuzzle.explanation_en || "",
+        answer: fullPuzzle.answer || fullPuzzle.answer_element || fullPuzzle.correct_option || fullPuzzle.error_part_en || String(fullPuzzle.correct_index ?? ""),
+        explanation: fullPuzzle.explanation_en || fullPuzzle.explanation || "",
         explanation_fr: fullPuzzle.explanation_fr || "",
         explanation_it: fullPuzzle.explanation_it || "",
         explanation_es: fullPuzzle.explanation_es || "",
