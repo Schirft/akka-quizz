@@ -7,6 +7,8 @@ import {
   Sparkles,
   Calendar,
   Newspaper,
+  Puzzle,
+  BookOpen,
   ArrowLeft,
 } from 'lucide-react'
 import TabBar from './TabBar'
@@ -92,6 +94,16 @@ export default function AdminLayout() {
       to: '/admin/news',
       label: 'News',
       icon: Newspaper,
+    },
+    {
+      to: '/admin/puzzles',
+      label: 'Puzzles',
+      icon: Puzzle,
+    },
+    {
+      to: '/admin/lessons',
+      label: 'Lessons',
+      icon: BookOpen,
     },
   ]
 

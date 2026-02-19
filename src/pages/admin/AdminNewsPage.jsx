@@ -711,48 +711,65 @@ export default function AdminNewsPage() {
                 className="w-full border border-[#D1D5DB] rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1B3D2F] disabled:opacity-50 resize-y"
               />
 
-              {/* Image upload */}
-              <div className="flex items-center gap-3">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageUpload}
-                  className="hidden"
-                />
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={addingManual}
-                  className="flex items-center gap-2 px-4 py-2 border border-[#D1D5DB] rounded-xl text-sm font-medium text-[#6B7280] hover:bg-gray-50 disabled:opacity-50 transition-colors"
-                >
-                  <Upload size={14} />
-                  {uploadedImage ? 'Change Image' : 'Upload Image'}
-                </button>
-                {uploadedImage && (
-                  <div className="flex items-center gap-2">
-                    <ImageIcon size={14} className="text-green-600" />
-                    <span className="text-xs text-green-700 font-medium truncate max-w-[200px]">
-                      {uploadedImage.name}
-                    </span>
-                    <button
-                      onClick={() => {
-                        setUploadedImage(null)
-                        setUploadedImageUrl('')
-                        if (fileInputRef.current) fileInputRef.current.value = ''
-                      }}
-                      className="text-gray-400 hover:text-red-500"
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                )}
-                {uploadedImageUrl && (
-                  <img
-                    src={uploadedImageUrl}
-                    alt="preview"
-                    className="w-10 h-10 rounded-lg object-cover border border-gray-200"
+              {/* Image: upload OR URL */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-3">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    className="hidden"
                   />
-                )}
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={addingManual}
+                    className="flex items-center gap-2 px-4 py-2 border border-[#D1D5DB] rounded-xl text-sm font-medium text-[#6B7280] hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                  >
+                    <Upload size={14} />
+                    {uploadedImage ? 'Change Image' : 'Upload Image'}
+                  </button>
+                  {uploadedImage && (
+                    <div className="flex items-center gap-2">
+                      <ImageIcon size={14} className="text-green-600" />
+                      <span className="text-xs text-green-700 font-medium truncate max-w-[200px]">
+                        {uploadedImage.name}
+                      </span>
+                      <button
+                        onClick={() => {
+                          setUploadedImage(null)
+                          setUploadedImageUrl('')
+                          if (fileInputRef.current) fileInputRef.current.value = ''
+                        }}
+                        className="text-gray-400 hover:text-red-500"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  )}
+                  {uploadedImageUrl && (
+                    <img
+                      src={uploadedImageUrl}
+                      alt="preview"
+                      className="w-10 h-10 rounded-lg object-cover border border-gray-200"
+                    />
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-[#6B7280]">or</span>
+                  <input
+                    type="text"
+                    value={!uploadedImage ? uploadedImageUrl : ''}
+                    onChange={(e) => {
+                      setUploadedImage(null)
+                      if (fileInputRef.current) fileInputRef.current.value = ''
+                      setUploadedImageUrl(e.target.value)
+                    }}
+                    placeholder="Paste image URL..."
+                    disabled={addingManual || !!uploadedImage}
+                    className="flex-1 border border-[#D1D5DB] rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1B3D2F] disabled:opacity-50"
+                  />
+                </div>
               </div>
 
               <button
@@ -1091,7 +1108,7 @@ export default function AdminNewsPage() {
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-[#D1D5DB]">
               <h2 className="text-lg font-bold text-[#1A1A1A] truncate mr-4">
-                {previewArticle.title}
+                {previewArticle[`title_${previewLang}`] || previewArticle.title}
               </h2>
               <button
                 onClick={() => setPreviewArticle(null)}
@@ -1133,7 +1150,7 @@ export default function AdminNewsPage() {
             {/* Summary content */}
             <div className="px-6 py-4 max-h-[50vh] overflow-y-auto">
               <p className="text-sm font-semibold text-[#1A1A1A] mb-1">
-                {previewArticle.title}
+                {previewArticle[`title_${previewLang}`] || previewArticle.title}
               </p>
               {/* Two dates */}
               <div className="text-xs text-[#6B7280] mb-4">

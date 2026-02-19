@@ -18,6 +18,7 @@ import {
   Trash2,
   Plus,
   X,
+  Sparkles,
 } from 'lucide-react'
 
 /**
@@ -62,6 +63,10 @@ export default function DailyQuizPage() {
   const [isAutoFilling, setIsAutoFilling] = useState(false)
   const [autoFillProgress, setAutoFillProgress] = useState('')
   const [autoFillResult, setAutoFillResult] = useState(null) // { filledCount, partialCount, remaining }
+
+  // Generate Daily Pack state
+  const [generatingPack, setGeneratingPack] = useState(null) // date string being generated
+  const [packResult, setPackResult] = useState(null) // { success, date, theme, error }
 
   useEffect(() => {
     loadData()
@@ -444,6 +449,38 @@ export default function DailyQuizPage() {
   }
 
   /**
+   * Generate a full daily pack (3 QCM + puzzle + lesson) via Edge Function.
+   */
+  async function handleGeneratePack(date) {
+    if (generatingPack) return
+    setGeneratingPack(date)
+    setPackResult(null)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL || 'https://nkbfymmpvhitsgdnivog.supabase.co'}/functions/v1/generate-daily-pack`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token || ''}`,
+          },
+          body: JSON.stringify({ date }),
+        }
+      )
+      const result = await res.json()
+      setPackResult(result)
+      if (result.success) {
+        await loadData()
+      }
+    } catch (err) {
+      setPackResult({ success: false, error: err.message })
+    } finally {
+      setGeneratingPack(null)
+    }
+  }
+
+  /**
    * Open the auto-fill modal and calculate initial summary.
    */
   async function openAutoFillModal() {
@@ -505,13 +542,26 @@ export default function DailyQuizPage() {
             Schedule the quiz of the day
           </p>
         </div>
-        <button
-          onClick={openAutoFillModal}
-          className="flex items-center gap-2 px-4 py-2 bg-[#1B3D2F] text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity shrink-0"
-        >
-          <Calendar size={16} />
-          Auto-fill Calendar
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={() => {
+              const today = new Date().toISOString().split('T')[0]
+              handleGeneratePack(today)
+            }}
+            disabled={!!generatingPack}
+            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white text-sm font-semibold rounded-xl hover:opacity-90 disabled:opacity-50 transition-opacity"
+          >
+            {generatingPack ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+            Generate Daily Pack
+          </button>
+          <button
+            onClick={openAutoFillModal}
+            className="flex items-center gap-2 px-4 py-2 bg-[#1B3D2F] text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity"
+          >
+            <Calendar size={16} />
+            Auto-fill Calendar
+          </button>
+        </div>
       </div>
 
       {/* Month navigation */}
@@ -617,6 +667,14 @@ export default function DailyQuizPage() {
                       <List size={14} />
                       Manual Select
                     </button>
+                    <button
+                      onClick={() => handleGeneratePack(date)}
+                      disabled={!!generatingPack}
+                      className="flex items-center gap-1.5 px-3 py-2 border border-purple-300 text-purple-700 text-xs font-medium rounded-lg hover:bg-purple-50 disabled:opacity-50 transition-colors"
+                    >
+                      {generatingPack === date ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                      AI Pack
+                    </button>
                     {/* HOTFIX E: Add question button when <5 */}
                     {quiz && quiz.questions.length < 5 && (
                       <button
@@ -711,6 +769,42 @@ export default function DailyQuizPage() {
           )
         })}
       </div>
+
+      {/* Generate Pack Result Toast */}
+      {packResult && (
+        <div className={`fixed bottom-4 right-4 z-50 max-w-sm p-4 rounded-xl shadow-lg border ${packResult.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+          <div className="flex items-start gap-3">
+            <div className="text-2xl">{packResult.success ? '🎉' : '❌'}</div>
+            <div className="flex-1">
+              <p className={`text-sm font-bold ${packResult.success ? 'text-green-800' : 'text-red-800'}`}>
+                {packResult.success ? 'Daily Pack Generated!' : 'Generation Failed'}
+              </p>
+              {packResult.success ? (
+                <p className="text-xs text-green-700 mt-1">
+                  {packResult.theme} — 3 questions + {packResult.puzzle_type} puzzle + lesson
+                </p>
+              ) : (
+                <p className="text-xs text-red-700 mt-1">{packResult.error}</p>
+              )}
+            </div>
+            <button onClick={() => setPackResult(null)} className="text-gray-400 hover:text-gray-700">
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Generate Pack Loading Overlay */}
+      {generatingPack && (
+        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full mx-4 text-center">
+            <div className="text-3xl mb-3 animate-bounce">🧠</div>
+            <p className="font-medium text-[#1A1A1A]">Generating Daily Pack...</p>
+            <p className="text-sm text-[#6B7280] mt-1">AI is creating 3 questions + puzzle + lesson for {generatingPack}</p>
+            <p className="text-xs text-[#6B7280] mt-3">This may take 30-60 seconds</p>
+          </div>
+        </div>
+      )}
 
       {/* Manual Selection Modal */}
       {pickerDay && (
