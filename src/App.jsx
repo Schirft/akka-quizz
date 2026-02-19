@@ -13,11 +13,6 @@ import QuestionsPage from './pages/admin/QuestionsPage'
 import GeneratePage from './pages/admin/GeneratePage'
 import DailyQuizPage from './pages/admin/DailyQuizPage'
 import AdminNewsPage from './pages/admin/AdminNewsPage'
-import AdminPuzzlesPage from './pages/admin/AdminPuzzlesPage'
-import AdminLessonsPage from './pages/admin/AdminLessonsPage'
-import DailyChallengePage from './pages/player/DailyChallengePage'
-import PuzzlePage from './pages/player/PuzzlePage'
-import LessonPage from './pages/player/LessonPage'
 
 /**
  * PlayerShell — centered mobile container for standalone player pages.
@@ -135,41 +130,7 @@ export default function App() {
         <Route path="generate" element={<GeneratePage />} />
         <Route path="daily" element={<DailyQuizPage />} />
         <Route path="news" element={<AdminNewsPage />} />
-        <Route path="puzzles" element={<AdminPuzzlesPage />} />
-        <Route path="lessons" element={<AdminLessonsPage />} />
       </Route>
-
-      {/* Daily Challenge flow — no TabBar */}
-      <Route
-        path="/challenge"
-        element={
-          <ProtectedRoute>
-            <PlayerShell>
-              <DailyChallengePage />
-            </PlayerShell>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/puzzle"
-        element={
-          <ProtectedRoute>
-            <PlayerShell>
-              <PuzzlePage />
-            </PlayerShell>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/lesson"
-        element={
-          <ProtectedRoute>
-            <PlayerShell>
-              <LessonPage />
-            </PlayerShell>
-          </ProtectedRoute>
-        }
-      />
 
       {/* Catch-all */}
       <Route path="*" element={<Navigate to="/" replace />} />

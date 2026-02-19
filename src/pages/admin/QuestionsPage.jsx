@@ -45,6 +45,7 @@ export default function QuestionsPage() {
   const [filterStatus, setFilterStatus] = useState('all')
   const [filterCategory, setFilterCategory] = useState('all')
   const [filterSource, setFilterSource] = useState('all')
+  const [filterTheme, setFilterTheme] = useState('all')
   const [modalQuestion, setModalQuestion] = useState(null)
   const [showImport, setShowImport] = useState(false)
   const [approvingAll, setApprovingAll] = useState(false)
@@ -142,6 +143,7 @@ export default function QuestionsPage() {
       if (filterStatus !== 'all') query = query.eq('status', filterStatus)
       if (filterCategory !== 'all') query = query.eq('macro_category', filterCategory)
       if (filterSource !== 'all') query = query.eq('source', filterSource)
+      if (filterTheme !== 'all') query = query.eq('theme', filterTheme)
       if (debouncedSearch.trim()) query = query.ilike('question_en', `%${debouncedSearch.trim()}%`)
 
       const { data, count, error } = await query
@@ -154,7 +156,7 @@ export default function QuestionsPage() {
     } finally {
       setLoading(false)
     }
-  }, [page, filterStatus, filterCategory, filterSource, debouncedSearch, sortCol, sortDir])
+  }, [page, filterStatus, filterCategory, filterSource, filterTheme, debouncedSearch, sortCol, sortDir])
 
   useEffect(() => {
     loadQuestions()
@@ -162,7 +164,7 @@ export default function QuestionsPage() {
 
   useEffect(() => {
     setPage(0)
-  }, [filterStatus, filterCategory, filterSource, debouncedSearch, sortCol, sortDir])
+  }, [filterStatus, filterCategory, filterSource, filterTheme, debouncedSearch, sortCol, sortDir])
 
   // FIX 8e: Toggle sort
   function toggleSort(col) {
@@ -585,6 +587,21 @@ export default function QuestionsPage() {
             <option value="manual">Manual</option>
             <option value="import">Import</option>
             <option value="ai">AI</option>
+          </select>
+
+          <select
+            value={filterTheme}
+            onChange={(e) => setFilterTheme(e.target.value)}
+            className="border border-[#D1D5DB] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2ECC71]"
+          >
+            <option value="all">All Themes</option>
+            <option value="fundraising">Fundraising</option>
+            <option value="cap_tables">Cap Tables</option>
+            <option value="due_diligence">Due Diligence</option>
+            <option value="term_sheets">Term Sheets</option>
+            <option value="portfolio_strategy">Portfolio Strategy</option>
+            <option value="startup_metrics">Startup Metrics</option>
+            <option value="ecosystem_trends">Ecosystem & Trends</option>
           </select>
 
           {showApproveAll && (

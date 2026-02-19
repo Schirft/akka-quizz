@@ -273,30 +273,6 @@ export default function HomePage() {
         )}
       </div>
 
-      {/* Daily Challenge card */}
-      <div
-        onClick={() => navigate('/challenge')}
-        className="mb-3 p-4 rounded-2xl bg-gradient-to-r from-purple-600 to-purple-800 text-white cursor-pointer active:scale-[0.98] transition-transform"
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center">
-              <span className="text-2xl">🧩</span>
-            </div>
-            <div>
-              <p className="font-bold text-base">{t('daily_challenge') || 'Daily Challenge'}</p>
-              <p className="text-xs text-white/60">{t('challenge_description') || 'Quiz + Puzzle + Lesson'}</p>
-            </div>
-          </div>
-          <button
-            onClick={(e) => { e.stopPropagation(); navigate('/challenge') }}
-            className="px-4 py-2 rounded-xl bg-white/20 text-white text-sm font-bold active:scale-95 transition-transform"
-          >
-            {t('play') || 'Play'}
-          </button>
-        </div>
-      </div>
-
       {/* Streak card with 7-day circles + fire animation (B7) */}
       <Card className="mb-3">
         <div className="flex items-center gap-3 mb-3">

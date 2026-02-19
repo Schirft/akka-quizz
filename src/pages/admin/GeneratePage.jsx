@@ -21,6 +21,7 @@ import {
   Pencil,
   Play,
   Check,
+  Package,
 } from 'lucide-react'
 
 const STORAGE_KEY = 'akka_last_generation'
@@ -118,6 +119,15 @@ export default function GeneratePage() {
   // HOTFIX A: Resume state
   const [resumeInfo, setResumeInfo] = useState(null) // { resumeFrom, totalRequested, batchId, mode, category, theme, difficulty, languages }
 
+  // Pack generation state
+  const [packTheme, setPackTheme] = useState('')
+  const [packDifficulty, setPackDifficulty] = useState('medium')
+  const [generatingPack, setGeneratingPack] = useState(false)
+  const [packResult, setPackResult] = useState(null)
+  const [packError, setPackError] = useState(null)
+  const [packs, setPacks] = useState([])
+  const [packsLoading, setPacksLoading] = useState(true)
+
   // ── Restore from localStorage on mount (with 2-hour expiry) ──
   useEffect(() => {
     try {
@@ -184,6 +194,64 @@ export default function GeneratePage() {
     window.dispatchEvent(new Event('akka-gen-state'))
     return () => { window.__akka_generating = false }
   }, [generating])
+
+  // Load packs on mount
+  useEffect(() => {
+    async function loadPacks() {
+      const { data } = await supabase
+        .from('daily_packs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(20)
+      setPacks(data || [])
+      setPacksLoading(false)
+    }
+    loadPacks()
+  }, [])
+
+  async function handleGeneratePack() {
+    if (generatingPack) return
+    setGeneratingPack(true)
+    setPackResult(null)
+    setPackError(null)
+
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+      const { data: { session } } = await supabase.auth.getSession()
+
+      const res = await fetch(`${supabaseUrl}/functions/v1/generate-daily-pack`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token || supabaseAnonKey}`,
+        },
+        body: JSON.stringify({
+          theme: packTheme || undefined,
+          difficulty: packDifficulty,
+        }),
+      })
+
+      const result = await res.json()
+
+      if (!res.ok) {
+        setPackError(result.error || 'Pack generation failed')
+      } else {
+        setPackResult(result)
+        // Reload packs
+        const { data } = await supabase
+          .from('daily_packs')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(20)
+        setPacks(data || [])
+      }
+    } catch (err) {
+      setPackError(err.message || 'Network error')
+    } finally {
+      setGeneratingPack(false)
+    }
+  }
 
   function toggleLang(code) {
     if (code === 'en') return
@@ -776,6 +844,117 @@ export default function GeneratePage() {
           </button>
         </div>
       </div>
+
+      {/* ── Generate Daily Pack Section ── */}
+      <Card className="mb-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Package size={18} className="text-purple-500" />
+          <h2 className="text-base font-bold text-[#1A1A1A]">Generate Daily Pack</h2>
+          <span className="text-xs text-[#6B7280]">(3 QCM + Puzzle + Lesson)</span>
+        </div>
+
+        <div className="flex flex-wrap items-end gap-3 mb-4">
+          <div className="flex-1 min-w-[200px]">
+            <label className="block mb-1 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
+              Theme (optional)
+            </label>
+            <input
+              type="text"
+              value={packTheme}
+              onChange={(e) => setPackTheme(e.target.value)}
+              disabled={generatingPack}
+              placeholder="e.g. fundraising, cap tables, term sheets..."
+              className="w-full border border-[#D1D5DB] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2ECC71]"
+            />
+          </div>
+          <div className="w-36">
+            <label className="block mb-1 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
+              Difficulty
+            </label>
+            <select
+              value={packDifficulty}
+              onChange={(e) => setPackDifficulty(e.target.value)}
+              disabled={generatingPack}
+              className="w-full border border-[#D1D5DB] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2ECC71]"
+            >
+              <option value="easy">Easy</option>
+              <option value="medium">Medium</option>
+              <option value="hard">Hard</option>
+            </select>
+          </div>
+          <button
+            onClick={handleGeneratePack}
+            disabled={generatingPack}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-purple-600 text-white text-sm font-bold hover:bg-purple-700 disabled:opacity-50 transition-colors"
+          >
+            {generatingPack ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <Sparkles size={16} />
+                Generate Pack
+              </>
+            )}
+          </button>
+        </div>
+
+        {packError && (
+          <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700 mb-3">
+            {packError}
+          </div>
+        )}
+
+        {packResult && (
+          <div className="p-3 rounded-xl bg-green-50 border border-green-200 text-sm text-green-700 mb-3">
+            Pack created! {packResult.questions_count} questions + 1 puzzle + 1 lesson
+            {packResult.pack_id && <span className="text-xs text-green-500 ml-2">(ID: {packResult.pack_id.slice(0, 8)}...)</span>}
+          </div>
+        )}
+
+        {/* Pack list */}
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280] mb-2">
+            Recent Packs ({packs.length})
+          </p>
+          {packsLoading ? (
+            <div className="flex items-center gap-2 py-3">
+              <Loader2 size={14} className="animate-spin text-[#6B7280]" />
+              <span className="text-sm text-[#6B7280]">Loading packs...</span>
+            </div>
+          ) : packs.length === 0 ? (
+            <p className="text-sm text-[#6B7280] py-2">No packs yet. Generate your first one above!</p>
+          ) : (
+            <div className="space-y-2 max-h-60 overflow-y-auto">
+              {packs.map((p) => (
+                <div key={p.id} className="flex items-center justify-between p-2.5 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-2 h-2 rounded-full ${p.status === 'active' ? 'bg-green-500' : 'bg-gray-300'}`} />
+                    <div>
+                      <p className="text-sm font-medium text-[#1A1A1A]">
+                        {p.theme || 'General'}
+                        <span className="text-xs text-[#6B7280] ml-2">{p.difficulty}</span>
+                      </p>
+                      <p className="text-[10px] text-[#6B7280]">
+                        {p.question_ids?.length || 0} Q · {p.puzzle_id ? '🧩' : '—'} · {p.lesson_id ? '📖' : '—'}
+                        {' · '}
+                        {new Date(p.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                    p.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                  }`}>
+                    {p.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </Card>
 
       <div className="grid lg:grid-cols-3 gap-6">
         {/* Left: Generation form */}

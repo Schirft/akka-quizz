@@ -350,9 +350,26 @@ Return ONLY valid JSON:
     if (lessonErr) throw new Error(`Insert lesson: ${lessonErr.message}`);
 
     // ────────────────────────────────
-    // STEP 5: Create/update daily_quizzes entry
+    // STEP 5: Create pack linking everything together
     // ────────────────────────────────
-    // Pad question IDs to 5 (fill remaining with null)
+    const { data: insertedPack, error: packErr } = await supabase
+      .from("daily_packs")
+      .insert({
+        theme: theme,
+        difficulty: body.difficulty || "medium",
+        question_ids: questionIds,
+        puzzle_id: insertedPuzzle.id,
+        lesson_id: insertedLesson.id,
+        status: "active",
+      })
+      .select("id")
+      .single();
+
+    if (packErr) throw new Error(`Insert pack: ${packErr.message}`);
+
+    // ────────────────────────────────
+    // STEP 6: Create/update daily_quizzes entry
+    // ────────────────────────────────
     const q1 = questionIds[0] || null;
     const q2 = questionIds[1] || null;
     const q3 = questionIds[2] || null;
@@ -377,6 +394,7 @@ Return ONLY valid JSON:
     return new Response(
       JSON.stringify({
         success: true,
+        pack_id: insertedPack.id,
         date: targetDate,
         theme,
         questions: questionIds.length,
