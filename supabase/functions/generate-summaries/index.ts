@@ -103,6 +103,55 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Validate that a summary is real content, not an error or raw JSON */
+function isValidSummary(text: string): boolean {
+  if (!text || text.length < 50) return false;
+  if (text.startsWith("I apologize") || text.startsWith("I'm sorry")) return false;
+  if (text.startsWith("{") || text.startsWith('"title"')) return false;
+  if (text.includes('"summary_en"') || text.includes('"category"')) return false;
+  return true;
+}
+
+/** Clean residual JSON from summary/title text */
+function cleanSummary(text: string): string {
+  if (!text) return "";
+  let clean = text.replace(/^\s*\{?\s*"title"\s*:.*?"summary_en"\s*:\s*"?/, "");
+  clean = clean.replace(/"\s*,\s*"category"\s*:.*?\}\s*$/, "");
+  clean = clean.replace(/^\s*"/, "").replace(/"\s*$/, "");
+  clean = clean.replace(/\\n/g, "\n").replace(/\\"/g, '"');
+  return clean.trim();
+}
+
+/** Robust JSON parsing — tries JSON.parse, code block extraction, greedy match, then regex fallback */
+function robustParseJSON(raw: string): Record<string, string> {
+  const trimmed = raw.trim();
+  // 1. Clean markdown code blocks
+  let cleanResult = trimmed;
+  if (cleanResult.startsWith("```json")) cleanResult = cleanResult.replace(/^```json\s*/, "").replace(/```\s*$/, "");
+  if (cleanResult.startsWith("```")) cleanResult = cleanResult.replace(/^```\s*/, "").replace(/```\s*$/, "");
+  // 2. Try direct JSON.parse
+  try { return JSON.parse(cleanResult); } catch {}
+  // 3. Try extracting from code blocks
+  try {
+    const codeBlock = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (codeBlock) return JSON.parse(codeBlock[1].trim());
+  } catch {}
+  // 4. Try greedy JSON match
+  try {
+    const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
+    if (jsonMatch) return JSON.parse(jsonMatch[0]);
+  } catch {}
+  // 5. Regex fallback for key fields
+  const titleMatch = trimmed.match(/"title"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"(?:detected_language|summary_en|category))/);
+  const summaryMatch = trimmed.match(/"summary_en"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"category|"\s*\})/);
+  const categoryMatch = trimmed.match(/"category"\s*:\s*"([\s\S]*?)"/);
+  return {
+    title: titleMatch?.[1]?.replace(/\\n/g, "\n")?.replace(/\\"/g, '"') || "",
+    summary_en: summaryMatch?.[1]?.replace(/\\n/g, "\n")?.replace(/\\"/g, '"') || "",
+    category: categoryMatch?.[1] || "general",
+  };
+}
+
 // ---------- MAIN ----------
 
 Deno.serve(async (req: Request) => {
@@ -119,6 +168,7 @@ Deno.serve(async (req: Request) => {
     let manualText = "";
     let manualImageUrl = "";
     let manualTitle = "";
+    let translateLangs: string[] = ["fr", "it", "es"];
     let targetLang = "en";
 
     try {
@@ -129,6 +179,7 @@ Deno.serve(async (req: Request) => {
       manualText = body.manualText || "";
       manualImageUrl = body.manualImageUrl || "";
       manualTitle = body.manualTitle || "";
+      translateLangs = body.translateLangs || ["fr", "it", "es"];
       targetLang = body.language || "en";
     } catch {
       // No body, that's fine (cron call)
@@ -145,59 +196,54 @@ Deno.serve(async (req: Request) => {
         });
       }
 
+      // Build dynamic translation fields based on translateLangs
+      const urlLangFields: string[] = [];
+      const urlLangSummaryFields: string[] = [];
+      if (translateLangs.includes("fr")) { urlLangFields.push('"title_fr": "French title"'); urlLangSummaryFields.push('"summary_fr": "French translation"'); }
+      if (translateLangs.includes("it")) { urlLangFields.push('"title_it": "Italian title"'); urlLangSummaryFields.push('"summary_it": "Italian translation"'); }
+      if (translateLangs.includes("es")) { urlLangFields.push('"title_es": "Spanish title"'); urlLangSummaryFields.push('"summary_es": "Spanish translation"'); }
+
       const manualPrompt = `You are a senior analyst writing for a premium startup investment newsletter.
 Given an article, generate:
 1. An accurate, compelling title (extracted from the article content) in English
-2. The same title translated into French, Italian, and Spanish
-3. A newsletter-style summary in 4 languages (300-400 words each)
+${urlLangFields.length > 0 ? "2. The same title translated into the requested languages\n3. A newsletter-style summary in English + translations (300-400 words each)" : "2. A newsletter-style summary in English (300-400 words)"}
 4. The article's category
 5. The article's original image URL if visible in the content
 
 Return ONLY valid JSON:
 {
   "title": "Extracted article title in English",
-  "title_fr": "French title",
-  "title_it": "Italian title",
-  "title_es": "Spanish title",
+  ${urlLangFields.join(",\n  ")}${urlLangFields.length > 0 ? "," : ""}
   "image_url": "URL of the main image if found, or empty string",
   "summary_en": "English summary (300-400 words, analytical, with why-it-matters and a question at the end)",
-  "summary_fr": "French translation",
-  "summary_it": "Italian translation",
-  "summary_es": "Spanish translation",
+  ${urlLangSummaryFields.join(",\n  ")}${urlLangSummaryFields.length > 0 ? "," : ""}
   "category": "one of: Funding, AI & Tech, M&A & Exits, Market Moves, European Tech, VC & Investors, Regulation"
-}`;
+}
+Return ONLY the JSON object, no markdown, no code blocks.`;
       const summaryResult = await callClaude(manualPrompt, `ARTICLE URL: ${manualUrl}\n\nARTICLE CONTENT:\n${fullContent}`);
 
-      let parsed;
-      try {
-        parsed = JSON.parse(summaryResult.trim());
-      } catch {
-        try {
-          const codeBlock = summaryResult.match(/```(?:json)?\s*([\s\S]*?)```/);
-          if (codeBlock) {
-            parsed = JSON.parse(codeBlock[1].trim());
-          } else {
-            const jsonMatch = summaryResult.match(/\{[\s\S]*\}/);
-            parsed = JSON.parse(jsonMatch?.[0] || "{}");
-          }
-        } catch {
-          parsed = { title: "Manual Article", summary_en: summaryResult };
-        }
-      }
-      if (parsed.summary_en && parsed.summary_en.trim().startsWith("{")) {
-        try {
-          const inner = JSON.parse(parsed.summary_en.trim());
-          parsed = { ...parsed, ...inner };
-        } catch { /* keep as-is */ }
+      let parsed = robustParseJSON(summaryResult);
+
+      // Clean all fields
+      parsed.title = cleanSummary(parsed.title);
+      parsed.summary_en = cleanSummary(parsed.summary_en);
+      parsed.summary_fr = cleanSummary(parsed.summary_fr || "");
+      parsed.summary_it = cleanSummary(parsed.summary_it || "");
+      parsed.summary_es = cleanSummary(parsed.summary_es || "");
+
+      // Validate summary_en doesn't contain raw JSON
+      if (parsed.summary_en && (parsed.summary_en.includes('"title"') || parsed.summary_en.includes('"category"'))) {
+        const reMatch = summaryResult.match(/"summary_en"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"(?:summary_fr|category)|"\s*\})/);
+        if (reMatch) parsed.summary_en = cleanSummary(reMatch[1]);
       }
 
       const { error } = await supabase.from("news_articles").insert({
         title: parsed.title || "Untitled Article",
         title_en: parsed.title || "Untitled Article",
-        title_fr: parsed.title_fr || "",
-        title_it: parsed.title_it || "",
-        title_es: parsed.title_es || "",
-        description: parsed.summary_en?.slice(0, 200) || "",
+        title_fr: cleanSummary(parsed.title_fr || ""),
+        title_it: cleanSummary(parsed.title_it || ""),
+        title_es: cleanSummary(parsed.title_es || ""),
+        description: (parsed.summary_en || "").slice(0, 200),
         image_url: parsed.image_url || scrapedImageUrl || "",
         content: fullContent.slice(0, 2000),
         full_content: fullContent,
@@ -208,7 +254,7 @@ Return ONLY valid JSON:
         published_at: new Date().toISOString(),
         is_active: true,
         is_featured: false,
-        is_published: true,
+        is_published: isValidSummary(parsed.summary_en || ""),
         summary_en: parsed.summary_en || "",
         summary_fr: parsed.summary_fr || "",
         summary_it: parsed.summary_it || "",
@@ -242,34 +288,50 @@ Return ONLY valid JSON:
 Return ONLY the JSON object, no markdown, no code blocks.`;
 
       const summaryResult = await callClaude(manualTextPrompt, `RAW TEXT CONTENT:\n\n${manualText.slice(0, 4000)}`, 2048);
-      let parsed = parseJSON(summaryResult);
+      let parsed = robustParseJSON(summaryResult);
+
+      // Clean all parsed fields
+      parsed.title = cleanSummary(parsed.title);
+      parsed.summary_en = cleanSummary(parsed.summary_en || "");
+
+      // Validate summary_en doesn't contain raw JSON
+      if (parsed.summary_en && (parsed.summary_en.includes('"title"') || parsed.summary_en.includes('"category"'))) {
+        const reMatch = summaryResult.match(/"summary_en"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"category|"\s*\})/);
+        if (reMatch) parsed.summary_en = cleanSummary(reMatch[1]);
+      }
 
       // Use manualTitle if provided, otherwise use AI-generated title
       const finalTitle = manualTitle || parsed.title || "Untitled";
 
-      // Translate to FR/IT/ES (including title)
+      // Translate to requested languages (including title)
       let summary_fr = "", summary_it = "", summary_es = "";
       let title_fr = "", title_it = "", title_es = "";
-      if (parsed.summary_en && parsed.summary_en.length >= 50) {
+      if (translateLangs.length > 0 && parsed.summary_en && parsed.summary_en.length >= 50) {
         try {
+          const transPrompt = buildTranslationPrompt(translateLangs);
           const transResult = await callClaude(
-            TRANSLATION_PROMPT,
+            transPrompt,
             `TITLE TO TRANSLATE: ${finalTitle}\n\nENGLISH SUMMARY TO TRANSLATE:\n\n${parsed.summary_en}`,
             4096
           );
-          const frMatch = transResult.match(/"summary_fr"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"summary_it|"\s*,\s*"summary_es|"\s*\})/);
-          const itMatch = transResult.match(/"summary_it"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"summary_es|"\s*,\s*"summary_fr|"\s*\})/);
-          const esMatch = transResult.match(/"summary_es"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"summary_fr|"\s*,\s*"summary_it|"\s*\})/);
-          summary_fr = frMatch?.[1]?.replace(/\\n/g, "\n")?.replace(/\\"/g, '"') || "";
-          summary_it = itMatch?.[1]?.replace(/\\n/g, "\n")?.replace(/\\"/g, '"') || "";
-          summary_es = esMatch?.[1]?.replace(/\\n/g, "\n")?.replace(/\\"/g, '"') || "";
-
-          const titleFrMatch = transResult.match(/"title_fr"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"title_|"\s*,\s*"summary_|"\s*\})/);
-          const titleItMatch = transResult.match(/"title_it"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"title_|"\s*,\s*"summary_|"\s*\})/);
-          const titleEsMatch = transResult.match(/"title_es"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"title_|"\s*,\s*"summary_|"\s*\})/);
-          title_fr = titleFrMatch?.[1]?.replace(/\\n/g, "\n")?.replace(/\\"/g, '"') || "";
-          title_it = titleItMatch?.[1]?.replace(/\\n/g, "\n")?.replace(/\\"/g, '"') || "";
-          title_es = titleEsMatch?.[1]?.replace(/\\n/g, "\n")?.replace(/\\"/g, '"') || "";
+          if (translateLangs.includes("fr")) {
+            const frMatch = transResult.match(/"summary_fr"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"(?:summary_it|summary_es|title_)|"\s*\})/);
+            summary_fr = cleanSummary(frMatch?.[1] || "");
+            const titleFrMatch = transResult.match(/"title_fr"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"(?:title_|summary_)|"\s*\})/);
+            title_fr = cleanSummary(titleFrMatch?.[1] || "");
+          }
+          if (translateLangs.includes("it")) {
+            const itMatch = transResult.match(/"summary_it"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"(?:summary_fr|summary_es|title_)|"\s*\})/);
+            summary_it = cleanSummary(itMatch?.[1] || "");
+            const titleItMatch = transResult.match(/"title_it"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"(?:title_|summary_)|"\s*\})/);
+            title_it = cleanSummary(titleItMatch?.[1] || "");
+          }
+          if (translateLangs.includes("es")) {
+            const esMatch = transResult.match(/"summary_es"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"(?:summary_fr|summary_it|title_)|"\s*\})/);
+            summary_es = cleanSummary(esMatch?.[1] || "");
+            const titleEsMatch = transResult.match(/"title_es"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"(?:title_|summary_)|"\s*\})/);
+            title_es = cleanSummary(titleEsMatch?.[1] || "");
+          }
         } catch (transErr) {
           console.error("Translation failed:", (transErr as Error).message);
         }
@@ -292,7 +354,7 @@ Return ONLY the JSON object, no markdown, no code blocks.`;
         image_url: manualImageUrl || "",
         is_active: true,
         is_featured: false,
-        is_published: (parsed.summary_en || "").length >= 50,
+        is_published: isValidSummary(parsed.summary_en || ""),
         summary_en: parsed.summary_en || "",
         summary_fr: summary_fr,
         summary_it: summary_it,
@@ -384,37 +446,47 @@ Return ONLY the JSON object, no markdown, no code blocks.`;
           `ARTICLE TITLE: ${article.title}\nSOURCE: ${article.source_name}\nCATEGORY: ${article.category}\n\nFULL ARTICLE CONTENT:\n${fullContent}`,
           2048
         );
-        let parsed = parseJSON(summaryResult);
-        console.log("PARSED KEYS:", Object.keys(parsed), "EN length:", (parsed.summary_en || "").length);
-        
-        // --- CALL 2: Translate to FR/IT/ES (only for EN articles with real summary) ---
-        if (!isLocalLang && parsed.summary_en && parsed.summary_en.length >= 50) {
+        let parsed = robustParseJSON(summaryResult);
+        // Clean parsed fields
+        parsed.summary_en = cleanSummary(parsed.summary_en || parsed.summary || "");
+        parsed.category = parsed.category || "general";
+        console.log("PARSED KEYS:", Object.keys(parsed), "EN length:", parsed.summary_en.length);
+
+        // --- CALL 2: Translate to requested languages (only for EN articles with real summary) ---
+        if (!isLocalLang && translateLangs.length > 0 && isValidSummary(parsed.summary_en)) {
           try {
+            const transPrompt = buildTranslationPrompt(translateLangs);
             const transResult = await callClaude(
-              TRANSLATION_PROMPT,
+              transPrompt,
               `TITLE TO TRANSLATE: ${article.title}\n\nENGLISH SUMMARY TO TRANSLATE:\n\n${parsed.summary_en}`,
               4096
             );
-            // Extract each translation by regex - more robust than JSON.parse with special chars
-            const frMatch = transResult.match(/"summary_fr"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"summary_it|"\s*,\s*"summary_es|"\s*\})/);
-            const itMatch = transResult.match(/"summary_it"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"summary_es|"\s*,\s*"summary_fr|"\s*\})/);
-            const esMatch = transResult.match(/"summary_es"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"summary_fr|"\s*,\s*"summary_it|"\s*\})/);
-            parsed.summary_fr = frMatch?.[1]?.replace(/\\n/g, "\n")?.replace(/\\"/g, '"') || "";
-            parsed.summary_it = itMatch?.[1]?.replace(/\\n/g, "\n")?.replace(/\\"/g, '"') || "";
-            parsed.summary_es = esMatch?.[1]?.replace(/\\n/g, "\n")?.replace(/\\"/g, '"') || "";
-
-            // Extract translated titles
-            const titleFrMatch = transResult.match(/"title_fr"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"title_|"\s*,\s*"summary_|"\s*\})/);
-            const titleItMatch = transResult.match(/"title_it"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"title_|"\s*,\s*"summary_|"\s*\})/);
-            const titleEsMatch = transResult.match(/"title_es"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"title_|"\s*,\s*"summary_|"\s*\})/);
-            parsed.title_fr = titleFrMatch?.[1]?.replace(/\\n/g, "\n")?.replace(/\\"/g, '"') || "";
-            parsed.title_it = titleItMatch?.[1]?.replace(/\\n/g, "\n")?.replace(/\\"/g, '"') || "";
-            parsed.title_es = titleEsMatch?.[1]?.replace(/\\n/g, "\n")?.replace(/\\"/g, '"') || "";
-            console.log("REGEX FR:", parsed.summary_fr.length, "IT:", parsed.summary_it.length, "ES:", parsed.summary_es.length);
+            if (translateLangs.includes("fr")) {
+              const frMatch = transResult.match(/"summary_fr"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"(?:summary_it|summary_es|title_)|"\s*\})/);
+              parsed.summary_fr = cleanSummary(frMatch?.[1] || "");
+              const titleFrMatch = transResult.match(/"title_fr"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"(?:title_|summary_)|"\s*\})/);
+              parsed.title_fr = cleanSummary(titleFrMatch?.[1] || "");
+            }
+            if (translateLangs.includes("it")) {
+              const itMatch = transResult.match(/"summary_it"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"(?:summary_fr|summary_es|title_)|"\s*\})/);
+              parsed.summary_it = cleanSummary(itMatch?.[1] || "");
+              const titleItMatch = transResult.match(/"title_it"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"(?:title_|summary_)|"\s*\})/);
+              parsed.title_it = cleanSummary(titleItMatch?.[1] || "");
+            }
+            if (translateLangs.includes("es")) {
+              const esMatch = transResult.match(/"summary_es"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"(?:summary_fr|summary_it|title_)|"\s*\})/);
+              parsed.summary_es = cleanSummary(esMatch?.[1] || "");
+              const titleEsMatch = transResult.match(/"title_es"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"(?:title_|summary_)|"\s*\})/);
+              parsed.title_es = cleanSummary(titleEsMatch?.[1] || "");
+            }
+            console.log("TRANS FR:", (parsed.summary_fr || "").length, "IT:", (parsed.summary_it || "").length, "ES:", (parsed.summary_es || "").length);
           } catch (transErr) {
             console.error("Translation failed:", (transErr as Error).message);
           }
         }
+
+        // Determine the main summary text
+        const mainSummary = isLocalLang ? (parsed[`summary_${targetLang}`] || parsed.summary_en) : parsed.summary_en;
 
         // Update article with summary
         const { error: updateErr } = await supabase
@@ -426,16 +498,11 @@ Return ONLY the JSON object, no markdown, no code blocks.`;
             title_fr: parsed.title_fr || "",
             title_it: parsed.title_it || "",
             title_es: parsed.title_es || "",
-            summary_en: isLocalLang ? (parsed.summary_en || "") : (parsed.summary_en || parsed.summary || ""),
-            summary_fr: isLocalLang && targetLang === "fr" ? (parsed.summary_fr || parsed.summary || "") : (parsed.summary_fr || ""),
-            summary_it: isLocalLang && targetLang === "it" ? (parsed.summary_it || parsed.summary || "") : (parsed.summary_it || ""),
-            summary_es: isLocalLang && targetLang === "es" ? (parsed.summary_es || parsed.summary || "") : (parsed.summary_es || ""),
-            // Only publish if we have a real summary (min 50 chars)
-            is_published: (
-              isLocalLang
-                ? (parsed[`summary_${targetLang}`] || parsed.summary || "").length >= 50
-                : (parsed.summary_en || parsed.summary || "").length >= 50
-            ),
+            summary_en: parsed.summary_en || "",
+            summary_fr: isLocalLang && targetLang === "fr" ? (parsed.summary_fr || parsed.summary_en || "") : (parsed.summary_fr || ""),
+            summary_it: isLocalLang && targetLang === "it" ? (parsed.summary_it || parsed.summary_en || "") : (parsed.summary_it || ""),
+            summary_es: isLocalLang && targetLang === "es" ? (parsed.summary_es || parsed.summary_en || "") : (parsed.summary_es || ""),
+            is_published: isValidSummary(mainSummary || ""),
             is_featured: summarized === 0, // First article is featured
           })
           .eq("id", article.id);
@@ -515,16 +582,23 @@ WRITING STYLE:
 
 Return ONLY the JSON object, no markdown, no code blocks.`;
 
-const TRANSLATION_PROMPT = `You are a professional translator for a startup investment newsletter.
-Translate the following newsletter title and summary into French, Italian, and Spanish.
+/** Build a dynamic translation prompt based on requested languages */
+function buildTranslationPrompt(langs: string[]): string {
+  const langNames: Record<string, string> = { fr: "French", it: "Italian", es: "Spanish" };
+  const targetLangs = langs.filter(l => l !== "en").map(l => langNames[l] || l).join(", ");
+  const jsonFields: string[] = [];
+  langs.filter(l => l !== "en").forEach(l => {
+    jsonFields.push(`  "title_${l}": "${langNames[l] || l} title"`);
+    jsonFields.push(`  "summary_${l}": "${langNames[l] || l} translation of summary"`);
+  });
+  return `You are a professional translator for a startup investment newsletter.
+Translate the following newsletter title and summary into ${targetLangs}.
 Keep the same professional tone, analytical style, and structure. Keep all numbers, company names, and technical terms unchanged.
 Return ONLY valid JSON:
 {
-  "title_fr": "French title",
-  "title_it": "Italian title",
-  "title_es": "Spanish title",
-  "summary_fr": "French translation of summary",
-  "summary_it": "Italian translation of summary",
-  "summary_es": "Spanish translation of summary"
+${jsonFields.join(",\n")}
 }
 Return ONLY the JSON object, no markdown, no code blocks.`;
+}
+
+const TRANSLATION_PROMPT = buildTranslationPrompt(["fr", "it", "es"]);

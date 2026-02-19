@@ -134,14 +134,30 @@ export default function QuizResultsPage() {
           {getScoreMessage(score, lang)}
         </h2>
 
-        {/* Animated Score */}
+        {/* Animated SVG Score Circle (B6) */}
         <motion.div
-          className="text-6xl font-black text-[#2ECC71] text-center my-6"
+          className="flex justify-center my-6"
           initial={{ scale: 0, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.3 }}
         >
-          {score}/{totalQuestions}
+          <div className="relative w-36 h-36">
+            <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
+              <circle cx="50" cy="50" r="42" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="8" />
+              <motion.circle
+                cx="50" cy="50" r="42" fill="none"
+                stroke="#2ECC71" strokeWidth="8" strokeLinecap="round"
+                strokeDasharray={2 * Math.PI * 42}
+                initial={{ strokeDashoffset: 2 * Math.PI * 42 }}
+                animate={{ strokeDashoffset: 2 * Math.PI * 42 * (1 - score / totalQuestions) }}
+                transition={{ duration: 1.2, delay: 0.5, ease: 'easeOut' }}
+              />
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <span className="text-5xl font-black text-[#2ECC71]">{score}</span>
+              <span className="text-sm font-semibold text-white/50">/ {totalQuestions}</span>
+            </div>
+          </div>
         </motion.div>
 
         {/* Star border wrapper if perfect */}
@@ -161,7 +177,7 @@ export default function QuizResultsPage() {
                   <span className="text-[#2ECC71] font-bold">{line.value > 0 ? `+${line.value}` : '0'} XP</span>
                 </div>
               ))}
-              {/* Total */}
+              {/* Total — progressive counter */}
               <motion.div
                 className="flex justify-between items-center py-3 mt-2"
                 initial={{ opacity: 0, y: 10 }}
@@ -170,10 +186,10 @@ export default function QuizResultsPage() {
               >
                 <span className="text-white font-bold">{getQuizText('xpTotal', lang)}</span>
                 <motion.span
-                  className="text-[#2ECC71] font-black text-xl"
+                  className="text-[#2ECC71] font-black text-2xl"
                   initial={{ scale: 0.5 }}
-                  animate={{ scale: 1 }}
-                  transition={{ type: 'spring', delay: 2.5 }}
+                  animate={{ scale: [0.5, 1.2, 1] }}
+                  transition={{ type: 'spring', delay: 2.5, duration: 0.6 }}
                 >
                   +{computedTotalXP} XP
                 </motion.span>

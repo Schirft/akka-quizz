@@ -216,3 +216,40 @@ summary {
 .animate-confetti {
   animation: confetti-rain ease-out forwards;
 }
+
+/* ====== B2: FadeInUp stagger for answer options ====== */
+@keyframes fadeInUp {
+  0% { opacity: 0; transform: translateY(16px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.animate-fadeInUp {
+  animation: fadeInUp 0.35s ease-out both;
+}
+
+/* ====== B7: Streak fire + glow animations ====== */
+@keyframes streak-fire {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15) rotate(-3deg); }
+}
+.animate-streak-fire {
+  animation: streak-fire 1.5s ease-in-out infinite;
+}
+
+@keyframes streak-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.3); }
+  50% { box-shadow: 0 0 12px 4px rgba(249, 115, 22, 0.25); }
+}
+.animate-streak-glow {
+  animation: streak-glow 2s ease-in-out infinite;
+}
+
+/* ====== Accessibility: reduced motion ====== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

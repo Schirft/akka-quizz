@@ -273,11 +273,13 @@ export default function HomePage() {
         )}
       </div>
 
-      {/* Streak card with 7-day circles */}
+      {/* Streak card with 7-day circles + fire animation (B7) */}
       <Card className="mb-3">
         <div className="flex items-center gap-3 mb-3">
-          <div className="w-10 h-10 rounded-full bg-orange-50 flex items-center justify-center">
-            <Flame size={20} className="text-orange-500" />
+          <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+            streakDays > 0 ? 'bg-orange-100 animate-streak-glow' : 'bg-orange-50'
+          }`}>
+            <Flame size={20} className={`${streakDays > 0 ? 'text-orange-500 animate-streak-fire' : 'text-orange-300'}`} />
           </div>
           <div>
             <p className="text-2xl font-bold text-akka-text">

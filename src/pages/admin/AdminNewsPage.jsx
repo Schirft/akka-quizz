@@ -66,6 +66,8 @@ export default function AdminNewsPage() {
   const [addingManual, setAddingManual] = useState(false)
   const [manualResult, setManualResult] = useState(null)
   const [manualError, setManualError] = useState(null)
+  const [manualLangs, setManualLangs] = useState(['fr', 'it', 'es'])
+  const [manualProgress, setManualProgress] = useState('') // loading step description
   const fileInputRef = useRef(null)
 
   // ── Section C: Published articles ──
@@ -216,15 +218,23 @@ export default function AdminNewsPage() {
     }
   }
 
+  // ── Toggle manual language checkbox ──
+  function toggleManualLang(lang) {
+    setManualLangs((prev) =>
+      prev.includes(lang) ? prev.filter((l) => l !== lang) : [...prev, lang],
+    )
+  }
+
   // ── Section B: Manual add by URL ──
   async function handleManualUrl() {
     if (!manualUrl.trim()) return
     setAddingManual(true)
     setManualResult(null)
     setManualError(null)
+    setManualProgress('Scraping article & generating summary...')
     try {
       const { error } = await supabase.functions.invoke('generate-summaries', {
-        body: { manualUrl: manualUrl.trim() },
+        body: { manualUrl: manualUrl.trim(), translateLangs: manualLangs },
       })
       if (error) throw error
       setManualResult('Article added successfully!')
@@ -234,6 +244,7 @@ export default function AdminNewsPage() {
       setManualError(err.message || 'Failed to add article')
     } finally {
       setAddingManual(false)
+      setManualProgress('')
     }
   }
 
@@ -270,6 +281,7 @@ export default function AdminNewsPage() {
     setAddingManual(true)
     setManualResult(null)
     setManualError(null)
+    setManualProgress('Analyzing text & generating summary...')
     try {
       const res = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-summaries`,
@@ -283,6 +295,7 @@ export default function AdminNewsPage() {
             manualText: manualText.trim(),
             manualTitle: manualTitle.trim() || '',
             manualImageUrl: uploadedImageUrl || '',
+            translateLangs: manualLangs,
           }),
         },
       )
@@ -299,6 +312,7 @@ export default function AdminNewsPage() {
       setManualError(err.message || 'Failed to add article from text')
     } finally {
       setAddingManual(false)
+      setManualProgress('')
     }
   }
 
@@ -616,30 +630,64 @@ export default function AdminNewsPage() {
             </button>
           </div>
 
+          {/* Translation language checkboxes */}
+          <div className="mb-4">
+            <label className="block mb-1.5 text-xs font-medium text-[#6B7280]">
+              Translate to
+            </label>
+            <div className="flex gap-3">
+              {['fr', 'it', 'es'].map((lng) => (
+                <label
+                  key={lng}
+                  className="flex items-center gap-2 cursor-pointer select-none"
+                >
+                  <input
+                    type="checkbox"
+                    checked={manualLangs.includes(lng)}
+                    onChange={() => toggleManualLang(lng)}
+                    disabled={addingManual}
+                    className="w-4 h-4 rounded border-gray-300 text-[#1B3D2F] focus:ring-[#1B3D2F]"
+                  />
+                  <span className="text-sm font-medium text-[#1A1A1A] uppercase">
+                    {lng}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+
           {/* URL mode */}
           {addMode === 'url' && (
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={manualUrl}
-                onChange={(e) => setManualUrl(e.target.value)}
-                placeholder="Paste article URL here..."
-                disabled={addingManual}
-                className="flex-1 border border-[#D1D5DB] rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1B3D2F] disabled:opacity-50"
-                onKeyDown={(e) => e.key === 'Enter' && handleManualUrl()}
-              />
-              <button
-                onClick={handleManualUrl}
-                disabled={addingManual || !manualUrl.trim()}
-                className="flex items-center gap-2 px-4 py-2.5 bg-[#1B3D2F] text-white text-sm font-semibold rounded-xl hover:opacity-90 disabled:opacity-50 transition-opacity shrink-0"
-              >
-                {addingManual ? (
-                  <Loader2 size={16} className="animate-spin" />
-                ) : (
-                  <Sparkles size={16} />
-                )}
-                Generate Summary
-              </button>
+            <div className="space-y-3">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={manualUrl}
+                  onChange={(e) => setManualUrl(e.target.value)}
+                  placeholder="Paste article URL here..."
+                  disabled={addingManual}
+                  className="flex-1 border border-[#D1D5DB] rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1B3D2F] disabled:opacity-50"
+                  onKeyDown={(e) => e.key === 'Enter' && handleManualUrl()}
+                />
+                <button
+                  onClick={handleManualUrl}
+                  disabled={addingManual || !manualUrl.trim()}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-[#1B3D2F] text-white text-sm font-semibold rounded-xl hover:opacity-90 disabled:opacity-50 transition-opacity shrink-0"
+                >
+                  {addingManual ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <Sparkles size={16} />
+                  )}
+                  Generate Summary
+                </button>
+              </div>
+              {addingManual && manualProgress && (
+                <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-xl">
+                  <Loader2 size={14} className="animate-spin text-blue-600" />
+                  <p className="text-sm text-blue-700 font-medium">{manualProgress}</p>
+                </div>
+              )}
             </div>
           )}
 
@@ -719,6 +767,12 @@ export default function AdminNewsPage() {
                 )}
                 Generate from Text
               </button>
+              {addingManual && manualProgress && (
+                <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-xl">
+                  <Loader2 size={14} className="animate-spin text-blue-600" />
+                  <p className="text-sm text-blue-700 font-medium">{manualProgress}</p>
+                </div>
+              )}
             </div>
           )}
 

@@ -54,7 +54,6 @@ export default function NewsPage() {
           .select('*, title_en, title_fr, title_it, title_es, summary_en, summary_fr, summary_it, summary_es, hidden_langs')
           .eq('is_active', true)
           .eq('is_published', true)
-          .eq('language', lang)
           .order('published_at', { ascending: false })
           .limit(50)
 

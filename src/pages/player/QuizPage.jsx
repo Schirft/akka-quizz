@@ -221,14 +221,17 @@ export default function QuizPage() {
       }
 
       // Timer pressure messages — use i18n via imported t function with current lang
+      const pctRemaining = remaining / QUESTION_TIMER_SECONDS
       if (remaining === 5) {
         const currentLang = localStorage.getItem('akka_lang') || 'en'
         setTimerMessage({ text: `⏳ ${tRaw('hurry_up', currentLang)}`, type: 'warning' })
         setTimeout(() => setTimerMessage(null), 1500)
-      }
-      if (remaining === 3) {
+      } else if (remaining === 3) {
         const currentLang = localStorage.getItem('akka_lang') || 'en'
         setTimerMessage({ text: `🔥 ${tRaw('last_chance', currentLang)}`, type: 'critical' })
+        setTimeout(() => setTimerMessage(null), 1500)
+      } else if (pctRemaining > 0 && pctRemaining <= 0.2 && remaining !== 5 && remaining !== 3 && remaining === Math.ceil(QUESTION_TIMER_SECONDS * 0.2)) {
+        setTimerMessage({ text: '⏰ Hurry!', type: 'warning' })
         setTimeout(() => setTimerMessage(null), 1500)
       }
 
@@ -326,7 +329,7 @@ export default function QuizPage() {
     setMemberStats(generateMemberStats(question.correct_answer_index - 1))
 
     if (xpEarned > 0) {
-      setXpFloat({ amount: xpEarned, key: Date.now() })
+      setXpFloat({ amount: xpEarned, speedBonus, key: Date.now() })
     }
 
     setAnswers((prev) => [
@@ -648,24 +651,27 @@ export default function QuizPage() {
         >
           <ArrowLeft size={20} />
         </button>
-        {/* Progress dots */}
-        <div className="flex-1 flex items-center gap-1.5">
-          {questions.map((_, i) => (
-            <div
-              key={i}
-              className={`h-1.5 flex-1 rounded-full transition-colors ${
-                i < currentIndex
-                  ? 'bg-akka-green'
-                  : i === currentIndex
-                    ? quizState === 'feedback'
-                      ? isCorrect
-                        ? 'bg-akka-green'
-                        : 'bg-akka-red'
-                      : 'bg-akka-dark'
-                    : 'bg-gray-200'
-              }`}
-            />
-          ))}
+        {/* Segmented progress bar (B5) */}
+        <div className="flex-1 flex items-center gap-1">
+          {questions.map((_, i) => {
+            const answered = answers[i]
+            let segColor = 'bg-gray-200'
+            if (i < currentIndex && answered) {
+              segColor = answered.correct ? 'bg-akka-green' : 'bg-akka-red'
+            } else if (i === currentIndex) {
+              segColor = quizState === 'feedback'
+                ? isCorrect ? 'bg-akka-green' : 'bg-akka-red'
+                : 'bg-akka-dark'
+            }
+            return (
+              <div
+                key={i}
+                className={`h-2 flex-1 rounded-full transition-all duration-300 ${segColor} ${
+                  i === currentIndex && quizState === 'question' ? 'animate-progress-pulse' : ''
+                }`}
+              />
+            )
+          })}
         </div>
         {/* Timer badge */}
         <div
@@ -730,14 +736,14 @@ export default function QuizPage() {
         </p>
       </div>
 
-      {/* Question text */}
+      {/* Question text — slide in with fade */}
       <div key={currentIndex} className="px-4 pt-3 pb-4 animate-slide-in">
         <h2 className="text-lg font-bold text-akka-text leading-snug">
           {questionText}
         </h2>
       </div>
 
-      {/* Answer cards */}
+      {/* Answer cards — stagger fadeInUp */}
       <div className="px-4 flex-1 flex flex-col gap-2.5">
         {answersArr.map((answerText, idx) => {
           const num = idx + 1
@@ -776,9 +782,10 @@ export default function QuizPage() {
               key={num}
               onClick={() => quizState === 'question' && handleAnswer(num)}
               disabled={quizState === 'feedback'}
-              className={`relative w-full text-left p-4 rounded-2xl border-2 transition-all duration-200 active:scale-[0.98] ${cardStyle} ${
+              className={`relative w-full text-left p-4 rounded-2xl border-2 transition-all duration-200 active:scale-[0.98] animate-fadeInUp ${cardStyle} ${
                 shouldShake ? 'animate-shake' : shouldPulse ? 'animate-pulse-select' : ''
               }`}
+              style={{ animationDelay: `${idx * 0.07}s` }}
             >
               <div className="flex items-center gap-3">
                 <div
@@ -859,10 +866,15 @@ export default function QuizPage() {
       {/* Feedback section */}
       {quizState === 'feedback' && (
         <div className="px-4 pt-4 pb-6">
-          {/* XP Float animation */}
+          {/* XP Float animation — enhanced with speed bonus detail */}
           {xpFloat && (
             <div key={xpFloat.key} className="flex justify-center mb-3 animate-float-up">
-              <span className="text-[#1B3D2F] font-bold text-lg">+{xpFloat.amount} XP</span>
+              <span className="text-[#1B3D2F] font-black text-xl">
+                +{xpFloat.amount} XP
+                {xpFloat.speedBonus > 0 && (
+                  <span className="text-sm font-bold text-[#F39C12] ml-1.5">⚡ Speed!</span>
+                )}
+              </span>
             </div>
           )}
 
