@@ -59,6 +59,7 @@ export default function AdminNewsPage() {
   // ── Section B: Manual add (URL + Text modes) ──
   const [addMode, setAddMode] = useState('url') // 'url' | 'text'
   const [manualUrl, setManualUrl] = useState('')
+  const [manualTitle, setManualTitle] = useState('')
   const [manualText, setManualText] = useState('')
   const [uploadedImage, setUploadedImage] = useState(null) // File object
   const [uploadedImageUrl, setUploadedImageUrl] = useState('')
@@ -89,7 +90,7 @@ export default function AdminNewsPage() {
 
   // ── Edit modal ──
   const [editArticle, setEditArticle] = useState(null)
-  const [editTitle, setEditTitle] = useState('')
+  const [editTitles, setEditTitles] = useState({ en: '', fr: '', it: '', es: '' })
   const [editCategory, setEditCategory] = useState('')
   const [editLang, setEditLang] = useState('en')
   const [editSummaries, setEditSummaries] = useState({ en: '', fr: '', it: '', es: '' })
@@ -110,7 +111,7 @@ export default function AdminNewsPage() {
     try {
       const { data } = await supabase
         .from('news_articles')
-        .select('id, title, description, content, source_url, source_name, image_url, category, language, published_at, created_at, is_published, is_featured, summary_en, summary_fr, summary_it, summary_es, hidden_langs')
+        .select('id, title, title_en, title_fr, title_it, title_es, description, content, source_url, source_name, image_url, category, language, published_at, created_at, is_published, is_featured, summary_en, summary_fr, summary_it, summary_es, hidden_langs')
         .eq('is_published', true)
         .order('published_at', { ascending: false })
         .limit(200)
@@ -280,6 +281,7 @@ export default function AdminNewsPage() {
           },
           body: JSON.stringify({
             manualText: manualText.trim(),
+            manualTitle: manualTitle.trim() || '',
             manualImageUrl: uploadedImageUrl || '',
           }),
         },
@@ -287,6 +289,7 @@ export default function AdminNewsPage() {
       const result = await res.json()
       if (!res.ok || result.error) throw new Error(result.error || 'Failed to process text')
       setManualResult('Article created from text successfully!')
+      setManualTitle('')
       setManualText('')
       setUploadedImage(null)
       setUploadedImageUrl('')
@@ -337,7 +340,12 @@ export default function AdminNewsPage() {
   // ── Edit modal ──
   function openEditModal(article) {
     setEditArticle(article)
-    setEditTitle(article.title)
+    setEditTitles({
+      en: article.title_en || article.title || '',
+      fr: article.title_fr || '',
+      it: article.title_it || '',
+      es: article.title_es || '',
+    })
     setEditCategory(article.category || '')
     setEditLang('en')
     setEditSummaries({
@@ -353,7 +361,11 @@ export default function AdminNewsPage() {
     const { error } = await supabase
       .from('news_articles')
       .update({
-        title: editTitle,
+        title: editTitles.en || editTitles.fr || editTitles.it || editTitles.es,
+        title_en: editTitles.en,
+        title_fr: editTitles.fr,
+        title_it: editTitles.it,
+        title_es: editTitles.es,
         category: editCategory,
         summary_en: editSummaries.en,
         summary_fr: editSummaries.fr,
@@ -634,6 +646,14 @@ export default function AdminNewsPage() {
           {/* Text mode */}
           {addMode === 'text' && (
             <div className="space-y-3">
+              <input
+                type="text"
+                value={manualTitle}
+                onChange={(e) => setManualTitle(e.target.value)}
+                placeholder="Article title (optional — AI will generate one if empty)"
+                disabled={addingManual}
+                className="w-full border border-[#D1D5DB] rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1B3D2F] disabled:opacity-50"
+              />
               <textarea
                 value={manualText}
                 onChange={(e) => setManualText(e.target.value)}
@@ -1129,29 +1149,8 @@ export default function AdminNewsPage() {
               </button>
             </div>
 
-            {/* Title */}
-            <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
-            <input
-              value={editTitle}
-              onChange={(e) => setEditTitle(e.target.value)}
-              className="w-full border border-[#D1D5DB] rounded-lg px-3 py-2 mb-4 text-sm focus:outline-none focus:ring-2 focus:ring-[#1B3D2F]"
-            />
-
-            {/* Category */}
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Category
-            </label>
-            <input
-              value={editCategory}
-              onChange={(e) => setEditCategory(e.target.value)}
-              className="w-full border border-[#D1D5DB] rounded-lg px-3 py-2 mb-4 text-sm focus:outline-none focus:ring-2 focus:ring-[#1B3D2F]"
-            />
-
-            {/* Summary language tabs */}
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Summary
-            </label>
-            <div className="flex gap-2 mb-2">
+            {/* Language tabs — controls both title and summary */}
+            <div className="flex gap-2 mb-4">
               {LANGS.map((lng) => (
                 <button
                   key={lng}
@@ -1166,6 +1165,33 @@ export default function AdminNewsPage() {
                 </button>
               ))}
             </div>
+
+            {/* Title per language */}
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Title ({editLang.toUpperCase()})
+            </label>
+            <input
+              value={editTitles[editLang] || ''}
+              onChange={(e) =>
+                setEditTitles((prev) => ({ ...prev, [editLang]: e.target.value }))
+              }
+              className="w-full border border-[#D1D5DB] rounded-lg px-3 py-2 mb-4 text-sm focus:outline-none focus:ring-2 focus:ring-[#1B3D2F]"
+            />
+
+            {/* Category */}
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Category
+            </label>
+            <input
+              value={editCategory}
+              onChange={(e) => setEditCategory(e.target.value)}
+              className="w-full border border-[#D1D5DB] rounded-lg px-3 py-2 mb-4 text-sm focus:outline-none focus:ring-2 focus:ring-[#1B3D2F]"
+            />
+
+            {/* Summary per language */}
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Summary ({editLang.toUpperCase()})
+            </label>
             <textarea
               value={editSummaries[editLang] || ''}
               onChange={(e) =>

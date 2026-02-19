@@ -26,6 +26,11 @@ function timeAgo(dateStr) {
   return `${days}d ago`
 }
 
+/** Helper: get localized title with fallback chain */
+function getLocalizedTitle(article, lang) {
+  return article[`title_${lang}`] || article.title_en || article.title || ''
+}
+
 /**
  * NewsPage — Dark green premium news feed.
  * Fetches articles from Supabase, filtered by user language.
@@ -46,7 +51,7 @@ export default function NewsPage() {
       try {
         let query = supabase
           .from('news_articles')
-          .select('*, summary_en, summary_fr, summary_it, summary_es, hidden_langs')
+          .select('*, title_en, title_fr, title_it, title_es, summary_en, summary_fr, summary_it, summary_es, hidden_langs')
           .eq('is_active', true)
           .eq('is_published', true)
           .eq('language', lang)
@@ -133,7 +138,7 @@ export default function NewsPage() {
                 {featured.image_url ? (
                   <img
                     src={featured.image_url}
-                    alt={featured.title}
+                    alt={getLocalizedTitle(featured, lang)}
                     className="w-full h-[220px] object-cover group-hover:scale-105 transition-transform duration-500"
                     onError={(e) => { e.target.style.display = 'none' }}
                   />
@@ -152,7 +157,7 @@ export default function NewsPage() {
                     </span>
                   )}
                   <h2 className="text-lg font-bold text-white leading-tight mb-1.5 line-clamp-2">
-                    {featured.title}
+                    {getLocalizedTitle(featured, lang)}
                   </h2>
                   <div className="flex items-center gap-2 text-white/50 text-xs">
                     {featured.published_at && (
@@ -228,7 +233,7 @@ export default function NewsPage() {
                         </span>
                       )}
                       <h3 className="text-sm font-semibold text-white leading-tight line-clamp-2 mt-0.5">
-                        {article.title}
+                        {getLocalizedTitle(article, lang)}
                       </h3>
                     </div>
                     <div className="flex items-center gap-2 text-white/40 text-[10px] mt-1">

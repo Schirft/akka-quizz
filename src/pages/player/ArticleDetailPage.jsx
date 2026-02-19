@@ -38,6 +38,7 @@ export default function ArticleDetailPage() {
     navigate('/news', { replace: true })
     return null
   }
+  const localizedTitle = article[`title_${lang}`] || article.title_en || article.title || ''
   const summary = article[`summary_${lang}`] || article.summary_en || article.description || ''
   const date = article.published_at ? new Date(article.published_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : ''
 
@@ -67,7 +68,7 @@ export default function ArticleDetailPage() {
         )}
 
         {/* Title */}
-        <h1 className="text-xl font-bold text-gray-900 mb-2">{article.title}</h1>
+        <h1 className="text-xl font-bold text-gray-900 mb-2">{localizedTitle}</h1>
 
         {/* Date */}
         {date && <p className="text-sm text-gray-500 mb-4">{date}</p>}

@@ -118,6 +118,7 @@ Deno.serve(async (req: Request) => {
     let manualUrl = "";
     let manualText = "";
     let manualImageUrl = "";
+    let manualTitle = "";
     let targetLang = "en";
 
     try {
@@ -127,6 +128,7 @@ Deno.serve(async (req: Request) => {
       manualUrl = body.manualUrl || "";
       manualText = body.manualText || "";
       manualImageUrl = body.manualImageUrl || "";
+      manualTitle = body.manualTitle || "";
       targetLang = body.language || "en";
     } catch {
       // No body, that's fine (cron call)
@@ -145,14 +147,18 @@ Deno.serve(async (req: Request) => {
 
       const manualPrompt = `You are a senior analyst writing for a premium startup investment newsletter.
 Given an article, generate:
-1. An accurate, compelling title (extracted from the article content)
-2. A newsletter-style summary in 4 languages (300-400 words each)
-3. The article's category
-4. The article's original image URL if visible in the content
+1. An accurate, compelling title (extracted from the article content) in English
+2. The same title translated into French, Italian, and Spanish
+3. A newsletter-style summary in 4 languages (300-400 words each)
+4. The article's category
+5. The article's original image URL if visible in the content
 
 Return ONLY valid JSON:
 {
-  "title": "Extracted article title",
+  "title": "Extracted article title in English",
+  "title_fr": "French title",
+  "title_it": "Italian title",
+  "title_es": "Spanish title",
   "image_url": "URL of the main image if found, or empty string",
   "summary_en": "English summary (300-400 words, analytical, with why-it-matters and a question at the end)",
   "summary_fr": "French translation",
@@ -187,6 +193,10 @@ Return ONLY valid JSON:
 
       const { error } = await supabase.from("news_articles").insert({
         title: parsed.title || "Untitled Article",
+        title_en: parsed.title || "Untitled Article",
+        title_fr: parsed.title_fr || "",
+        title_it: parsed.title_it || "",
+        title_es: parsed.title_es || "",
         description: parsed.summary_en?.slice(0, 200) || "",
         image_url: parsed.image_url || scrapedImageUrl || "",
         content: fullContent.slice(0, 2000),
@@ -234,13 +244,17 @@ Return ONLY the JSON object, no markdown, no code blocks.`;
       const summaryResult = await callClaude(manualTextPrompt, `RAW TEXT CONTENT:\n\n${manualText.slice(0, 4000)}`, 2048);
       let parsed = parseJSON(summaryResult);
 
-      // Translate to FR/IT/ES
+      // Use manualTitle if provided, otherwise use AI-generated title
+      const finalTitle = manualTitle || parsed.title || "Untitled";
+
+      // Translate to FR/IT/ES (including title)
       let summary_fr = "", summary_it = "", summary_es = "";
+      let title_fr = "", title_it = "", title_es = "";
       if (parsed.summary_en && parsed.summary_en.length >= 50) {
         try {
           const transResult = await callClaude(
             TRANSLATION_PROMPT,
-            `ENGLISH SUMMARY TO TRANSLATE:\n\n${parsed.summary_en}`,
+            `TITLE TO TRANSLATE: ${finalTitle}\n\nENGLISH SUMMARY TO TRANSLATE:\n\n${parsed.summary_en}`,
             4096
           );
           const frMatch = transResult.match(/"summary_fr"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"summary_it|"\s*,\s*"summary_es|"\s*\})/);
@@ -249,13 +263,24 @@ Return ONLY the JSON object, no markdown, no code blocks.`;
           summary_fr = frMatch?.[1]?.replace(/\\n/g, "\n")?.replace(/\\"/g, '"') || "";
           summary_it = itMatch?.[1]?.replace(/\\n/g, "\n")?.replace(/\\"/g, '"') || "";
           summary_es = esMatch?.[1]?.replace(/\\n/g, "\n")?.replace(/\\"/g, '"') || "";
+
+          const titleFrMatch = transResult.match(/"title_fr"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"title_|"\s*,\s*"summary_|"\s*\})/);
+          const titleItMatch = transResult.match(/"title_it"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"title_|"\s*,\s*"summary_|"\s*\})/);
+          const titleEsMatch = transResult.match(/"title_es"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"title_|"\s*,\s*"summary_|"\s*\})/);
+          title_fr = titleFrMatch?.[1]?.replace(/\\n/g, "\n")?.replace(/\\"/g, '"') || "";
+          title_it = titleItMatch?.[1]?.replace(/\\n/g, "\n")?.replace(/\\"/g, '"') || "";
+          title_es = titleEsMatch?.[1]?.replace(/\\n/g, "\n")?.replace(/\\"/g, '"') || "";
         } catch (transErr) {
           console.error("Translation failed:", (transErr as Error).message);
         }
       }
 
       const { error } = await supabase.from("news_articles").insert({
-        title: parsed.title || "Untitled",
+        title: finalTitle,
+        title_en: finalTitle,
+        title_fr: title_fr,
+        title_it: title_it,
+        title_es: title_es,
         description: (parsed.summary_en || "").slice(0, 200),
         content: manualText.slice(0, 2000),
         full_content: manualText,
@@ -366,7 +391,7 @@ Return ONLY the JSON object, no markdown, no code blocks.`;
           try {
             const transResult = await callClaude(
               TRANSLATION_PROMPT,
-              `ENGLISH SUMMARY TO TRANSLATE:\n\n${parsed.summary_en}`,
+              `TITLE TO TRANSLATE: ${article.title}\n\nENGLISH SUMMARY TO TRANSLATE:\n\n${parsed.summary_en}`,
               4096
             );
             // Extract each translation by regex - more robust than JSON.parse with special chars
@@ -376,6 +401,14 @@ Return ONLY the JSON object, no markdown, no code blocks.`;
             parsed.summary_fr = frMatch?.[1]?.replace(/\\n/g, "\n")?.replace(/\\"/g, '"') || "";
             parsed.summary_it = itMatch?.[1]?.replace(/\\n/g, "\n")?.replace(/\\"/g, '"') || "";
             parsed.summary_es = esMatch?.[1]?.replace(/\\n/g, "\n")?.replace(/\\"/g, '"') || "";
+
+            // Extract translated titles
+            const titleFrMatch = transResult.match(/"title_fr"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"title_|"\s*,\s*"summary_|"\s*\})/);
+            const titleItMatch = transResult.match(/"title_it"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"title_|"\s*,\s*"summary_|"\s*\})/);
+            const titleEsMatch = transResult.match(/"title_es"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"title_|"\s*,\s*"summary_|"\s*\})/);
+            parsed.title_fr = titleFrMatch?.[1]?.replace(/\\n/g, "\n")?.replace(/\\"/g, '"') || "";
+            parsed.title_it = titleItMatch?.[1]?.replace(/\\n/g, "\n")?.replace(/\\"/g, '"') || "";
+            parsed.title_es = titleEsMatch?.[1]?.replace(/\\n/g, "\n")?.replace(/\\"/g, '"') || "";
             console.log("REGEX FR:", parsed.summary_fr.length, "IT:", parsed.summary_it.length, "ES:", parsed.summary_es.length);
           } catch (transErr) {
             console.error("Translation failed:", (transErr as Error).message);
@@ -388,6 +421,10 @@ Return ONLY the JSON object, no markdown, no code blocks.`;
           .update({
             full_content: fullContent.slice(0, 50000),
             image_url: scrapedImageUrl || "",
+            title_en: article.title,
+            title_fr: parsed.title_fr || "",
+            title_it: parsed.title_it || "",
+            title_es: parsed.title_es || "",
             summary_en: isLocalLang ? (parsed.summary_en || "") : (parsed.summary_en || parsed.summary || ""),
             summary_fr: isLocalLang && targetLang === "fr" ? (parsed.summary_fr || parsed.summary || "") : (parsed.summary_fr || ""),
             summary_it: isLocalLang && targetLang === "it" ? (parsed.summary_it || parsed.summary || "") : (parsed.summary_it || ""),
@@ -478,12 +515,15 @@ WRITING STYLE:
 Return ONLY the JSON object, no markdown, no code blocks.`;
 
 const TRANSLATION_PROMPT = `You are a professional translator for a startup investment newsletter.
-Translate the following newsletter summary into French, Italian, and Spanish.
+Translate the following newsletter title and summary into French, Italian, and Spanish.
 Keep the same professional tone, analytical style, and structure. Keep all numbers, company names, and technical terms unchanged.
 Return ONLY valid JSON:
 {
-  "summary_fr": "French translation here",
-  "summary_it": "Italian translation here",
-  "summary_es": "Spanish translation here"
+  "title_fr": "French title",
+  "title_it": "Italian title",
+  "title_es": "Spanish title",
+  "summary_fr": "French translation of summary",
+  "summary_it": "Italian translation of summary",
+  "summary_es": "Spanish translation of summary"
 }
 Return ONLY the JSON object, no markdown, no code blocks.`;
