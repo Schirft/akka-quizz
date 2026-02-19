@@ -11,6 +11,7 @@ import {
   XCircle,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Filter,
   Upload,
   Download,
@@ -20,6 +21,10 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
+  Package,
+  Eye,
+  EyeOff,
+  Pencil,
 } from 'lucide-react'
 
 const PAGE_SIZE = 20
@@ -70,6 +75,12 @@ export default function QuestionsPage() {
   // FIX 8a: Scheduled questions
   const [scheduledIds, setScheduledIds] = useState(new Set())
 
+  // D1: Pack grouping
+  const [packsData, setPacksData] = useState([]) // Array of { pack, questions }
+  const [packsLoading, setPacksLoading] = useState(true)
+  const [expandedPack, setExpandedPack] = useState(null)
+  const [packQuestionIds, setPackQuestionIds] = useState(new Set()) // all question IDs in packs
+
   // Debounce search
   const searchTimeoutRef = useRef(null)
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -100,6 +111,69 @@ export default function QuestionsPage() {
     }
     loadStats()
   }, [questions]) // refresh when questions change
+
+  // D1: Load packs with their questions
+  useEffect(() => {
+    async function loadPacksGrouped() {
+      setPacksLoading(true)
+      try {
+        const { data: allPacks } = await supabase
+          .from('daily_packs')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(50)
+
+        if (!allPacks || allPacks.length === 0) {
+          setPacksData([])
+          setPackQuestionIds(new Set())
+          setPacksLoading(false)
+          return
+        }
+
+        // Collect all question IDs across packs
+        const allQIds = new Set()
+        for (const pk of allPacks) {
+          for (const qid of (pk.question_ids || [])) {
+            allQIds.add(qid)
+          }
+        }
+
+        // Load all questions belonging to packs in one query
+        let packQuestions = []
+        if (allQIds.size > 0) {
+          const { data: qs } = await supabase
+            .from('questions')
+            .select('*')
+            .in('id', Array.from(allQIds))
+          packQuestions = qs || []
+        }
+
+        const qMap = {}
+        for (const q of packQuestions) qMap[q.id] = q
+
+        // Build pack data
+        const grouped = allPacks.map(pk => ({
+          pack: pk,
+          questions: (pk.question_ids || []).map(id => qMap[id]).filter(Boolean),
+        }))
+
+        setPacksData(grouped)
+        setPackQuestionIds(allQIds)
+      } catch (err) {
+        console.error('Load packs error:', err)
+      }
+      setPacksLoading(false)
+    }
+    loadPacksGrouped()
+  }, [questions]) // refresh when questions change
+
+  async function togglePackPublish(pack) {
+    const newStatus = pack.status === 'active' ? 'draft' : 'active'
+    await supabase.from('daily_packs').update({ status: newStatus }).eq('id', pack.id)
+    setPacksData(prev => prev.map(pd =>
+      pd.pack.id === pack.id ? { ...pd, pack: { ...pd.pack, status: newStatus } } : pd
+    ))
+  }
 
   // FIX 8a: Load scheduled question IDs (next 7 days)
   useEffect(() => {
@@ -671,7 +745,91 @@ export default function QuestionsPage() {
         </div>
       )}
 
-      {/* Table */}
+      {/* D1: Pack-grouped questions */}
+      {packsData.length > 0 && (
+        <Card className="mb-4 p-0 overflow-hidden">
+          <div className="px-4 py-3 border-b border-[#D1D5DB] bg-gray-50/50 flex items-center gap-2">
+            <Package size={16} className="text-purple-500" />
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
+              Packs ({packsData.length})
+            </p>
+          </div>
+          <div className="divide-y divide-gray-100">
+            {packsData.map(({ pack: pk, questions: pkQs }) => {
+              const isExpanded = expandedPack === pk.id
+              return (
+                <div key={pk.id}>
+                  <button
+                    onClick={() => setExpandedPack(isExpanded ? null : pk.id)}
+                    className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors text-left"
+                  >
+                    <div className="flex items-center gap-3">
+                      {isExpanded
+                        ? <ChevronDown size={14} className="text-[#6B7280]" />
+                        : <ChevronRight size={14} className="text-[#6B7280]" />}
+                      <div className={`w-2 h-2 rounded-full ${pk.status === 'active' ? 'bg-green-500' : 'bg-gray-300'}`} />
+                      <div>
+                        <p className="text-sm font-medium text-[#1A1A1A]">
+                          {pk.theme || 'General'}
+                          <span className="text-xs text-[#6B7280] ml-2">{pk.difficulty}</span>
+                        </p>
+                        <p className="text-[10px] text-[#6B7280]">
+                          {pkQs.length} Q · {pk.puzzle_id ? '🧩' : '—'} · {pk.lesson_id ? '📖' : '—'}
+                          {' · '}
+                          {new Date(pk.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                    <span
+                      onClick={(e) => { e.stopPropagation(); togglePackPublish(pk) }}
+                      className={`flex items-center gap-1 text-xs px-2 py-1 rounded-full font-medium cursor-pointer transition-colors ${
+                        pk.status === 'active'
+                          ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                          : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                      }`}
+                    >
+                      {pk.status === 'active' ? <Eye size={12} /> : <EyeOff size={12} />}
+                      {pk.status}
+                    </span>
+                  </button>
+                  {isExpanded && (
+                    <div className="px-4 pb-3 space-y-1.5">
+                      {pkQs.length === 0 ? (
+                        <p className="text-xs text-gray-400 italic pl-6">No questions in this pack</p>
+                      ) : (
+                        pkQs.map((q, qi) => (
+                          <div
+                            key={q.id}
+                            onClick={() => setModalQuestion(q)}
+                            className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 hover:bg-gray-100 cursor-pointer transition-colors ml-6"
+                          >
+                            <span className="text-xs font-bold text-[#6B7280] w-5">{qi + 1}.</span>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm text-[#1A1A1A] truncate">{q.question_en}</p>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <span className="text-[10px]">{getLangFlags(q)}</span>
+                                <span className={`text-[10px] font-medium capitalize ${DIFF_COLORS[q.difficulty] || 'text-gray-600'}`}>
+                                  {q.difficulty}
+                                </span>
+                                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE[q.status] || 'bg-gray-100 text-gray-700'}`}>
+                                  {(q.status || '').replace('_', ' ')}
+                                </span>
+                              </div>
+                            </div>
+                            <Pencil size={12} className="text-[#6B7280]" />
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </Card>
+      )}
+
+      {/* Table — Orphan questions (not in any pack) */}
       <Card className="p-0 overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center py-16">

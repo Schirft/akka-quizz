@@ -468,13 +468,13 @@ export default function QuizPage() {
 
   // ── Puzzle handlers ──
   function puzzleGetLang(key) {
-    if (!puzzle?.content) return ''
-    return puzzle.content[`${key}_${lang}`] || puzzle.content[`${key}_en`] || ''
+    if (!puzzle?.context_data) return ''
+    return puzzle.context_data[`${key}_${lang}`] || puzzle.context_data[`${key}_en`] || ''
   }
 
   function puzzleGetList(key) {
-    if (!puzzle?.content) return []
-    return puzzle.content[`${key}_${lang}`] || puzzle.content[`${key}_en`] || []
+    if (!puzzle?.context_data) return []
+    return puzzle.context_data[`${key}_${lang}`] || puzzle.context_data[`${key}_en`] || []
   }
 
   function handlePuzzleSelect(idx, correctIdx) {
@@ -741,8 +741,8 @@ export default function QuizPage() {
 
   // ── PUZZLE PHASE ──
   if (phase === 'puzzle' && puzzle) {
-    const c = puzzle.content || {}
-    const type = puzzle.type
+    const c = puzzle.context_data || {}
+    const type = puzzle.interaction_type
 
     return (
       <div className="min-h-screen bg-white flex flex-col">
@@ -767,7 +767,12 @@ export default function QuizPage() {
                   {puzzleCorrect ? 'Correct!' : 'Not quite!'}
                 </p>
               </div>
-              <p className="text-xs text-gray-700">{puzzleGetLang('explanation')}</p>
+              <p className="text-xs text-gray-700">
+                {puzzle.context_data?.[`explanation_${lang}`]
+                  || puzzle.context_data?.explanation_en
+                  || puzzle[`explanation_${lang}`]
+                  || puzzle.explanation || ''}
+              </p>
             </div>
             <button
               onClick={handlePuzzleDone}
@@ -876,9 +881,10 @@ export default function QuizPage() {
   }
 
   // ── Puzzle content renderer ──
-  function renderPuzzleContent(type, c) {
-    const correctOpt = c.correct_option === 'b' ? 1 : 0
-    const correctIdx = c.correct_index || 0
+  function renderPuzzleContent(type, data) {
+    // data = puzzle.context_data
+    // Correct answer index from puzzle.answer (string like "0", "1", "2")
+    const correctIdx = parseInt(puzzle?.answer, 10) || 0
     const options = puzzleGetList('options')
 
     if (type === 'tap_to_spot') {
@@ -911,6 +917,8 @@ export default function QuizPage() {
     }
 
     if (type === 'ab_choice') {
+      // For ab_choice, correctIdx from puzzle.answer (0 or 1)
+      const correctOpt = correctIdx
       return (
         <>
           <h2 className="text-lg font-bold text-[#1A1A1A] mb-2">A/B Choice</h2>

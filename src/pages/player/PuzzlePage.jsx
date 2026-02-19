@@ -45,13 +45,13 @@ export default function PuzzlePage() {
   }
 
   function getLang(key) {
-    if (!puzzle?.content) return ''
-    return puzzle.content[`${key}_${lang}`] || puzzle.content[`${key}_en`] || ''
+    if (!puzzle?.context_data) return ''
+    return puzzle.context_data[`${key}_${lang}`] || puzzle.context_data[`${key}_en`] || ''
   }
 
   function getList(key) {
-    if (!puzzle?.content) return []
-    return puzzle.content[`${key}_${lang}`] || puzzle.content[`${key}_en`] || []
+    if (!puzzle?.context_data) return []
+    return puzzle.context_data[`${key}_${lang}`] || puzzle.context_data[`${key}_en`] || []
   }
 
   function handleSelect(idx, correctIdx) {
@@ -99,8 +99,8 @@ export default function PuzzlePage() {
     )
   }
 
-  const c = puzzle.content || {}
-  const type = puzzle.type
+  const c = puzzle.context_data || {}
+  const type = puzzle.interaction_type
 
   // ── Common wrapper ──
   function PuzzleWrapper({ children }) {
@@ -125,7 +125,9 @@ export default function PuzzlePage() {
                   {correct ? 'Correct!' : 'Not quite!'}
                 </p>
               </div>
-              <p className="text-xs text-gray-700">{getLang('explanation')}</p>
+              <p className="text-xs text-gray-700">
+                {getLang('explanation') || puzzle?.[`explanation_${lang}`] || puzzle?.explanation || ''}
+              </p>
             </div>
             <button
               onClick={handleDone}
@@ -173,7 +175,7 @@ export default function PuzzlePage() {
 
   // 2. A/B Choice
   if (type === 'ab_choice') {
-    const correctOpt = c.correct_option === 'b' ? 1 : 0
+    const correctOpt = parseInt(puzzle.answer, 10) || 0
     return (
       <PuzzleWrapper>
         <h2 className="text-lg font-bold text-[#1A1A1A] mb-2">A/B Choice</h2>
@@ -205,7 +207,7 @@ export default function PuzzlePage() {
 
   // 3. Fill the Gap
   if (type === 'fill_gap') {
-    const correctIdx = c.correct_index || 0
+    const correctIdx = parseInt(puzzle.answer, 10) || 0
     const options = getList('options')
     return (
       <PuzzleWrapper>
@@ -239,7 +241,7 @@ export default function PuzzlePage() {
 
   // 4. Match Chart
   if (type === 'match_chart') {
-    const correctIdx = c.correct_index || 0
+    const correctIdx = parseInt(puzzle.answer, 10) || 0
     const options = getList('options')
     return (
       <PuzzleWrapper>
@@ -274,7 +276,7 @@ export default function PuzzlePage() {
 
   // 5. Before & After
   if (type === 'before_after') {
-    const correctIdx = c.correct_index || 0
+    const correctIdx = parseInt(puzzle.answer, 10) || 0
     const options = getList('options')
     return (
       <PuzzleWrapper>
@@ -316,7 +318,7 @@ export default function PuzzlePage() {
 
   // 6. Crash Point
   if (type === 'crash_point') {
-    const correctIdx = c.correct_index || 0
+    const correctIdx = parseInt(puzzle.answer, 10) || 0
     const options = getList('options')
     return (
       <PuzzleWrapper>
