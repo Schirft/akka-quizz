@@ -10,6 +10,9 @@ import {
   ChevronDown,
   ChevronUp,
   X,
+  Edit3,
+  Image as ImageIcon,
+  FileText,
 } from 'lucide-react'
 
 // Default prompts (from Edge Function)
@@ -22,11 +25,21 @@ export default function AdminNewsPage() {
   const [genResult, setGenResult] = useState(null)
   const [genError, setGenError] = useState(null)
 
-  // Section B: Manual add
+  // Section B: Manual add by URL
   const [manualUrl, setManualUrl] = useState('')
   const [addingManual, setAddingManual] = useState(false)
   const [manualResult, setManualResult] = useState(null)
   const [manualError, setManualError] = useState(null)
+
+  // Section B2: Manual add by text
+  const [manualText, setManualText] = useState('')
+  const [manualTitle, setManualTitle] = useState('')
+  const [manualImageUrl, setManualImageUrl] = useState('')
+  const [manualImageFile, setManualImageFile] = useState(null)
+  const [imagePreview, setImagePreview] = useState('')
+  const [addingText, setAddingText] = useState(false)
+  const [textResult, setTextResult] = useState(null)
+  const [textError, setTextError] = useState(null)
 
   // Section C: Published articles
   const [articles, setArticles] = useState([])
@@ -43,6 +56,11 @@ export default function AdminNewsPage() {
   // Preview modal
   const [previewArticle, setPreviewArticle] = useState(null)
   const [previewLang, setPreviewLang] = useState('en')
+
+  // Edit modal
+  const [editArticle, setEditArticle] = useState(null)
+  const [editTitles, setEditTitles] = useState({ en: '', fr: '', it: '', es: '' })
+  const [editSaving, setEditSaving] = useState(false)
 
   useEffect(() => {
     loadArticles()
@@ -108,7 +126,7 @@ export default function AdminNewsPage() {
     }
   }
 
-  // Section B: Manual add
+  // Section B: Manual add by URL
   async function handleManualAdd() {
     if (!manualUrl.trim()) return
     setAddingManual(true)
@@ -126,6 +144,59 @@ export default function AdminNewsPage() {
       setManualError(err.message || 'Failed to add article')
     } finally {
       setAddingManual(false)
+    }
+  }
+
+  // Section B2: Manual add by text
+  async function handleTextAdd() {
+    if (!manualText.trim()) return
+    setAddingText(true)
+    setTextResult(null)
+    setTextError(null)
+    try {
+      // Determine image URL: file upload takes priority over URL
+      let finalImageUrl = manualImageUrl
+      if (manualImageFile) {
+        // Upload to Supabase Storage
+        const ext = manualImageFile.name.split('.').pop()
+        const path = `news/${Date.now()}.${ext}`
+        const { data: uploadData, error: uploadErr } = await supabase.storage
+          .from('images')
+          .upload(path, manualImageFile)
+        if (!uploadErr && uploadData) {
+          const { data: urlData } = supabase.storage.from('images').getPublicUrl(path)
+          finalImageUrl = urlData?.publicUrl || manualImageUrl
+        }
+      }
+
+      const { data, error } = await supabase.functions.invoke('generate-summaries', {
+        body: {
+          manualText: manualText.trim(),
+          manualTitle: manualTitle.trim() || undefined,
+          manualImageUrl: finalImageUrl || undefined,
+          manualSourceName: 'Manual Entry',
+        },
+      })
+      if (error) throw error
+      setTextResult('Article added successfully!')
+      setManualText('')
+      setManualTitle('')
+      setManualImageUrl('')
+      setManualImageFile(null)
+      setImagePreview('')
+      await loadArticles()
+    } catch (err) {
+      setTextError(err.message || 'Failed to add article')
+    } finally {
+      setAddingText(false)
+    }
+  }
+
+  function handleImageUpload(e) {
+    const file = e.target.files?.[0]
+    if (file) {
+      setManualImageFile(file)
+      setImagePreview(URL.createObjectURL(file))
     }
   }
 
@@ -159,6 +230,55 @@ export default function AdminNewsPage() {
       console.error('Save prompts error:', err)
     } finally {
       setSavingPrompts(false)
+    }
+  }
+
+  // A1 FIX: Preview title uses localized title
+  function getPreviewTitle() {
+    if (!previewArticle) return ''
+    if (previewLang === 'fr') return previewArticle.title_fr || previewArticle.title
+    if (previewLang === 'it') return previewArticle.title_it || previewArticle.title
+    if (previewLang === 'es') return previewArticle.title_es || previewArticle.title
+    return previewArticle.title_en || previewArticle.title
+  }
+
+  // A1 FIX: Open edit modal with correct title per language
+  function openEditModal(article) {
+    setEditArticle(article)
+    setEditTitles({
+      en: article.title_en || (article.language === 'en' ? article.title : ''),
+      fr: article.title_fr || (article.language === 'fr' ? article.title : ''),
+      it: article.title_it || (article.language === 'it' ? article.title : ''),
+      es: article.title_es || (article.language === 'es' ? article.title : ''),
+    })
+  }
+
+  async function handleEditSave() {
+    if (!editArticle) return
+    setEditSaving(true)
+    try {
+      await supabase
+        .from('news_articles')
+        .update({
+          title_en: editTitles.en,
+          title_fr: editTitles.fr,
+          title_it: editTitles.it,
+          title_es: editTitles.es,
+        })
+        .eq('id', editArticle.id)
+      // Update local state
+      setArticles((prev) =>
+        prev.map((a) =>
+          a.id === editArticle.id
+            ? { ...a, title_en: editTitles.en, title_fr: editTitles.fr, title_it: editTitles.it, title_es: editTitles.es }
+            : a
+        )
+      )
+      setEditArticle(null)
+    } catch (err) {
+      console.error('Edit save error:', err)
+    } finally {
+      setEditSaving(false)
     }
   }
 
@@ -209,7 +329,7 @@ export default function AdminNewsPage() {
                 Generating...
               </>
             ) : (
-              '🚀 Generate Today\'s News'
+              "🚀 Generate Today's News"
             )}
           </button>
 
@@ -243,12 +363,12 @@ export default function AdminNewsPage() {
           )}
         </Card>
 
-        {/* ─── Section B: Manual Add ─── */}
+        {/* ─── Section B: Manual Add by URL ─── */}
         <Card>
           <div className="flex items-center gap-2 mb-4">
             <LinkIcon size={16} className="text-blue-500" />
             <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
-              Add Article Manually
+              Add Article by URL
             </p>
           </div>
 
@@ -287,6 +407,91 @@ export default function AdminNewsPage() {
               <p className="text-sm text-red-700">{manualError}</p>
             </div>
           )}
+        </Card>
+
+        {/* ─── Section B2: Paste Text ─── */}
+        <Card>
+          <div className="flex items-center gap-2 mb-4">
+            <FileText size={16} className="text-indigo-500" />
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
+              Add Article from Text
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <input
+              type="text"
+              value={manualTitle}
+              onChange={(e) => setManualTitle(e.target.value)}
+              placeholder="Article title (optional, AI will generate one)"
+              className="w-full border border-[#D1D5DB] rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2ECC71]"
+            />
+
+            <textarea
+              value={manualText}
+              onChange={(e) => setManualText(e.target.value)}
+              placeholder="Paste the full article text here..."
+              rows={5}
+              className="w-full border border-[#D1D5DB] rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2ECC71] resize-y"
+            />
+
+            {/* A3: Image — upload OR URL */}
+            <div className="flex flex-col gap-2">
+              <label className="text-xs text-gray-500 font-medium">Article image</label>
+
+              {/* Option 1: Upload file */}
+              <div className="flex items-center gap-2">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  className="text-sm file:mr-2 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-sm file:bg-gray-100 file:text-gray-700"
+                />
+                {imagePreview && (
+                  <img src={imagePreview} alt="" className="h-10 w-10 object-cover rounded" />
+                )}
+              </div>
+
+              {/* Option 2: Paste URL */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-400">or</span>
+                <input
+                  type="text"
+                  value={manualImageUrl}
+                  onChange={(e) => {
+                    setManualImageUrl(e.target.value)
+                    if (!manualImageFile) setImagePreview(e.target.value)
+                  }}
+                  placeholder="Paste image URL here..."
+                  className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                />
+              </div>
+            </div>
+
+            <button
+              onClick={handleTextAdd}
+              disabled={addingText || !manualText.trim()}
+              className="flex items-center gap-2 px-4 py-2.5 bg-[#1B3D2F] text-white text-sm font-semibold rounded-xl hover:opacity-90 disabled:opacity-50 transition-opacity"
+            >
+              {addingText ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Sparkles size={16} />
+              )}
+              Generate Summary from Text
+            </button>
+
+            {textResult && (
+              <div className="p-3 bg-green-50 border border-green-200 rounded-xl">
+                <p className="text-sm text-green-800 font-medium">{textResult}</p>
+              </div>
+            )}
+            {textError && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl">
+                <p className="text-sm text-red-700">{textError}</p>
+              </div>
+            )}
+          </div>
         </Card>
 
         {/* ─── Section C: Published Articles ─── */}
@@ -329,7 +534,7 @@ export default function AdminNewsPage() {
                   {/* Content */}
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-gray-900 truncate">
-                      {article.title}
+                      {article.title_en || article.title}
                     </p>
                     <div className="flex items-center gap-2 mt-0.5">
                       <span className="text-xs text-gray-500">
@@ -342,6 +547,11 @@ export default function AdminNewsPage() {
                       {article.category && (
                         <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-600">
                           {article.category}
+                        </span>
+                      )}
+                      {article.language && (
+                        <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-50 text-blue-600 uppercase">
+                          {article.language}
                         </span>
                       )}
                     </div>
@@ -360,6 +570,13 @@ export default function AdminNewsPage() {
                       title="Preview summary"
                     >
                       <Eye size={16} />
+                    </button>
+                    <button
+                      onClick={() => openEditModal(article)}
+                      className="p-1.5 rounded-lg text-blue-400 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                      title="Edit titles"
+                    >
+                      <Edit3 size={16} />
                     </button>
                     <button
                       onClick={() => handleUnpublish(article.id)}
@@ -444,10 +661,10 @@ export default function AdminNewsPage() {
       {previewArticle && (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 overflow-y-auto py-8 px-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl">
-            {/* Header */}
+            {/* Header — A1 FIX: use localized title */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-[#D1D5DB]">
               <h2 className="text-lg font-bold text-[#1A1A1A] truncate mr-4">
-                {previewArticle.title}
+                {getPreviewTitle()}
               </h2>
               <button
                 onClick={() => setPreviewArticle(null)}
@@ -484,10 +701,10 @@ export default function AdminNewsPage() {
               ))}
             </div>
 
-            {/* Summary content */}
+            {/* Summary content — A1 FIX: localized title */}
             <div className="px-6 py-4 max-h-[50vh] overflow-y-auto">
               <p className="text-sm font-semibold text-[#1A1A1A] mb-1">
-                {previewArticle.title}
+                {getPreviewTitle()}
               </p>
               <p className="text-xs text-[#6B7280] mb-4">
                 {previewArticle.source_name} · {formatDate(previewArticle.published_at)}
@@ -511,6 +728,56 @@ export default function AdminNewsPage() {
                 className="px-4 py-2 text-sm text-[#6B7280] font-medium hover:bg-gray-100 rounded-lg transition-colors"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Edit Titles Modal ─── */}
+      {editArticle && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 overflow-y-auto py-8 px-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-[#D1D5DB]">
+              <h2 className="text-lg font-bold text-[#1A1A1A]">Edit Titles</h2>
+              <button
+                onClick={() => setEditArticle(null)}
+                className="text-[#6B7280] hover:text-[#1A1A1A]"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="px-6 py-4 space-y-3">
+              {['en', 'fr', 'it', 'es'].map((lng) => (
+                <div key={lng}>
+                  <label className="block text-xs font-semibold uppercase text-[#6B7280] mb-1">
+                    Title {lng.toUpperCase()}
+                  </label>
+                  <input
+                    type="text"
+                    value={editTitles[lng]}
+                    onChange={(e) => setEditTitles((prev) => ({ ...prev, [lng]: e.target.value }))}
+                    className="w-full border border-[#D1D5DB] rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2ECC71]"
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[#D1D5DB]">
+              <button
+                onClick={() => setEditArticle(null)}
+                className="px-4 py-2 text-sm text-[#6B7280] font-medium hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleEditSave}
+                disabled={editSaving}
+                className="flex items-center gap-2 px-4 py-2 bg-[#1B3D2F] text-white text-sm font-semibold rounded-xl hover:opacity-90 disabled:opacity-50 transition-opacity"
+              >
+                {editSaving && <Loader2 size={14} className="animate-spin" />}
+                Save
               </button>
             </div>
           </div>

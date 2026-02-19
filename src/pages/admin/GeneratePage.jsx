@@ -21,6 +21,7 @@ import {
   Pencil,
   Play,
   Check,
+  Package,
 } from 'lucide-react'
 
 const STORAGE_KEY = 'akka_last_generation'
@@ -106,6 +107,22 @@ export default function GeneratePage() {
   const stepTimerRef = useRef(null)
   const elapsedTimerRef = useRef(null)
   const stepsRef = useRef(STEP1_MESSAGES)
+
+  // Pack generation state
+  const [packGenerating, setPackGenerating] = useState(false)
+  const [packTheme, setPackTheme] = useState('fundraising')
+  const [packDifficulty, setPackDifficulty] = useState('medium')
+  const [packStep, setPackStep] = useState(0)
+  const [packResult, setPackResult] = useState(null)
+  const [packError, setPackError] = useState(null)
+
+  const PACK_STEPS = [
+    { label: 'Generating 3 QCM questions...', icon: '🧠', duration: 8000 },
+    { label: 'Creating puzzle "The Catch"...', icon: '🧩', duration: 10000 },
+    { label: 'Writing lesson of the day...', icon: '📚', duration: 8000 },
+    { label: 'Translating to FR/IT/ES...', icon: '🌍', duration: 12000 },
+    { label: 'Saving pack to database...', icon: '💾', duration: 2000 },
+  ]
 
   // Edit modal
   const [editQuestion, setEditQuestion] = useState(null)
@@ -640,6 +657,92 @@ export default function GeneratePage() {
     setError(null)
   }
 
+  // ── Pack generation ──
+  async function handleGeneratePack() {
+    setPackGenerating(true)
+    setPackStep(0)
+    setPackResult(null)
+    setPackError(null)
+
+    // Simulate progress steps
+    let stepIdx = 0
+    const stepInterval = setInterval(() => {
+      stepIdx++
+      if (stepIdx < PACK_STEPS.length) setPackStep(stepIdx)
+    }, 8000)
+
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-daily-pack`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            theme: packTheme,
+            difficulty: packDifficulty,
+            count: 1,
+          }),
+        }
+      )
+      clearInterval(stepInterval)
+      setPackStep(PACK_STEPS.length - 1)
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.error || `HTTP ${res.status}`)
+      }
+
+      const data = await res.json()
+      const pack = data.results?.[0]
+      setPackResult({
+        questions: pack?.questions?.length || 0,
+        puzzle: pack?.puzzle ? 1 : 0,
+        lesson: pack?.lesson ? 1 : 0,
+        packId: pack?.pack_id || null,
+        stats: data.stats || {},
+      })
+    } catch (err) {
+      clearInterval(stepInterval)
+      setPackError(err.message)
+    }
+    setPackGenerating(false)
+  }
+
+  async function handleDeletePack(packId) {
+    if (!packId || !window.confirm('Delete this pack and all its questions, puzzle and lesson?')) return
+    try {
+      // Load pack details
+      const { data: pack } = await supabase
+        .from('daily_packs')
+        .select('question_ids, puzzle_id, lesson_id')
+        .eq('id', packId)
+        .single()
+
+      if (pack) {
+        // Delete questions
+        if (pack.question_ids?.length > 0) {
+          await supabase.from('questions').delete().in('id', pack.question_ids)
+        }
+        // Delete puzzle
+        if (pack.puzzle_id) {
+          await supabase.from('puzzles').delete().eq('id', pack.puzzle_id)
+        }
+        // Delete lesson
+        if (pack.lesson_id) {
+          await supabase.from('daily_lessons').delete().eq('id', pack.lesson_id)
+        }
+        // Delete pack
+        await supabase.from('daily_packs').delete().eq('id', packId)
+      }
+      setPackResult(null)
+    } catch (err) {
+      console.error('Delete pack error:', err)
+    }
+  }
+
   async function approveAll() {
     const ids = generated.filter((q) => q.status === 'pending_review').map((q) => q.id)
     if (ids.length === 0) return
@@ -776,6 +879,126 @@ export default function GeneratePage() {
           </button>
         </div>
       </div>
+
+      {/* ── Pack Generator Section ── */}
+      <Card className="mb-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Package size={18} className="text-[#2ECC71]" />
+          <h2 className="text-lg font-bold text-[#1A1A1A]">Daily Pack Generator</h2>
+          <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-medium">3 QCM + Puzzle + Lesson</span>
+        </div>
+
+        <div className="flex flex-wrap items-end gap-4 mb-4">
+          <div>
+            <label className="block mb-1 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Theme</label>
+            <select
+              value={packTheme}
+              onChange={(e) => setPackTheme(e.target.value)}
+              disabled={packGenerating}
+              className="border border-[#D1D5DB] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2ECC71]"
+            >
+              {['fundraising', 'cap_tables', 'term_sheets', 'unit_economics', 'revenue_growth', 'burn_analysis', 'market_comps', 'startup_valuation', 'due_diligence', 'exit_strategies'].map(t => (
+                <option key={t} value={t}>{t.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block mb-1 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Difficulty</label>
+            <select
+              value={packDifficulty}
+              onChange={(e) => setPackDifficulty(e.target.value)}
+              disabled={packGenerating}
+              className="border border-[#D1D5DB] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2ECC71]"
+            >
+              {['easy', 'medium', 'hard'].map(d => (
+                <option key={d} value={d}>{d.charAt(0).toUpperCase() + d.slice(1)}</option>
+              ))}
+            </select>
+          </div>
+          <button
+            onClick={handleGeneratePack}
+            disabled={packGenerating}
+            className="flex items-center gap-2 px-5 py-2.5 bg-[#1B3D2F] text-white font-semibold rounded-xl hover:opacity-90 disabled:opacity-50 transition-opacity"
+          >
+            {packGenerating ? <Loader2 size={16} className="animate-spin" /> : <Package size={16} />}
+            {packGenerating ? 'Generating Pack...' : 'Generate Pack'}
+          </button>
+        </div>
+
+        {/* C1: Animated progress bar */}
+        {packGenerating && (
+          <div className="mb-4">
+            <div className="flex items-center gap-3 mb-2">
+              <span className="text-xl animate-bounce">{PACK_STEPS[packStep]?.icon}</span>
+              <span className="text-sm font-medium text-[#1A1A1A]">{PACK_STEPS[packStep]?.label}</span>
+              <Loader2 size={14} className="text-[#2ECC71] animate-spin ml-auto" />
+            </div>
+            <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+              <div
+                className="bg-gradient-to-r from-[#2ECC71] to-[#27AE60] h-3 rounded-full transition-all duration-1000 ease-out"
+                style={{ width: `${Math.max(5, ((packStep + 1) / PACK_STEPS.length) * 100)}%` }}
+              />
+            </div>
+            <p className="text-xs text-[#6B7280] mt-1">Step {packStep + 1} of {PACK_STEPS.length}</p>
+          </div>
+        )}
+
+        {/* C3: Enriched feedback */}
+        {packResult && (
+          <div className="border border-[#2ECC71]/30 bg-emerald-50/50 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <CheckCircle size={18} className="text-[#2ECC71]" />
+              <p className="font-semibold text-[#1A1A1A]">Pack Generated Successfully</p>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+              <div className="text-center">
+                <p className="text-xl font-bold text-[#1A1A1A]">{packResult.questions}</p>
+                <p className="text-xs text-[#6B7280]">Questions</p>
+              </div>
+              <div className="text-center">
+                <p className="text-xl font-bold text-[#1A1A1A]">{packResult.puzzle}</p>
+                <p className="text-xs text-[#6B7280]">Puzzle</p>
+              </div>
+              <div className="text-center">
+                <p className="text-xl font-bold text-[#1A1A1A]">{packResult.lesson}</p>
+                <p className="text-xs text-[#6B7280]">Lesson</p>
+              </div>
+              <div className="text-center">
+                <p className="text-xl font-bold text-[#1A1A1A]">{packResult.stats?.duration_s || '—'}s</p>
+                <p className="text-xs text-[#6B7280]">Duration</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-[#6B7280] mb-3">
+              <span>{packResult.stats?.api_calls || 4} API calls</span>
+              <span>·</span>
+              <span>~${packResult.stats?.estimated_cost_usd || '0.060'} est. cost</span>
+              {packResult.packId && (
+                <>
+                  <span>·</span>
+                  <span className="font-mono text-[10px]">Pack {packResult.packId.slice(0, 8)}</span>
+                </>
+              )}
+            </div>
+            {/* C4: Delete Pack */}
+            {packResult.packId && (
+              <button
+                onClick={() => handleDeletePack(packResult.packId)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-red-600 font-medium hover:bg-red-50 rounded-lg transition-colors"
+              >
+                <Trash2 size={12} />
+                Delete Pack
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Pack error */}
+        {packError && (
+          <div className="border border-red-200 bg-red-50 rounded-xl p-3">
+            <p className="text-sm text-red-700">{packError}</p>
+          </div>
+        )}
+      </Card>
 
       <div className="grid lg:grid-cols-3 gap-6">
         {/* Left: Generation form */}

@@ -20,6 +20,11 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
+  Package,
+  ChevronDown,
+  ChevronUp,
+  BookOpen,
+  Puzzle,
 } from 'lucide-react'
 
 const PAGE_SIZE = 20
@@ -68,6 +73,13 @@ export default function QuestionsPage() {
 
   // FIX 8a: Scheduled questions
   const [scheduledIds, setScheduledIds] = useState(new Set())
+
+  // C5: Packs section
+  const [packs, setPacks] = useState([])
+  const [packsLoading, setPacksLoading] = useState(false)
+  const [expandedPack, setExpandedPack] = useState(null)
+  const [packDetails, setPackDetails] = useState({}) // { packId: { questions, puzzle, lesson } }
+  const [showPacks, setShowPacks] = useState(false)
 
   // Debounce search
   const searchTimeoutRef = useRef(null)
@@ -390,6 +402,74 @@ export default function QuestionsPage() {
     }
   }
 
+  // C5: Load packs
+  async function loadPacks() {
+    setPacksLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from('daily_packs')
+        .select('id, theme, difficulty, question_ids, puzzle_id, lesson_id, status, assigned_date, created_at')
+        .order('created_at', { ascending: false })
+        .limit(50)
+      if (error) throw error
+      setPacks(data || [])
+    } catch (err) {
+      console.error('Load packs error:', err)
+    } finally {
+      setPacksLoading(false)
+    }
+  }
+
+  // C5: Load pack details (questions + puzzle + lesson) when expanding
+  async function loadPackDetails(pack) {
+    if (packDetails[pack.id]) return // already loaded
+    try {
+      const details = { questions: [], puzzle: null, lesson: null }
+
+      // Load questions by IDs
+      if (pack.question_ids?.length > 0) {
+        const { data: qs } = await supabase
+          .from('questions')
+          .select('id, question_en, macro_category, difficulty, status')
+          .in('id', pack.question_ids)
+        details.questions = qs || []
+      }
+
+      // Load puzzle
+      if (pack.puzzle_id) {
+        const { data: pz } = await supabase
+          .from('puzzles')
+          .select('id, interaction_type, title, answer')
+          .eq('id', pack.puzzle_id)
+          .maybeSingle()
+        details.puzzle = pz
+      }
+
+      // Load lesson
+      if (pack.lesson_id) {
+        const { data: ls } = await supabase
+          .from('lessons')
+          .select('id, title_en, summary_en')
+          .eq('id', pack.lesson_id)
+          .maybeSingle()
+        details.lesson = ls
+      }
+
+      setPackDetails(prev => ({ ...prev, [pack.id]: details }))
+    } catch (err) {
+      console.error('Load pack details error:', err)
+    }
+  }
+
+  function togglePackExpand(pack) {
+    if (expandedPack === pack.id) {
+      setExpandedPack(null)
+    } else {
+      setExpandedPack(pack.id)
+      loadPackDetails(pack)
+    }
+  }
+
   // FIX 5: Format date
   function formatDate(dateStr) {
     if (!dateStr) return '—'
@@ -539,6 +619,134 @@ export default function QuestionsPage() {
           )}
         </Card>
       )}
+
+      {/* C5: Packs section */}
+      <Card className="mb-4">
+        <button
+          onClick={() => { setShowPacks(!showPacks); if (!showPacks && packs.length === 0) loadPacks() }}
+          className="flex items-center justify-between w-full"
+        >
+          <div className="flex items-center gap-2">
+            <Package size={18} className="text-[#1B3D2F]" />
+            <span className="text-sm font-semibold text-[#1A1A1A]">Daily Packs</span>
+            {packs.length > 0 && (
+              <span className="text-xs text-[#6B7280]">({packs.length})</span>
+            )}
+          </div>
+          {showPacks ? <ChevronUp size={16} className="text-[#6B7280]" /> : <ChevronDown size={16} className="text-[#6B7280]" />}
+        </button>
+
+        {showPacks && (
+          <div className="mt-4 space-y-2">
+            {packsLoading ? (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 size={20} className="animate-spin text-[#6B7280]" />
+              </div>
+            ) : packs.length === 0 ? (
+              <p className="text-sm text-[#6B7280] text-center py-4">No packs generated yet</p>
+            ) : packs.map(pack => {
+              const isExpanded = expandedPack === pack.id
+              const details = packDetails[pack.id]
+              return (
+                <div key={pack.id} className="border border-gray-200 rounded-xl overflow-hidden">
+                  <div
+                    onClick={() => togglePackExpand(pack)}
+                    className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Package size={14} className="text-[#2ECC71] shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-[#1A1A1A] truncate">
+                          {pack.theme} — <span className="capitalize text-[#6B7280]">{pack.difficulty}</span>
+                        </p>
+                        <p className="text-xs text-[#6B7280]">
+                          {pack.question_ids?.length || 0} questions
+                          {pack.puzzle_id && ' + puzzle'}
+                          {pack.lesson_id && ' + lesson'}
+                          {pack.assigned_date && ` — ${pack.assigned_date}`}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                        pack.status === 'ready' ? 'bg-green-100 text-green-700' :
+                        pack.status === 'assigned' ? 'bg-blue-100 text-blue-700' :
+                        'bg-gray-100 text-gray-600'
+                      }`}>
+                        {pack.status}
+                      </span>
+                      {isExpanded ? <ChevronUp size={14} className="text-[#6B7280]" /> : <ChevronDown size={14} className="text-[#6B7280]" />}
+                    </div>
+                  </div>
+
+                  {isExpanded && (
+                    <div className="px-4 pb-4 border-t border-gray-100 space-y-3">
+                      {/* Questions */}
+                      {details ? (
+                        <>
+                          <div className="mt-3">
+                            <p className="text-xs font-semibold text-[#6B7280] uppercase tracking-wide mb-2">Questions ({details.questions.length})</p>
+                            {details.questions.length > 0 ? (
+                              <div className="space-y-1">
+                                {details.questions.map((q, i) => (
+                                  <div key={q.id} className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg">
+                                    <span className="w-5 h-5 rounded-full bg-[#1B3D2F] text-white text-[10px] font-bold flex items-center justify-center shrink-0">{i + 1}</span>
+                                    <p className="text-xs text-[#1A1A1A] truncate flex-1">{q.question_en}</p>
+                                    <span className={`text-[10px] font-medium capitalize ${
+                                      q.difficulty === 'hard' ? 'text-red-600' : q.difficulty === 'medium' ? 'text-amber-600' : 'text-green-600'
+                                    }`}>{q.difficulty}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-xs text-[#6B7280]">No questions found</p>
+                            )}
+                          </div>
+
+                          {/* Puzzle */}
+                          {details.puzzle && (
+                            <div>
+                              <p className="text-xs font-semibold text-[#6B7280] uppercase tracking-wide mb-2 flex items-center gap-1">
+                                <Puzzle size={12} /> Puzzle
+                              </p>
+                              <div className="px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
+                                <p className="text-xs font-medium text-[#1A1A1A]">{details.puzzle.title || 'Untitled'}</p>
+                                <p className="text-[10px] text-[#6B7280] mt-0.5">
+                                  Type: <span className="font-medium">{details.puzzle.interaction_type}</span>
+                                  {details.puzzle.answer && <> — Answer: <span className="font-medium">{details.puzzle.answer}</span></>}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Lesson */}
+                          {details.lesson && (
+                            <div>
+                              <p className="text-xs font-semibold text-[#6B7280] uppercase tracking-wide mb-2 flex items-center gap-1">
+                                <BookOpen size={12} /> Lesson
+                              </p>
+                              <div className="px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+                                <p className="text-xs font-medium text-[#1A1A1A]">{details.lesson.title_en || 'Untitled'}</p>
+                                {details.lesson.summary_en && (
+                                  <p className="text-[10px] text-[#6B7280] mt-0.5 line-clamp-2">{details.lesson.summary_en}</p>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="flex items-center justify-center py-4">
+                          <Loader2 size={16} className="animate-spin text-[#6B7280]" />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </Card>
 
       {/* Filters */}
       <Card className="mb-4">

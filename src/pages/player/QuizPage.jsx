@@ -27,6 +27,7 @@ import {
 } from '../../lib/sounds'
 import Button from '../../components/ui/Button'
 import TabBar from '../../components/layout/TabBar'
+import PuzzleRenderer from '../../components/puzzles/PuzzleRenderer'
 import { getRandomEncouragement, getQuizText } from '../../utils/quizI18n'
 import {
   ArrowLeft,
@@ -59,7 +60,7 @@ export default function QuizPage() {
   const navigate = useNavigate()
 
   // Quiz state
-  const [quizState, setQuizState] = useState('loading') // loading | ready | question | feedback | error
+  const [quizState, setQuizState] = useState('loading') // loading | ready | question | feedback | puzzle | puzzle_feedback | error
   const [questions, setQuestions] = useState([])
   const [currentIndex, setCurrentIndex] = useState(0)
   const [selectedAnswer, setSelectedAnswer] = useState(null)
@@ -74,6 +75,11 @@ export default function QuizPage() {
   const [muted, setMutedState] = useState(isMuted)
   const [shakeAnswer, setShakeAnswer] = useState(false)
   const [timerMessage, setTimerMessage] = useState(null)
+
+  // Puzzle state
+  const [puzzleData, setPuzzleData] = useState(null)
+  const [puzzleAnswer, setPuzzleAnswer] = useState(null)
+  const [puzzleCorrect, setPuzzleCorrect] = useState(null)
 
   // Gamification states
   const [combo, setCombo] = useState(0)
@@ -114,29 +120,48 @@ export default function QuizPage() {
           return
         }
 
-        // Find today's daily quiz
-        const { data: dailyQuiz, error: dqError } = await supabase
-          .from('daily_quizzes')
-          .select('id, question_1_id, question_2_id, question_3_id, question_4_id, question_5_id')
-          .eq('quiz_date', today)
-          .single()
+        // Try pack-based flow first (daily_packs with assigned_date)
+        let questionIds = []
+        let packPuzzleId = null
 
-        if (cancelled) return
-        if (dqError || !dailyQuiz) {
-          setErrorMsg('no_quiz')
-          setQuizState('error')
-          return
+        const { data: dailyPack } = await supabase
+          .from('daily_packs')
+          .select('id, question_ids, puzzle_id, lesson_id')
+          .eq('assigned_date', today)
+          .eq('status', 'ready')
+          .limit(1)
+          .maybeSingle()
+
+        if (dailyPack && dailyPack.question_ids?.length > 0) {
+          setQuizId(dailyPack.id)
+          questionIds = dailyPack.question_ids
+          packPuzzleId = dailyPack.puzzle_id
+        } else {
+          // Fallback: legacy daily_quizzes table
+          const { data: dailyQuiz, error: dqError } = await supabase
+            .from('daily_quizzes')
+            .select('id, question_1_id, question_2_id, question_3_id, question_4_id, question_5_id')
+            .eq('quiz_date', today)
+            .single()
+
+          if (cancelled) return
+          if (dqError || !dailyQuiz) {
+            setErrorMsg('no_quiz')
+            setQuizState('error')
+            return
+          }
+
+          setQuizId(dailyQuiz.id)
+          questionIds = [
+            dailyQuiz.question_1_id,
+            dailyQuiz.question_2_id,
+            dailyQuiz.question_3_id,
+            dailyQuiz.question_4_id,
+            dailyQuiz.question_5_id,
+          ].filter(Boolean)
         }
 
-        setQuizId(dailyQuiz.id)
-
-        const questionIds = [
-          dailyQuiz.question_1_id,
-          dailyQuiz.question_2_id,
-          dailyQuiz.question_3_id,
-          dailyQuiz.question_4_id,
-          dailyQuiz.question_5_id,
-        ].filter(Boolean)
+        if (cancelled) return
 
         const { data: questionData, error: qError } = await supabase
           .from('questions')
@@ -186,6 +211,16 @@ export default function QuizPage() {
             correct_answer_index: newCorrectIndex,
           }
         })
+
+        // Load puzzle if pack has one
+        if (packPuzzleId) {
+          const { data: pzl } = await supabase
+            .from('puzzles')
+            .select('*')
+            .eq('id', packPuzzleId)
+            .single()
+          if (pzl) setPuzzleData(pzl)
+        }
 
         if (cancelled) return
         setQuestions(shuffledQuestions)
@@ -392,6 +427,9 @@ export default function QuizPage() {
       setCurrentIndex((i) => i + 1)
       setQuizState('question')
       startTimer()
+    } else if (puzzleData && !puzzleAnswer) {
+      // Show puzzle phase before results
+      setQuizState('puzzle')
     } else {
       finishQuiz()
     }
@@ -633,6 +671,57 @@ export default function QuizPage() {
             <div className="absolute inset-0 animate-shimmer bg-gradient-to-r from-transparent via-white/20 to-transparent" />
           </button>
         </div>
+      </div>
+    )
+  }
+
+  // Puzzle handler
+  function handlePuzzleAnswer(answer) {
+    const correct = String(answer) === String(puzzleData.answer)
+    setPuzzleAnswer(answer)
+    setPuzzleCorrect(correct)
+    if (correct) playCorrect()
+    else playWrong()
+    setQuizState('puzzle_feedback')
+  }
+
+  // Puzzle phase
+  if (quizState === 'puzzle' || quizState === 'puzzle_feedback') {
+    const puzzleExplanation = puzzleData[`explanation_${lang}`] || puzzleData.explanation || ''
+    return (
+      <div className="min-h-screen bg-akka-bg flex flex-col pb-24">
+        <QuizHeader onBack={() => navigate('/')} muted={muted} onToggleMute={handleToggleMute} title="The Catch" />
+        <div className="flex-1 px-4 pt-4">
+          <PuzzleRenderer puzzle={puzzleData} onAnswer={handlePuzzleAnswer} lang={lang} />
+
+          {quizState === 'puzzle_feedback' && (
+            <div className="mt-4">
+              <div className={`p-4 rounded-2xl border border-l-4 mb-4 ${
+                puzzleCorrect
+                  ? 'bg-[#F0FDF4] border-[#BBF7D0] border-l-[#2ECC71]'
+                  : 'bg-[#FEF2F2] border-[#FECACA] border-l-[#E74C3C]'
+              }`}>
+                <div className="flex items-start gap-2 mb-2">
+                  {puzzleCorrect ? (
+                    <CheckCircle size={18} className="text-[#2ECC71] shrink-0 mt-0.5" />
+                  ) : (
+                    <XCircle size={18} className="text-[#E74C3C] shrink-0 mt-0.5" />
+                  )}
+                  <p className={`text-sm font-bold ${puzzleCorrect ? 'text-[#166534]' : 'text-[#991B1B]'}`}>
+                    {puzzleCorrect ? t('correct') : getQuizText('wrongAnswer', lang)}
+                  </p>
+                </div>
+                <p className="text-sm text-[#1A1A1A] leading-relaxed">
+                  {puzzleExplanation}
+                </p>
+              </div>
+              <Button variant="primary" className="w-full" onClick={() => finishQuiz()}>
+                {t('see_results')}
+              </Button>
+            </div>
+          )}
+        </div>
+        <TabBar />
       </div>
     )
   }
