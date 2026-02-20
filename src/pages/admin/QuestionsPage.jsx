@@ -25,6 +25,9 @@ import {
   ChevronUp,
   BookOpen,
   Puzzle,
+  Pencil,
+  Eye,
+  EyeOff,
 } from 'lucide-react'
 
 const PAGE_SIZE = 20
@@ -80,6 +83,8 @@ export default function QuestionsPage() {
   const [expandedPack, setExpandedPack] = useState(null)
   const [packDetails, setPackDetails] = useState({}) // { packId: { questions, puzzle, lesson } }
   const [showPacks, setShowPacks] = useState(false)
+  const [editPuzzle, setEditPuzzle] = useState(null)
+  const [editLesson, setEditLesson] = useState(null)
 
   // Debounce search
   const searchTimeoutRef = useRef(null)
@@ -473,6 +478,90 @@ export default function QuestionsPage() {
     }
   }
 
+  // B2: Toggle pack active/inactive
+  async function handleTogglePackStatus(packId, currentStatus) {
+    const newStatus = currentStatus === 'active' ? 'inactive' : 'active'
+    try {
+      await supabase.from('daily_packs').update({ status: newStatus }).eq('id', packId)
+      setPacks(prev => prev.map(p => p.id === packId ? { ...p, status: newStatus } : p))
+    } catch (err) { console.error('Toggle pack status error:', err) }
+  }
+
+  // B2: Delete pack
+  async function handleDeletePack(packId) {
+    if (!window.confirm('Delete this pack? This cannot be undone.')) return
+    try {
+      await supabase.from('daily_packs').delete().eq('id', packId)
+      setPacks(prev => prev.filter(p => p.id !== packId))
+      setExpandedPack(null)
+      setPackDetails(prev => { const n = { ...prev }; delete n[packId]; return n })
+    } catch (err) { console.error('Delete pack error:', err) }
+  }
+
+  // B2: Save puzzle edits
+  async function handleSavePuzzle(puzzle) {
+    try {
+      const { error } = await supabase.from('puzzles').update({
+        title: puzzle.title,
+        hint: puzzle.hint,
+        answer: puzzle.answer,
+        context_data: typeof puzzle.context_data === 'string' ? JSON.parse(puzzle.context_data) : puzzle.context_data,
+      }).eq('id', puzzle.id)
+      if (error) throw error
+      // Refresh cache
+      setPackDetails(prev => {
+        const next = { ...prev }
+        for (const [pid, det] of Object.entries(next)) {
+          if (det.puzzle?.id === puzzle.id) {
+            next[pid] = { ...det, puzzle: { ...det.puzzle, title: puzzle.title, hint: puzzle.hint, answer: puzzle.answer, context_data: typeof puzzle.context_data === 'string' ? JSON.parse(puzzle.context_data) : puzzle.context_data } }
+          }
+        }
+        return next
+      })
+      setEditPuzzle(null)
+    } catch (err) { console.error('Save puzzle error:', err) }
+  }
+
+  // B2: Save lesson edits
+  async function handleSaveLesson(lesson) {
+    try {
+      const { error } = await supabase.from('daily_lessons').update({
+        title: lesson.title,
+        content: lesson.content,
+        key_takeaway: lesson.key_takeaway,
+      }).eq('id', lesson.id)
+      if (error) throw error
+      // Refresh cache
+      setPackDetails(prev => {
+        const next = { ...prev }
+        for (const [pid, det] of Object.entries(next)) {
+          if (det.lesson?.id === lesson.id) {
+            next[pid] = { ...det, lesson: { ...det.lesson, title: lesson.title, content: lesson.content, key_takeaway: lesson.key_takeaway } }
+          }
+        }
+        return next
+      })
+      setEditLesson(null)
+    } catch (err) { console.error('Save lesson error:', err) }
+  }
+
+  // B2: Refresh pack details after question edit
+  function handleQuestionSavedInPack() {
+    loadQuestions()
+    // Also refresh expanded pack details
+    setPackDetails(prev => {
+      const next = { ...prev }
+      if (expandedPack && next[expandedPack]) {
+        delete next[expandedPack]
+      }
+      return next
+    })
+    if (expandedPack) {
+      const pack = packs.find(p => p.id === expandedPack)
+      if (pack) setTimeout(() => loadPackDetails(pack), 100)
+    }
+  }
+
   // FIX 5: Format date
   function formatDate(dateStr) {
     if (!dateStr) return '—'
@@ -681,7 +770,10 @@ export default function QuestionsPage() {
                                   <span className={`text-[10px] font-medium capitalize ${
                                     q.difficulty === 'hard' ? 'text-red-600' : q.difficulty === 'medium' ? 'text-amber-600' : 'text-green-600'
                                   }`}>{q.difficulty}</span>
-                                  <span className={`ml-auto px-1.5 py-0.5 rounded text-[9px] font-medium ${STATUS_BADGE[q.status] || 'bg-gray-100 text-gray-700'}`}>
+                                  <button onClick={(e) => { e.stopPropagation(); setModalQuestion(q) }} className="ml-auto p-1 rounded hover:bg-gray-200 transition-colors" title="Edit question">
+                                    <Pencil size={11} className="text-[#6B7280]" />
+                                  </button>
+                                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${STATUS_BADGE[q.status] || 'bg-gray-100 text-gray-700'}`}>
                                     {q.status}
                                   </span>
                                 </div>
@@ -708,9 +800,14 @@ export default function QuestionsPage() {
                       {/* Puzzle — full preview */}
                       {details.puzzle && (
                         <div>
-                          <p className="text-xs font-semibold text-[#6B7280] uppercase tracking-wide mb-2 flex items-center gap-1">
-                            <Puzzle size={12} /> Puzzle — {details.puzzle.interaction_type}
-                          </p>
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-xs font-semibold text-[#6B7280] uppercase tracking-wide flex items-center gap-1">
+                              <Puzzle size={12} /> Puzzle — {details.puzzle.interaction_type}
+                            </p>
+                            <button onClick={() => setEditPuzzle({ ...details.puzzle, context_data: details.puzzle.context_data ? JSON.stringify(details.puzzle.context_data, null, 2) : '' })} className="text-[10px] text-amber-700 font-medium hover:underline flex items-center gap-1">
+                              <Pencil size={10} /> Edit
+                            </button>
+                          </div>
                           <div className="px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg space-y-1.5">
                             <p className="text-xs font-medium text-[#1A1A1A]">{details.puzzle.title || 'Untitled'}</p>
                             {details.puzzle.subtitle && <p className="text-[10px] text-amber-700">{details.puzzle.subtitle}</p>}
@@ -737,9 +834,14 @@ export default function QuestionsPage() {
                       {/* Lesson — full preview */}
                       {details.lesson && (
                         <div>
-                          <p className="text-xs font-semibold text-[#6B7280] uppercase tracking-wide mb-2 flex items-center gap-1">
-                            <BookOpen size={12} /> Lesson
-                          </p>
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-xs font-semibold text-[#6B7280] uppercase tracking-wide flex items-center gap-1">
+                              <BookOpen size={12} /> Lesson
+                            </p>
+                            <button onClick={() => setEditLesson({ ...details.lesson })} className="text-[10px] text-blue-700 font-medium hover:underline flex items-center gap-1">
+                              <Pencil size={10} /> Edit
+                            </button>
+                          </div>
                           <div className="px-3 py-2.5 bg-blue-50 border border-blue-200 rounded-lg space-y-1.5">
                             <p className="text-xs font-medium text-[#1A1A1A]">{details.lesson.title || 'Untitled'}</p>
                             {details.lesson.content && (
@@ -759,6 +861,26 @@ export default function QuestionsPage() {
                       {!details.lesson && !pack.lesson_id && (
                         <p className="text-[10px] text-amber-600">⚠ No lesson in this pack</p>
                       )}
+
+                      {/* B2: Pack actions — Activate/Deactivate + Delete */}
+                      <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleTogglePackStatus(pack.id, pack.status) }}
+                          className={`flex items-center gap-1 px-3 py-1.5 text-[10px] font-medium rounded-lg transition-colors ${
+                            pack.status === 'active'
+                              ? 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+                              : 'bg-green-50 text-green-700 hover:bg-green-100'
+                          }`}
+                        >
+                          {pack.status === 'active' ? <><EyeOff size={11} /> Deactivate</> : <><Eye size={11} /> Activate</>}
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDeletePack(pack.id) }}
+                          className="flex items-center gap-1 px-3 py-1.5 text-[10px] font-medium rounded-lg bg-red-50 text-red-700 hover:bg-red-100 transition-colors ml-auto"
+                        >
+                          <Trash2 size={11} /> Delete Pack
+                        </button>
+                      </div>
                     </>
                   ) : (
                     <div className="flex items-center justify-center py-4">
@@ -1126,7 +1248,7 @@ export default function QuestionsPage() {
         <QuestionModal
           question={modalQuestion}
           onClose={() => setModalQuestion(null)}
-          onSaved={loadQuestions}
+          onSaved={handleQuestionSavedInPack}
         />
       )}
 
@@ -1136,6 +1258,64 @@ export default function QuestionsPage() {
           onClose={() => setShowImport(false)}
           onImported={loadQuestions}
         />
+      )}
+
+      {/* B2: Puzzle Edit Modal */}
+      {editPuzzle && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setEditPuzzle(null)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <h3 className="text-sm font-bold text-[#1A1A1A] mb-4">Edit Puzzle</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="text-[10px] font-medium text-[#6B7280] uppercase">Title</label>
+                <input value={editPuzzle.title || ''} onChange={e => setEditPuzzle(p => ({ ...p, title: e.target.value }))} className="w-full mt-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2ECC71]/30" />
+              </div>
+              <div>
+                <label className="text-[10px] font-medium text-[#6B7280] uppercase">Hint</label>
+                <input value={editPuzzle.hint || ''} onChange={e => setEditPuzzle(p => ({ ...p, hint: e.target.value }))} className="w-full mt-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2ECC71]/30" />
+              </div>
+              <div>
+                <label className="text-[10px] font-medium text-[#6B7280] uppercase">Answer</label>
+                <input value={editPuzzle.answer || ''} onChange={e => setEditPuzzle(p => ({ ...p, answer: e.target.value }))} className="w-full mt-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2ECC71]/30" />
+              </div>
+              <div>
+                <label className="text-[10px] font-medium text-[#6B7280] uppercase">Context Data (JSON)</label>
+                <textarea value={typeof editPuzzle.context_data === 'string' ? editPuzzle.context_data : JSON.stringify(editPuzzle.context_data, null, 2)} onChange={e => setEditPuzzle(p => ({ ...p, context_data: e.target.value }))} rows={6} className="w-full mt-1 px-3 py-2 text-xs font-mono border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2ECC71]/30" />
+              </div>
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button onClick={() => setEditPuzzle(null)} className="flex-1 py-2 text-xs font-medium text-[#6B7280] bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">Cancel</button>
+              <button onClick={() => handleSavePuzzle(editPuzzle)} className="flex-1 py-2 text-xs font-medium text-white bg-[#1B3D2F] rounded-lg hover:bg-[#15332A] transition-colors">Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* B2: Lesson Edit Modal */}
+      {editLesson && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setEditLesson(null)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <h3 className="text-sm font-bold text-[#1A1A1A] mb-4">Edit Lesson</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="text-[10px] font-medium text-[#6B7280] uppercase">Title</label>
+                <input value={editLesson.title || ''} onChange={e => setEditLesson(l => ({ ...l, title: e.target.value }))} className="w-full mt-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2ECC71]/30" />
+              </div>
+              <div>
+                <label className="text-[10px] font-medium text-[#6B7280] uppercase">Content</label>
+                <textarea value={editLesson.content || ''} onChange={e => setEditLesson(l => ({ ...l, content: e.target.value }))} rows={8} className="w-full mt-1 px-3 py-2 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2ECC71]/30" />
+              </div>
+              <div>
+                <label className="text-[10px] font-medium text-[#6B7280] uppercase">Key Takeaway</label>
+                <textarea value={editLesson.key_takeaway || ''} onChange={e => setEditLesson(l => ({ ...l, key_takeaway: e.target.value }))} rows={3} className="w-full mt-1 px-3 py-2 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2ECC71]/30" />
+              </div>
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button onClick={() => setEditLesson(null)} className="flex-1 py-2 text-xs font-medium text-[#6B7280] bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">Cancel</button>
+              <button onClick={() => handleSaveLesson(editLesson)} className="flex-1 py-2 text-xs font-medium text-white bg-[#1B3D2F] rounded-lg hover:bg-[#15332A] transition-colors">Save</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

@@ -145,8 +145,10 @@ export default function GeneratePage() {
   const [packDetails, setPackDetails] = useState({})
   const [expandedPackId, setExpandedPackId] = useState(null)
 
-  // Edit modal
+  // Edit modals
   const [editQuestion, setEditQuestion] = useState(null)
+  const [editPuzzle, setEditPuzzle] = useState(null)
+  const [editLesson, setEditLesson] = useState(null)
 
   // AI Settings
   const [showSettings, setShowSettings] = useState(false)
@@ -246,7 +248,7 @@ export default function GeneratePage() {
       if (pack.puzzle_id) {
         const { data: pz } = await supabase
           .from('puzzles')
-          .select('id, title, interaction_type, hint, answer, explanation')
+          .select('id, title, interaction_type, hint, answer, explanation, context_data')
           .eq('id', pack.puzzle_id)
           .maybeSingle()
         details.puzzle = pz
@@ -268,21 +270,64 @@ export default function GeneratePage() {
     }
   }
 
-  // F3: localStorage persistence for pack generation
+  // D1: localStorage persistence for pack generation — independent restore + polling
   useEffect(() => {
     try {
       const saved = localStorage.getItem(PACK_STORAGE_KEY)
-      if (!saved) return
+      if (!saved) { console.log('[PackGen] No saved state found'); return }
       const data = JSON.parse(saved)
+      console.log('[PackGen] Restored state:', data)
+
+      // Check expiry
       if (data.startedAt && Date.now() - data.startedAt > PACK_STORAGE_EXPIRY) {
+        console.log('[PackGen] State expired, clearing')
         localStorage.removeItem(PACK_STORAGE_KEY)
         return
       }
-      // Generation was in progress — poll DB for completed packs
-      if (data.startedAt && data.theme) {
-        console.log('[PackGen] Found in-progress generation, polling DB...')
-        // Poll: check if packs were created since startedAt
+
+      // Restore theme + difficulty if saved
+      if (data.theme) {
+        console.log('[PackGen] Restoring theme:', data.theme)
+        setPackTheme(data.theme)
+      }
+      if (data.difficulty) {
+        console.log('[PackGen] Restoring difficulty:', data.difficulty)
+        setPackDifficulty(data.difficulty)
+      }
+
+      // Generation was in progress — start polling DB every 3s
+      if (data.startedAt) {
+        console.log('[PackGen] Generation was in-progress, starting DB poll...')
         const pollStart = new Date(data.startedAt).toISOString()
+        let pollCount = 0
+        const maxPolls = 60 // 3 minutes max
+
+        const interval = setInterval(async () => {
+          pollCount++
+          console.log(`[PackGen] Poll #${pollCount}...`)
+          try {
+            const { data: recentPacks } = await supabase
+              .from('daily_packs')
+              .select('id')
+              .gte('created_at', pollStart)
+              .order('created_at', { ascending: false })
+
+            if (recentPacks && recentPacks.length > 0) {
+              console.log(`[PackGen] Found ${recentPacks.length} packs — refreshing list`)
+              loadPacks()
+              clearInterval(interval)
+              localStorage.removeItem(PACK_STORAGE_KEY)
+            } else if (pollCount >= maxPolls) {
+              console.log('[PackGen] Max polls reached, giving up')
+              clearInterval(interval)
+              localStorage.removeItem(PACK_STORAGE_KEY)
+            }
+          } catch (err) {
+            console.error('[PackGen] Poll error:', err)
+          }
+        }, 3000)
+
+        // Also do one immediate check
         supabase
           .from('daily_packs')
           .select('id')
@@ -290,13 +335,17 @@ export default function GeneratePage() {
           .order('created_at', { ascending: false })
           .then(({ data: recentPacks }) => {
             if (recentPacks && recentPacks.length > 0) {
-              console.log(`[PackGen] Found ${recentPacks.length} packs created since generation started`)
-              loadPacks() // Refresh the list
+              console.log(`[PackGen] Immediate check: found ${recentPacks.length} packs`)
+              loadPacks()
+              clearInterval(interval)
+              localStorage.removeItem(PACK_STORAGE_KEY)
             }
-            localStorage.removeItem(PACK_STORAGE_KEY)
           })
+
+        return () => clearInterval(interval)
       }
-    } catch {
+    } catch (err) {
+      console.error('[PackGen] Restore error:', err)
       localStorage.removeItem(PACK_STORAGE_KEY)
     }
   }, [])
@@ -909,6 +958,70 @@ export default function GeneratePage() {
     }
   }
 
+  // B1: Toggle pack active/inactive
+  async function handleTogglePackStatus(packId, currentStatus) {
+    const newStatus = currentStatus === 'active' ? 'inactive' : 'active'
+    try {
+      await supabase.from('daily_packs').update({ status: newStatus }).eq('id', packId)
+      setPacks(prev => prev.map(p => p.id === packId ? { ...p, status: newStatus } : p))
+    } catch (err) {
+      console.error('Toggle pack status error:', err)
+    }
+  }
+
+  // B1: Save puzzle edits
+  async function handleSavePuzzle(puzzle) {
+    try {
+      const { error: err } = await supabase.from('puzzles').update({
+        title: puzzle.title,
+        hint: puzzle.hint,
+        answer: puzzle.answer,
+        context_data: puzzle.context_data,
+      }).eq('id', puzzle.id)
+      if (err) throw err
+      // Refresh pack details cache
+      setPackDetails(prev => {
+        const updated = { ...prev }
+        for (const pid of Object.keys(updated)) {
+          if (updated[pid]?.puzzle?.id === puzzle.id) {
+            updated[pid] = { ...updated[pid], puzzle: { ...updated[pid].puzzle, ...puzzle } }
+          }
+        }
+        return updated
+      })
+      setEditPuzzle(null)
+    } catch (err) {
+      console.error('Save puzzle error:', err)
+      alert('Failed to save puzzle: ' + err.message)
+    }
+  }
+
+  // B1: Save lesson edits
+  async function handleSaveLesson(lesson) {
+    try {
+      const { error: err } = await supabase.from('daily_lessons').update({
+        title: lesson.title,
+        content: lesson.content,
+        key_takeaway: lesson.key_takeaway,
+      }).eq('id', lesson.id)
+      if (err) throw err
+      // Refresh pack details cache
+      setPackDetails(prev => {
+        const updated = { ...prev }
+        for (const pid of Object.keys(updated)) {
+          if (updated[pid]?.lesson?.id === lesson.id) {
+            updated[pid] = { ...updated[pid], lesson: { ...updated[pid].lesson, ...lesson } }
+          }
+        }
+        return updated
+      })
+      setEditLesson(null)
+    } catch (err) {
+      console.error('Save lesson error:', err)
+      alert('Failed to save lesson: ' + err.message)
+    }
+  }
+
   async function approveAll() {
     const ids = generated.filter((q) => q.status === 'pending_review').map((q) => q.id)
     if (ids.length === 0) return
@@ -968,6 +1081,19 @@ export default function GeneratePage() {
               ...batch,
               questions: batch.questions.map((q) => (q.id === data.id ? data : q)),
             })))
+            // B1: Also refresh pack details cache
+            setPackDetails(prev => {
+              const updated = { ...prev }
+              for (const pid of Object.keys(updated)) {
+                if (updated[pid]?.questions) {
+                  updated[pid] = {
+                    ...updated[pid],
+                    questions: updated[pid].questions.map(q => q.id === data.id ? { ...q, ...data } : q),
+                  }
+                }
+              }
+              return updated
+            })
           }
         })
     }
@@ -1323,10 +1449,19 @@ export default function GeneratePage() {
                                 <div className="space-y-2">
                                   {details.questions.map((q, qi) => (
                                     <div key={q.id} className="bg-white rounded-lg p-3 border border-gray-100">
-                                      <p className="text-sm font-medium text-[#1A1A1A] mb-1.5">
-                                        <span className="text-xs text-[#6B7280] mr-1">Q{qi + 1}.</span>
-                                        {q.question_en}
-                                      </p>
+                                      <div className="flex items-start justify-between gap-2">
+                                        <p className="text-sm font-medium text-[#1A1A1A] mb-1.5 flex-1">
+                                          <span className="text-xs text-[#6B7280] mr-1">Q{qi + 1}.</span>
+                                          {q.question_en}
+                                        </p>
+                                        <button
+                                          onClick={() => setEditQuestion(q)}
+                                          className="p-1 text-[#6B7280] hover:text-[#1A1A1A] hover:bg-gray-100 rounded transition-colors shrink-0"
+                                          title="Edit question"
+                                        >
+                                          <Pencil size={12} />
+                                        </button>
+                                      </div>
                                       {/* Answers with correct highlighted */}
                                       {q.answers_en && (
                                         <div className="grid grid-cols-2 gap-1 mb-1.5">
@@ -1362,9 +1497,17 @@ export default function GeneratePage() {
                             {/* Puzzle */}
                             {details.puzzle && (
                               <div>
-                                <p className="text-xs font-bold uppercase tracking-wide text-[#6B7280] mb-2">
-                                  🧩 Puzzle — The Catch
-                                </p>
+                                <div className="flex items-center justify-between mb-2">
+                                  <p className="text-xs font-bold uppercase tracking-wide text-[#6B7280]">
+                                    🧩 Puzzle — The Catch
+                                  </p>
+                                  <button
+                                    onClick={() => setEditPuzzle({ ...details.puzzle })}
+                                    className="flex items-center gap-1 px-2 py-1 text-[10px] text-[#6B7280] hover:text-[#1A1A1A] hover:bg-gray-100 rounded transition-colors"
+                                  >
+                                    <Pencil size={10} /> Edit
+                                  </button>
+                                </div>
                                 <div className="bg-white rounded-lg p-3 border border-gray-100">
                                   <p className="text-sm font-semibold text-[#1A1A1A]">{details.puzzle.title}</p>
                                   <div className="flex items-center gap-2 mt-1 mb-1.5">
@@ -1390,9 +1533,17 @@ export default function GeneratePage() {
                             {/* Lesson */}
                             {details.lesson && (
                               <div>
-                                <p className="text-xs font-bold uppercase tracking-wide text-[#6B7280] mb-2">
-                                  📚 Lesson of the Day
-                                </p>
+                                <div className="flex items-center justify-between mb-2">
+                                  <p className="text-xs font-bold uppercase tracking-wide text-[#6B7280]">
+                                    📚 Lesson of the Day
+                                  </p>
+                                  <button
+                                    onClick={() => setEditLesson({ ...details.lesson })}
+                                    className="flex items-center gap-1 px-2 py-1 text-[10px] text-[#6B7280] hover:text-[#1A1A1A] hover:bg-gray-100 rounded transition-colors"
+                                  >
+                                    <Pencil size={10} /> Edit
+                                  </button>
+                                </div>
                                 <div className="bg-white rounded-lg p-3 border border-gray-100">
                                   <p className="text-sm font-semibold text-[#1A1A1A] mb-1">{details.lesson.title}</p>
                                   {details.lesson.key_takeaway && (
@@ -1414,6 +1565,30 @@ export default function GeneratePage() {
                             {pack.lesson_id && !details.lesson && (
                               <p className="text-xs text-amber-600">⚠️ Lesson not found</p>
                             )}
+
+                            {/* B1: Pack action buttons — Activate/Deactivate + Delete */}
+                            <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+                              <button
+                                onClick={() => handleTogglePackStatus(pack.id, pack.status)}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                                  pack.status === 'active'
+                                    ? 'text-amber-600 hover:bg-amber-50 border border-amber-200'
+                                    : 'text-green-600 hover:bg-green-50 border border-green-200'
+                                }`}
+                              >
+                                {pack.status === 'active' ? (
+                                  <><Eye size={12} /> Deactivate</>
+                                ) : (
+                                  <><Play size={12} /> Activate</>
+                                )}
+                              </button>
+                              <button
+                                onClick={() => handleDeletePack(pack.id)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 border border-red-200 rounded-lg transition-colors"
+                              >
+                                <Trash2 size={12} /> Delete Pack
+                              </button>
+                            </div>
                           </>
                         )}
                       </div>
@@ -1810,6 +1985,92 @@ export default function GeneratePage() {
           onClose={() => setEditQuestion(null)}
           onSaved={handleQuestionSaved}
         />
+      )}
+
+      {/* B1: Puzzle edit modal */}
+      {editPuzzle && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setEditPuzzle(null)}>
+          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-[#1A1A1A] mb-4">🧩 Edit Puzzle</h3>
+            <label className="block text-xs font-semibold text-[#6B7280] uppercase mb-1">Title</label>
+            <input
+              type="text" value={editPuzzle.title || ''}
+              onChange={e => setEditPuzzle(prev => ({ ...prev, title: e.target.value }))}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-[#2ECC71]"
+            />
+            <label className="block text-xs font-semibold text-[#6B7280] uppercase mb-1">Hint</label>
+            <input
+              type="text" value={editPuzzle.hint || ''}
+              onChange={e => setEditPuzzle(prev => ({ ...prev, hint: e.target.value }))}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-[#2ECC71]"
+            />
+            <label className="block text-xs font-semibold text-[#6B7280] uppercase mb-1">Answer</label>
+            <input
+              type="text" value={editPuzzle.answer || ''}
+              onChange={e => setEditPuzzle(prev => ({ ...prev, answer: e.target.value }))}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-[#2ECC71]"
+            />
+            <label className="block text-xs font-semibold text-[#6B7280] uppercase mb-1">Context Data (JSON)</label>
+            <textarea
+              rows={4}
+              value={typeof editPuzzle.context_data === 'object' ? JSON.stringify(editPuzzle.context_data, null, 2) : (editPuzzle.context_data || '')}
+              onChange={e => {
+                try {
+                  const parsed = JSON.parse(e.target.value)
+                  setEditPuzzle(prev => ({ ...prev, context_data: parsed }))
+                } catch {
+                  setEditPuzzle(prev => ({ ...prev, context_data: e.target.value }))
+                }
+              }}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono mb-4 focus:outline-none focus:ring-2 focus:ring-[#2ECC71]"
+            />
+            <div className="flex items-center gap-2 justify-end">
+              <button onClick={() => setEditPuzzle(null)} className="px-4 py-2 text-sm text-[#6B7280] hover:bg-gray-100 rounded-lg transition-colors">
+                Cancel
+              </button>
+              <button onClick={() => handleSavePuzzle(editPuzzle)} className="px-4 py-2 text-sm font-semibold text-white bg-[#1B3D2F] rounded-lg hover:opacity-90 transition-opacity">
+                Save Puzzle
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* B1: Lesson edit modal */}
+      {editLesson && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setEditLesson(null)}>
+          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-[#1A1A1A] mb-4">📚 Edit Lesson</h3>
+            <label className="block text-xs font-semibold text-[#6B7280] uppercase mb-1">Title</label>
+            <input
+              type="text" value={editLesson.title || ''}
+              onChange={e => setEditLesson(prev => ({ ...prev, title: e.target.value }))}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-[#2ECC71]"
+            />
+            <label className="block text-xs font-semibold text-[#6B7280] uppercase mb-1">Content</label>
+            <textarea
+              rows={8}
+              value={editLesson.content || ''}
+              onChange={e => setEditLesson(prev => ({ ...prev, content: e.target.value }))}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-[#2ECC71]"
+            />
+            <label className="block text-xs font-semibold text-[#6B7280] uppercase mb-1">Key Takeaway</label>
+            <textarea
+              rows={3}
+              value={editLesson.key_takeaway || ''}
+              onChange={e => setEditLesson(prev => ({ ...prev, key_takeaway: e.target.value }))}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-[#2ECC71]"
+            />
+            <div className="flex items-center gap-2 justify-end">
+              <button onClick={() => setEditLesson(null)} className="px-4 py-2 text-sm text-[#6B7280] hover:bg-gray-100 rounded-lg transition-colors">
+                Cancel
+              </button>
+              <button onClick={() => handleSaveLesson(editLesson)} className="px-4 py-2 text-sm font-semibold text-white bg-[#1B3D2F] rounded-lg hover:opacity-90 transition-opacity">
+                Save Lesson
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* AI Settings Panel */}

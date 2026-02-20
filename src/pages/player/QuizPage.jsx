@@ -84,6 +84,44 @@ export default function QuizPage() {
   // Lesson state
   const [lessonData, setLessonData] = useState(null)
 
+  // A1: Lightweight markdown renderer for lesson content
+  // Handles **bold** (standalone bold lines → h4 with green bar, inline bold), paragraph splits on \n\n
+  function renderMarkdown(text) {
+    if (!text) return null
+    const paragraphs = text.split(/\n\n+/)
+    return paragraphs.map((para, pi) => {
+      const trimmed = para.trim()
+      if (!trimmed) return null
+
+      // Standalone bold line → styled h4 with green bar
+      const boldLineMatch = trimmed.match(/^\*\*(.+?)\*\*$/)
+      if (boldLineMatch) {
+        return (
+          <div key={pi} className="flex items-start gap-2 mt-4 mb-2">
+            <div className="w-1 h-5 rounded-full bg-akka-green shrink-0 mt-0.5" />
+            <h4 className="text-sm font-bold text-akka-dark">{boldLineMatch[1]}</h4>
+          </div>
+        )
+      }
+
+      // Regular paragraph with inline **bold** support
+      const parts = trimmed.split(/(\*\*[^*]+\*\*)/)
+      const rendered = parts.map((part, partIdx) => {
+        const inlineBold = part.match(/^\*\*(.+)\*\*$/)
+        if (inlineBold) {
+          return <strong key={partIdx} className="font-semibold text-akka-dark">{inlineBold[1]}</strong>
+        }
+        return <span key={partIdx}>{part}</span>
+      })
+
+      return (
+        <p key={pi} className="text-sm text-gray-700 leading-relaxed mb-3">
+          {rendered}
+        </p>
+      )
+    })
+  }
+
   // Practice mode
   const [practiceMode, setPracticeMode] = useState(false)
 
@@ -772,26 +810,52 @@ export default function QuizPage() {
     )
   }
 
-  // Lesson phase (B3-B4: between puzzle_feedback and results)
+  // A2: Lesson phase — styled with markdown rendering
   if (quizState === 'lesson' && lessonData) {
     const lessonTitle = lessonData[`title_${lang}`] || lessonData.title_en || lessonData.title || 'Lesson'
     const lessonContent = lessonData[`content_${lang}`] || lessonData.content_en || lessonData.content || ''
     const lessonTakeaway = lessonData[`key_takeaway_${lang}`] || lessonData.key_takeaway_en || lessonData.key_takeaway || ''
+    const lessonTheme = lessonData.theme || lessonData.topic || null
+
+    // Build resultsState identical to finishQuiz navigate
+    const score = answers.filter((a) => a.correct).length
+    const isPerfect = score === QUESTIONS_PER_QUIZ
+    const totalSpeedBonuses = answers.filter((a) => a.speedBonus > 0).length
+    const totalXP =
+      XP_QUIZ_STARTED +
+      answers.reduce((sum, a) => sum + a.xpEarned, 0) +
+      (isPerfect ? XP_PERFECT_QUIZ : 0)
+    const totalDurationSec = Math.round(
+      answers.reduce((sum, a) => sum + a.timeMs, 0) / 1000
+    )
+    const avgTime =
+      answers.length > 0 ? Math.round(totalDurationSec / answers.length) : 0
+
     return (
       <div className="min-h-screen bg-akka-bg flex flex-col pb-24">
-        <QuizHeader onBack={() => navigate('/')} muted={muted} onToggleMute={handleToggleMute} title="📚 Lesson" />
+        <QuizHeader onBack={() => navigate('/')} muted={muted} onToggleMute={handleToggleMute} title="📖 Lesson of the Day" />
         <div className="flex-1 px-4 pt-6">
-          <div className="bg-white rounded-2xl border border-akka-border p-5 mb-4">
-            <h2 className="text-lg font-bold text-akka-text mb-3">{lessonTitle}</h2>
-            <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">
-              {lessonContent}
-            </div>
+          {/* Header: centered icon + title + optional theme badge */}
+          <div className="text-center mb-5">
+            <span className="text-4xl mb-2 block">📖</span>
+            <h2 className="text-xl font-bold text-akka-text">{lessonTitle}</h2>
+            {lessonTheme && (
+              <span className="inline-block mt-2 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">
+                {lessonTheme.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+              </span>
+            )}
           </div>
 
+          {/* Content card with markdown rendering */}
+          <div className="bg-white rounded-2xl border border-akka-border p-5 mb-4">
+            <div>{renderMarkdown(lessonContent)}</div>
+          </div>
+
+          {/* Key Takeaway card — dark green */}
           {lessonTakeaway && (
-            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 mb-6">
-              <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wide mb-1">💡 Key Takeaway</p>
-              <p className="text-sm font-medium text-emerald-900 leading-relaxed">{lessonTakeaway}</p>
+            <div className="bg-[#1B3D2F] rounded-2xl p-4 mb-6">
+              <p className="text-xs font-semibold text-emerald-300 uppercase tracking-wide mb-1">💡 Key Takeaway</p>
+              <p className="text-sm font-medium text-white leading-relaxed">{lessonTakeaway}</p>
             </div>
           )}
 
