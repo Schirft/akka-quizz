@@ -24,6 +24,9 @@ import {
   Package,
   StopCircle,
   Hash,
+  ChevronDown,
+  ChevronUp,
+  Eye,
 } from 'lucide-react'
 
 const STORAGE_KEY = 'akka_last_generation'
@@ -32,6 +35,8 @@ const GENERATION_MODEL = 'claude-sonnet-4-5-20250929' // For generating EN quest
 const TRANSLATION_MODEL = 'claude-3-5-haiku-20241022' // For translating FR/IT/ES
 
 const SUPABASE_FN_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
+const PACK_STORAGE_KEY = 'akka_pack_gen'
+const PACK_STORAGE_EXPIRY = 5 * 60 * 1000 // 5 minutes
 
 /* ── HOTFIX A: Robust JSON parsing ── */
 function parsePartialJSON(text) {
@@ -134,6 +139,12 @@ export default function GeneratePage() {
   const [packBatchProgress, setPackBatchProgress] = useState({ current: 0, total: 0, step: 0, errors: [] })
   const [packBatchResults, setPackBatchResults] = useState([]) // accumulates per-pack results
 
+  // F1: Recent packs from DB
+  const [packs, setPacks] = useState([])
+  // F2: Expanded pack details cache
+  const [packDetails, setPackDetails] = useState({})
+  const [expandedPackId, setExpandedPackId] = useState(null)
+
   // Edit modal
   const [editQuestion, setEditQuestion] = useState(null)
 
@@ -193,6 +204,120 @@ export default function GeneratePage() {
     }
     loadPrompt()
   }, [])
+
+  // F1: Load recent packs on mount
+  useEffect(() => {
+    loadPacks()
+  }, [])
+
+  async function loadPacks() {
+    try {
+      const { data } = await supabase
+        .from('daily_packs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(20)
+      if (data) setPacks(data)
+    } catch (err) {
+      console.error('[Packs] Load error:', err)
+    }
+  }
+
+  // F2: Load full pack details on expand
+  async function loadPackDetails(packId) {
+    if (packDetails[packId]) return // already cached
+    try {
+      const pack = packs.find(p => p.id === packId)
+      if (!pack) return
+      const details = {}
+
+      // Load questions
+      if (pack.question_ids?.length > 0) {
+        const { data: qs } = await supabase
+          .from('questions')
+          .select('id, question_en, answers_en, correct_answer_index, difficulty, question_fr, question_it, question_es')
+          .in('id', pack.question_ids)
+        details.questions = qs || []
+      } else {
+        details.questions = []
+      }
+
+      // Load puzzle
+      if (pack.puzzle_id) {
+        const { data: pz } = await supabase
+          .from('puzzles')
+          .select('id, title, interaction_type, hint, answer, explanation')
+          .eq('id', pack.puzzle_id)
+          .maybeSingle()
+        details.puzzle = pz
+      }
+
+      // Load lesson
+      if (pack.lesson_id) {
+        const { data: ls } = await supabase
+          .from('daily_lessons')
+          .select('id, title, content, key_takeaway')
+          .eq('id', pack.lesson_id)
+          .maybeSingle()
+        details.lesson = ls
+      }
+
+      setPackDetails(prev => ({ ...prev, [packId]: details }))
+    } catch (err) {
+      console.error('[PackDetails] Load error:', err)
+    }
+  }
+
+  // F3: localStorage persistence for pack generation
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(PACK_STORAGE_KEY)
+      if (!saved) return
+      const data = JSON.parse(saved)
+      if (data.startedAt && Date.now() - data.startedAt > PACK_STORAGE_EXPIRY) {
+        localStorage.removeItem(PACK_STORAGE_KEY)
+        return
+      }
+      // Generation was in progress — poll DB for completed packs
+      if (data.startedAt && data.theme) {
+        console.log('[PackGen] Found in-progress generation, polling DB...')
+        // Poll: check if packs were created since startedAt
+        const pollStart = new Date(data.startedAt).toISOString()
+        supabase
+          .from('daily_packs')
+          .select('id')
+          .gte('created_at', pollStart)
+          .order('created_at', { ascending: false })
+          .then(({ data: recentPacks }) => {
+            if (recentPacks && recentPacks.length > 0) {
+              console.log(`[PackGen] Found ${recentPacks.length} packs created since generation started`)
+              loadPacks() // Refresh the list
+            }
+            localStorage.removeItem(PACK_STORAGE_KEY)
+          })
+      }
+    } catch {
+      localStorage.removeItem(PACK_STORAGE_KEY)
+    }
+  }, [])
+
+  // F3: Save pack generation state to localStorage
+  function savePackGenState(step, current, total) {
+    try {
+      localStorage.setItem(PACK_STORAGE_KEY, JSON.stringify({
+        startedAt: Date.now(),
+        theme: packTheme,
+        difficulty: packDifficulty,
+        step,
+        current,
+        total,
+      }))
+    } catch {}
+  }
+
+  function clearPackGenState() {
+    try { localStorage.removeItem(PACK_STORAGE_KEY) } catch {}
+  }
 
   // Export generating state for AdminLayout nav indicator
   useEffect(() => {
@@ -690,12 +815,17 @@ export default function GeneratePage() {
     setPackBatchProgress({ current: 0, total: packCount, step: 0, errors: [] })
     packAbortRef.current = false
 
+    // F3: Save generation start to localStorage
+    savePackGenState(0, 0, packCount)
+
     const startTime = Date.now()
     const results = []
 
     try {
       for (let i = 0; i < packCount; i++) {
         if (packAbortRef.current) break
+        // F3: Update localStorage with current progress
+        savePackGenState(0, i + 1, packCount)
 
         setPackBatchProgress(prev => ({ ...prev, current: i + 1, step: 0 }))
 
@@ -744,6 +874,10 @@ export default function GeneratePage() {
     }
 
     setPackGenerating(false)
+    // F3: Clear localStorage on completion
+    clearPackGenState()
+    // F1: Refresh packs list
+    loadPacks()
   }
 
   async function handleDeletePack(packId) {
@@ -768,6 +902,8 @@ export default function GeneratePage() {
       if (packResult?.packIds?.length === 1 && packResult.packIds[0] === packId) {
         setPackResult(null)
       }
+      // F1: Refresh packs list
+      setPacks(prev => prev.filter(p => p.id !== packId))
     } catch (err) {
       console.error('Delete pack error:', err)
     }
@@ -1098,6 +1234,194 @@ export default function GeneratePage() {
         {packError && (
           <div className="border border-red-200 bg-red-50 rounded-xl p-3">
             <p className="text-sm text-red-700">{packError}</p>
+          </div>
+        )}
+
+        {/* F1+F2: Recent Packs from DB */}
+        {packs.length > 0 && (
+          <div className="mt-6">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-bold uppercase tracking-wide text-[#6B7280]">
+                Recent Packs ({packs.length})
+              </h3>
+              <button
+                onClick={loadPacks}
+                className="text-xs text-[#6B7280] hover:text-[#1A1A1A] transition-colors"
+              >
+                ↻ Refresh
+              </button>
+            </div>
+            <div className="space-y-2">
+              {packs.map((pack) => {
+                const isExpanded = expandedPackId === pack.id
+                const details = packDetails[pack.id]
+                const isToday = new Date(pack.created_at).toDateString() === new Date().toDateString()
+
+                return (
+                  <div key={pack.id} className={`border rounded-xl overflow-hidden transition-all ${isToday ? 'border-[#2ECC71]/30 bg-emerald-50/30' : 'border-gray-200 bg-white'}`}>
+                    {/* Pack header row */}
+                    <div
+                      className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-50/50 transition-colors"
+                      onClick={() => {
+                        if (isExpanded) {
+                          setExpandedPackId(null)
+                        } else {
+                          setExpandedPackId(pack.id)
+                          loadPackDetails(pack.id)
+                        }
+                      }}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="text-lg">{isToday ? '🟢' : '⚪'}</span>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-[#1A1A1A] truncate">
+                            {(pack.theme || 'unknown').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                            <span className="ml-2 text-xs font-normal text-[#6B7280]">
+                              {pack.difficulty || '—'} · {pack.question_ids?.length || 0} Q
+                              {pack.puzzle_id ? ' · 🧩' : ''}
+                              {pack.lesson_id ? ' · 📚' : ''}
+                            </span>
+                          </p>
+                          <p className="text-xs text-[#6B7280]">
+                            {new Date(pack.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                            {' · '}
+                            {new Date(pack.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                            <span className="ml-2 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-600">
+                              {pack.status || 'active'}
+                            </span>
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDeletePack(pack.id) }}
+                          className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors"
+                          title="Delete pack"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                        {isExpanded ? <ChevronUp size={16} className="text-[#6B7280]" /> : <ChevronDown size={16} className="text-[#6B7280]" />}
+                      </div>
+                    </div>
+
+                    {/* F2: Expanded details */}
+                    {isExpanded && (
+                      <div className="border-t border-gray-100 px-4 py-3 bg-gray-50/30 space-y-3">
+                        {!details ? (
+                          <div className="flex items-center gap-2 py-2">
+                            <Loader2 size={14} className="animate-spin text-[#6B7280]" />
+                            <span className="text-xs text-[#6B7280]">Loading details...</span>
+                          </div>
+                        ) : (
+                          <>
+                            {/* Questions */}
+                            {details.questions?.length > 0 && (
+                              <div>
+                                <p className="text-xs font-bold uppercase tracking-wide text-[#6B7280] mb-2">
+                                  🧠 Questions ({details.questions.length})
+                                </p>
+                                <div className="space-y-2">
+                                  {details.questions.map((q, qi) => (
+                                    <div key={q.id} className="bg-white rounded-lg p-3 border border-gray-100">
+                                      <p className="text-sm font-medium text-[#1A1A1A] mb-1.5">
+                                        <span className="text-xs text-[#6B7280] mr-1">Q{qi + 1}.</span>
+                                        {q.question_en}
+                                      </p>
+                                      {/* Answers with correct highlighted */}
+                                      {q.answers_en && (
+                                        <div className="grid grid-cols-2 gap-1 mb-1.5">
+                                          {q.answers_en.map((a, ai) => (
+                                            <div
+                                              key={ai}
+                                              className={`px-2 py-1 rounded text-xs ${
+                                                ai + 1 === q.correct_answer_index
+                                                  ? 'bg-green-100 text-green-800 font-semibold'
+                                                  : 'bg-gray-50 text-[#6B7280]'
+                                              }`}
+                                            >
+                                              {String.fromCharCode(65 + ai)}. {a}
+                                              {ai + 1 === q.correct_answer_index && ' ✓'}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                      <div className="flex items-center gap-2">
+                                        <span className={`text-[10px] font-medium capitalize ${
+                                          q.difficulty === 'hard' ? 'text-red-600' : q.difficulty === 'medium' ? 'text-amber-600' : 'text-green-600'
+                                        }`}>{q.difficulty}</span>
+                                        <span className="text-[10px] text-[#6B7280]">
+                                          🇬🇧{q.question_fr ? ' 🇫🇷' : ''}{q.question_it ? ' 🇮🇹' : ''}{q.question_es ? ' 🇪🇸' : ''}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Puzzle */}
+                            {details.puzzle && (
+                              <div>
+                                <p className="text-xs font-bold uppercase tracking-wide text-[#6B7280] mb-2">
+                                  🧩 Puzzle — The Catch
+                                </p>
+                                <div className="bg-white rounded-lg p-3 border border-gray-100">
+                                  <p className="text-sm font-semibold text-[#1A1A1A]">{details.puzzle.title}</p>
+                                  <div className="flex items-center gap-2 mt-1 mb-1.5">
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium">
+                                      {details.puzzle.interaction_type?.replace(/_/g, ' ')}
+                                    </span>
+                                  </div>
+                                  {details.puzzle.hint && (
+                                    <p className="text-xs text-[#6B7280] mb-1">
+                                      <span className="font-semibold">Hint:</span> {details.puzzle.hint}
+                                    </p>
+                                  )}
+                                  <p className="text-xs text-[#6B7280]">
+                                    <span className="font-semibold">Answer:</span> {details.puzzle.answer}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                            {pack.puzzle_id && !details.puzzle && (
+                              <p className="text-xs text-amber-600">⚠️ Puzzle not found</p>
+                            )}
+
+                            {/* Lesson */}
+                            {details.lesson && (
+                              <div>
+                                <p className="text-xs font-bold uppercase tracking-wide text-[#6B7280] mb-2">
+                                  📚 Lesson of the Day
+                                </p>
+                                <div className="bg-white rounded-lg p-3 border border-gray-100">
+                                  <p className="text-sm font-semibold text-[#1A1A1A] mb-1">{details.lesson.title}</p>
+                                  {details.lesson.key_takeaway && (
+                                    <p className="text-xs text-emerald-700 bg-emerald-50 px-2 py-1 rounded mb-1.5">
+                                      💡 {details.lesson.key_takeaway}
+                                    </p>
+                                  )}
+                                  {details.lesson.content && (
+                                    <details className="text-xs text-[#6B7280]">
+                                      <summary className="cursor-pointer hover:text-[#1A1A1A] transition-colors">
+                                        Show full content
+                                      </summary>
+                                      <p className="mt-1 whitespace-pre-wrap">{details.lesson.content}</p>
+                                    </details>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                            {pack.lesson_id && !details.lesson && (
+                              <p className="text-xs text-amber-600">⚠️ Lesson not found</p>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
           </div>
         )}
       </Card>
