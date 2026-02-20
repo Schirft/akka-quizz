@@ -22,6 +22,8 @@ import {
   Play,
   Check,
   Package,
+  StopCircle,
+  Hash,
 } from 'lucide-react'
 
 const STORAGE_KEY = 'akka_last_generation'
@@ -29,32 +31,23 @@ const STORAGE_EXPIRY = 2 * 60 * 60 * 1000 // 2 hours
 const GENERATION_MODEL = 'claude-sonnet-4-5-20250929' // For generating EN questions
 const TRANSLATION_MODEL = 'claude-3-5-haiku-20241022' // For translating FR/IT/ES
 
+const SUPABASE_FN_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
+
 /* ── HOTFIX A: Robust JSON parsing ── */
 function parsePartialJSON(text) {
-  // Strip markdown fences
   let clean = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
-
-  // Try direct parse first
   try { return JSON.parse(clean) } catch {}
-
-  // Try extracting [...] from the text
   const arrMatch = clean.match(/\[[\s\S]*\]/)
-  if (arrMatch) {
-    try { return JSON.parse(arrMatch[0]) } catch {}
-  }
-
-  // Fix truncated array: find last complete object }, then close the array
+  if (arrMatch) { try { return JSON.parse(arrMatch[0]) } catch {} }
   const lastBrace = clean.lastIndexOf('}')
   if (lastBrace > 0) {
     const slice = clean.slice(0, lastBrace + 1)
-    // Find the opening bracket
     const openBracket = slice.indexOf('[')
     if (openBracket >= 0) {
       const fixed = slice.slice(openBracket) + ']'
       try { return JSON.parse(fixed) } catch {}
     }
   }
-
   throw new Error('Unable to parse JSON from response')
 }
 
@@ -73,6 +66,23 @@ const STEP2_MESSAGES = [
   { icon: '🇮🇹', text: 'Generating Italian translations...' },
   { icon: '🇪🇸', text: 'Generating Spanish translations...' },
   { icon: '✨', text: 'Polishing native-quality translations...' },
+]
+
+// ── Pack generation themes and difficulties (B3: pill arrays) ──
+const PACK_THEMES = [
+  'fundraising', 'cap_tables', 'term_sheets', 'unit_economics',
+  'revenue_growth', 'burn_analysis', 'market_comps', 'startup_valuation',
+  'due_diligence', 'exit_strategies',
+]
+const PACK_DIFFICULTIES = ['easy', 'medium', 'hard']
+
+// B1: Pack step definitions for 4-function sequential flow
+const PACK_STEPS = [
+  { label: 'Generating 3 QCM questions...', icon: '🧠' },
+  { label: 'Creating puzzle "The Catch"...', icon: '🧩' },
+  { label: 'Writing lesson of the day...', icon: '📚' },
+  { label: 'Translating to FR/IT/ES...', icon: '🌍' },
+  { label: 'Assembling pack record...', icon: '💾' },
 ]
 
 export default function GeneratePage() {
@@ -97,7 +107,7 @@ export default function GeneratePage() {
   const [error, setError] = useState(null)
   const abortRef = useRef(false)
 
-  // Batch history — accumulates across generations in same session
+  // Batch history
   const [batchHistory, setBatchHistory] = useState([])
 
   // Streaming UX state
@@ -108,21 +118,19 @@ export default function GeneratePage() {
   const elapsedTimerRef = useRef(null)
   const stepsRef = useRef(STEP1_MESSAGES)
 
-  // Pack generation state
+  // ── Pack generation state (B1-B4) ──
   const [packGenerating, setPackGenerating] = useState(false)
   const [packTheme, setPackTheme] = useState('fundraising')
   const [packDifficulty, setPackDifficulty] = useState('medium')
+  const [packCount, setPackCount] = useState(1) // B2: batch count 1-100
   const [packStep, setPackStep] = useState(0)
   const [packResult, setPackResult] = useState(null)
   const [packError, setPackError] = useState(null)
+  const packAbortRef = useRef(false)
 
-  const PACK_STEPS = [
-    { label: 'Generating 3 QCM questions...', icon: '🧠', duration: 8000 },
-    { label: 'Creating puzzle "The Catch"...', icon: '🧩', duration: 10000 },
-    { label: 'Writing lesson of the day...', icon: '📚', duration: 8000 },
-    { label: 'Translating to FR/IT/ES...', icon: '🌍', duration: 12000 },
-    { label: 'Saving pack to database...', icon: '💾', duration: 2000 },
-  ]
+  // B4: Batch progress state
+  const [packBatchProgress, setPackBatchProgress] = useState({ current: 0, total: 0, step: 0, errors: [] })
+  const [packBatchResults, setPackBatchResults] = useState([]) // accumulates per-pack results
 
   // Edit modal
   const [editQuestion, setEditQuestion] = useState(null)
@@ -133,7 +141,7 @@ export default function GeneratePage() {
   const [promptLoaded, setPromptLoaded] = useState(false)
 
   // HOTFIX A: Resume state
-  const [resumeInfo, setResumeInfo] = useState(null) // { resumeFrom, totalRequested, batchId, mode, category, theme, difficulty, languages }
+  const [resumeInfo, setResumeInfo] = useState(null)
 
   // ── Restore from localStorage on mount (with 2-hour expiry) ──
   useEffect(() => {
@@ -141,7 +149,6 @@ export default function GeneratePage() {
       const saved = localStorage.getItem(STORAGE_KEY)
       if (saved) {
         const data = JSON.parse(saved)
-        // Check 2-hour expiry
         if (data.savedAt && Date.now() - data.savedAt > STORAGE_EXPIRY) {
           localStorage.removeItem(STORAGE_KEY)
           return
@@ -151,14 +158,9 @@ export default function GeneratePage() {
           setVisibleCount(data.generated.length)
           setSummary(data.summary || null)
           setBatchId(data.batchId || null)
-          // Restore resume info if incomplete
-          if (data.resumeInfo) {
-            setResumeInfo(data.resumeInfo)
-          }
+          if (data.resumeInfo) setResumeInfo(data.resumeInfo)
         }
-        if (data.batchHistory?.length > 0) {
-          setBatchHistory(data.batchHistory)
-        }
+        if (data.batchHistory?.length > 0) setBatchHistory(data.batchHistory)
       }
     } catch {}
   }, [])
@@ -168,12 +170,7 @@ export default function GeneratePage() {
     if (generated.length > 0 || batchHistory.length > 0) {
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify({
-          generated,
-          summary,
-          batchId,
-          resumeInfo,
-          batchHistory,
-          savedAt: Date.now(),
+          generated, summary, batchId, resumeInfo, batchHistory, savedAt: Date.now(),
         }))
       } catch {}
     }
@@ -275,7 +272,6 @@ export default function GeneratePage() {
     }
     const data = await res.json()
     const text = data.content?.[0]?.text || ''
-    console.log(`[GEN] Sub-batch raw response: ${text.length} chars`)
     const questions = parsePartialJSON(text)
     if (!Array.isArray(questions)) throw new Error('Parsed result is not an array')
     return {
@@ -285,7 +281,7 @@ export default function GeneratePage() {
     }
   }
 
-  /* ──────────────── HOTFIX A: 2-step generation ──────────────── */
+  /* ──────────────── HOTFIX A: 2-step generation (classic questions) ──────────────── */
   async function handleGenerate(resumeFrom = 0) {
     if (!import.meta.env.VITE_ANTHROPIC_API_KEY) {
       setError('VITE_ANTHROPIC_API_KEY is not set in .env.local')
@@ -299,7 +295,6 @@ export default function GeneratePage() {
     setGenerating(true)
     setError(null)
     if (!isResume) {
-      // Archive current batch to history before clearing
       if (generated.length > 0 && summary) {
         setBatchHistory(prev => [{
           id: batchId || Date.now(),
@@ -322,29 +317,22 @@ export default function GeneratePage() {
 
     const startTime = Date.now()
     const systemPrompt = customPrompt || AI_SYSTEM_PROMPT
-
     setProgress({ done: resumeFrom, total: totalRequested })
 
-    // Create batch record if new
     let batchRecord = null
     if (!isResume) {
       try {
         const { data, error: bErr } = await supabase
           .from('ai_generation_batches')
           .insert({
-            requested_count: totalRequested,
-            mode,
+            requested_count: totalRequested, mode,
             category: mode === 'category' ? category : null,
             theme: mode === 'theme' ? theme : null,
             difficulty: difficulty !== 'mix' ? difficulty : null,
-            languages,
-            generated_count: 0,
-            status: 'in_progress',
+            languages, generated_count: 0, status: 'in_progress',
             created_by: user?.id || null,
           })
-          .select()
-          .single()
-
+          .select().single()
         if (bErr) throw bErr
         batchRecord = data
         setBatchId(data.id)
@@ -364,7 +352,6 @@ export default function GeneratePage() {
     let totalOutputTokens = 0
 
     try {
-      // ── STEP 1: Generate EN questions in sub-batches of max 8 ──
       const SUB_BATCH_SIZE = 8
       const remaining = totalRequested - resumeFrom
       const subBatches = []
@@ -374,15 +361,13 @@ export default function GeneratePage() {
         subBatches.push(size)
         rem -= size
       }
-      console.log(`[GEN] Using model: ${GENERATION_MODEL}`)
-      console.log(`[GEN] Will generate ${remaining} questions in ${subBatches.length} sub-batches:`, subBatches)
 
       let allEnQuestions = []
 
       for (let sIdx = 0; sIdx < subBatches.length; sIdx++) {
         if (abortRef.current) break
         const wantCount = subBatches[sIdx]
-        const requestCount = wantCount + 1 // +1 to compensate LLM under-generation
+        const requestCount = wantCount + 1
 
         const subLabel = needsTranslation
           ? `Step 1/2 — 🧠 Generating questions (batch ${sIdx + 1}/${subBatches.length})...`
@@ -390,60 +375,39 @@ export default function GeneratePage() {
         if (sIdx === 0) switchStreamingUX(STEP1_MESSAGES, subLabel)
         else setStepLabel(subLabel)
 
-        console.log(`[GEN] Sub-batch ${sIdx + 1}: requesting ${requestCount} (want ${wantCount})`)
         const result = await generateSubBatch({ requestCount, systemPrompt, maxTokens: 8000 })
         totalInputTokens += result.inputTokens
         totalOutputTokens += result.outputTokens
 
         let subQuestions = result.questions
-        console.log(`[GEN] Sub-batch ${sIdx + 1}: parsed ${subQuestions.length}/${requestCount}`)
+        if (subQuestions.length > wantCount) subQuestions = subQuestions.slice(0, wantCount)
 
-        // Truncate to wanted count
-        if (subQuestions.length > wantCount) {
-          subQuestions = subQuestions.slice(0, wantCount)
-        }
-
-        // Retry if still short
         if (subQuestions.length < wantCount && !abortRef.current) {
           const missing = wantCount - subQuestions.length
-          console.log(`[GEN] Sub-batch ${sIdx + 1}: retrying for ${missing} missing questions`)
           setStepLabel(`⚠️ Got ${subQuestions.length}/${wantCount}, generating ${missing} more...`)
           try {
             const retry = await generateSubBatch({ requestCount: missing + 1, systemPrompt, maxTokens: 6000 })
             totalInputTokens += retry.inputTokens
             totalOutputTokens += retry.outputTokens
-            if (retry.questions.length > 0) {
-              subQuestions = [...subQuestions, ...retry.questions]
-            }
+            if (retry.questions.length > 0) subQuestions = [...subQuestions, ...retry.questions]
           } catch (retryErr) {
             console.warn(`[GEN] Retry failed:`, retryErr.message)
           }
         }
 
-        // Final truncate
-        if (subQuestions.length > wantCount) {
-          subQuestions = subQuestions.slice(0, wantCount)
-        }
-
+        if (subQuestions.length > wantCount) subQuestions = subQuestions.slice(0, wantCount)
         allEnQuestions = [...allEnQuestions, ...subQuestions]
         setProgress({ done: resumeFrom + allEnQuestions.length, total: totalRequested })
-        console.log(`[GEN] Sub-batch ${sIdx + 1} done: ${subQuestions.length}/${wantCount}, total so far: ${allEnQuestions.length}`)
       }
 
-      // Final truncate to exact requested count
-      if (allEnQuestions.length > remaining) {
-        allEnQuestions = allEnQuestions.slice(0, remaining)
-      }
-      console.log(`[GEN] All EN questions: ${allEnQuestions.length}/${remaining}`)
+      if (allEnQuestions.length > remaining) allEnQuestions = allEnQuestions.slice(0, remaining)
 
-      // ── STEP 2: Translate ALL questions in parallel ──
+      // Translate
       if (needsTranslation && allEnQuestions.length > 0 && !abortRef.current) {
         const langLabels = { fr: '🇫🇷 FR', it: '🇮🇹 IT', es: '🇪🇸 ES' }
         const targetLangs = languages.filter(l => l !== 'en')
         const langList = targetLangs.map(l => langLabels[l] || l).join(', ')
-        console.log(`[TRANSLATE] Using model: ${TRANSLATION_MODEL}`)
 
-        // Split into sub-batches of 8 to avoid Haiku truncating large JSON
         const TRANSLATE_BATCH_SIZE = 8
         const transChunks = []
         for (let i = 0; i < allEnQuestions.length; i += TRANSLATE_BATCH_SIZE) {
@@ -477,10 +441,8 @@ export default function GeneratePage() {
                 throw new Error(`API ${res.status}: ${errBody.error?.message || 'Unknown'}`)
               }
               const data = await res.json()
-              console.log(`[TRANSLATE] ${lang} chunk ${c + 1} OK — ${data.usage?.output_tokens || 0} tokens`)
               return { lang, data }
             } catch (err) {
-              console.error(`[TRANSLATE] ${lang} chunk ${c + 1} FAILED:`, err.message)
               return { lang, data: null }
             }
           })
@@ -513,67 +475,37 @@ export default function GeneratePage() {
         }
       }
 
-      // ── Deduplicate against existing DB questions ──
+      // Deduplicate
       if (allEnQuestions.length > 0) {
-        const { data: existingQs } = await supabase
-          .from('questions')
-          .select('question_en')
-          .limit(5000)
-
-        const existingSet = new Set(
-          (existingQs || []).map(q => q.question_en?.toLowerCase().trim())
-        )
-
-        const beforeCount = allEnQuestions.length
+        const { data: existingQs } = await supabase.from('questions').select('question_en').limit(5000)
+        const existingSet = new Set((existingQs || []).map(q => q.question_en?.toLowerCase().trim()))
         const localSeen = new Set()
         allEnQuestions = allEnQuestions.filter(q => {
           const key = q.question_en?.toLowerCase().trim()
-          if (!key || existingSet.has(key) || localSeen.has(key)) {
-            console.log('[GEN] Duplicate skipped:', key?.substring(0, 50))
-            return false
-          }
+          if (!key || existingSet.has(key) || localSeen.has(key)) return false
           existingSet.add(key)
           localSeen.add(key)
           return true
         })
-
-        const dupeCount = beforeCount - allEnQuestions.length
-        if (dupeCount > 0) {
-          console.log(`[GEN] ${beforeCount} generated, ${allEnQuestions.length} unique, ${dupeCount} duplicates skipped`)
-          setStepLabel(`⚠️ ${dupeCount} duplicate question${dupeCount > 1 ? 's' : ''} skipped`)
-        }
       }
 
-      // ── Insert into Supabase ──
+      // Insert into Supabase
       if (allEnQuestions.length > 0 && !abortRef.current) {
         const insertPayloads = allEnQuestions.map(q => ({
-          question_en: q.question_en,
-          question_fr: q.question_fr || null,
-          question_it: q.question_it || null,
-          question_es: q.question_es || null,
-          answers_en: q.answers_en,
-          answers_fr: q.answers_fr || null,
-          answers_it: q.answers_it || null,
-          answers_es: q.answers_es || null,
-          explanation_en: q.explanation_en,
-          explanation_fr: q.explanation_fr || null,
-          explanation_it: q.explanation_it || null,
-          explanation_es: q.explanation_es || null,
+          question_en: q.question_en, question_fr: q.question_fr || null,
+          question_it: q.question_it || null, question_es: q.question_es || null,
+          answers_en: q.answers_en, answers_fr: q.answers_fr || null,
+          answers_it: q.answers_it || null, answers_es: q.answers_es || null,
+          explanation_en: q.explanation_en, explanation_fr: q.explanation_fr || null,
+          explanation_it: q.explanation_it || null, explanation_es: q.explanation_es || null,
           correct_answer_index: q.correct_answer_index,
-          macro_category: q.macro_category,
-          sub_category: q.sub_category || null,
-          topic: q.topic || null,
-          difficulty: q.difficulty || 'medium',
-          status: 'pending_review',
-          source: 'ai',
+          macro_category: q.macro_category, sub_category: q.sub_category || null,
+          topic: q.topic || null, difficulty: q.difficulty || 'medium',
+          status: 'pending_review', source: 'ai',
           generation_batch_id: batchRecord.id,
         }))
 
-        const { data: inserted, error: iErr } = await supabase
-          .from('questions')
-          .insert(insertPayloads)
-          .select()
-
+        const { data: inserted, error: iErr } = await supabase.from('questions').insert(insertPayloads).select()
         if (!iErr && inserted) {
           allGenerated = [...allGenerated, ...inserted]
           setGenerated(prev => [...prev, ...inserted])
@@ -585,70 +517,55 @@ export default function GeneratePage() {
       }
 
       setProgress({ done: allGenerated.length, total: totalRequested })
-
     } catch (err) {
       console.error('Generation error:', err)
       setError(err.message)
       setResumeInfo({
-        resumeFrom: allGenerated.length,
-        totalRequested,
-        batchId: batchRecord.id,
-        mode, category, theme, difficulty, languages,
+        resumeFrom: allGenerated.length, totalRequested,
+        batchId: batchRecord.id, mode, category, theme, difficulty, languages,
       })
     }
 
     stopStreamingUX()
 
-    // Update batch record
     const duration = Math.round((Date.now() - startTime) / 1000)
     const totalCost = estimateCost(totalInputTokens, totalOutputTokens)
 
     if (batchRecord?.id) {
       try {
-        await supabase
-          .from('ai_generation_batches')
-          .update({
-            generated_count: allGenerated.length,
-            total_input_tokens: totalInputTokens,
-            total_output_tokens: totalOutputTokens,
-            total_cost_usd: totalCost,
-            duration_seconds: duration,
-            status: abortRef.current ? 'failed' : (allGenerated.length < totalRequested ? 'partial' : 'completed'),
-            completed_at: new Date().toISOString(),
-          })
-          .eq('id', batchRecord.id)
+        await supabase.from('ai_generation_batches').update({
+          generated_count: allGenerated.length,
+          total_input_tokens: totalInputTokens,
+          total_output_tokens: totalOutputTokens,
+          total_cost_usd: totalCost,
+          duration_seconds: duration,
+          status: abortRef.current ? 'failed' : (allGenerated.length < totalRequested ? 'partial' : 'completed'),
+          completed_at: new Date().toISOString(),
+        }).eq('id', batchRecord.id)
       } catch (err) {
         console.error('Batch update error:', err)
       }
     }
 
-    // If incomplete, set resume info
     if (allGenerated.length < totalRequested && !abortRef.current) {
       setResumeInfo({
-        resumeFrom: allGenerated.length,
-        totalRequested,
-        batchId: batchRecord.id,
-        mode, category, theme, difficulty, languages,
+        resumeFrom: allGenerated.length, totalRequested,
+        batchId: batchRecord.id, mode, category, theme, difficulty, languages,
       })
     } else {
       setResumeInfo(null)
     }
 
     setSummary({
-      count: allGenerated.length,
-      duration,
-      cost: totalCost,
-      inputTokens: totalInputTokens,
-      outputTokens: totalOutputTokens,
+      count: allGenerated.length, duration, cost: totalCost,
+      inputTokens: totalInputTokens, outputTokens: totalOutputTokens,
     })
-
     setVisibleCount(allGenerated.length)
     setGenerating(false)
   }
 
   function handleResume() {
     if (!resumeInfo) return
-    // Restore form settings from resume info
     handleGenerate(resumeInfo.resumeFrom)
   }
 
@@ -657,64 +574,168 @@ export default function GeneratePage() {
     setError(null)
   }
 
-  // ── Pack generation ──
+  // ═══════════════════════════════════════════════════════════════════════
+  // B1: Pack generation — 4 sequential edge function calls
+  // ═══════════════════════════════════════════════════════════════════════
+
+  async function callEdgeFunction(fnName, body) {
+    const res = await fetch(`${SUPABASE_FN_URL}/${fnName}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}))
+      throw new Error(errData.error || `HTTP ${res.status}`)
+    }
+    return res.json()
+  }
+
+  async function generateOnePack(theme, difficulty) {
+    // Step 1: Questions
+    setPackStep(0)
+    const qResult = await callEdgeFunction('generate-pack-questions', { theme, difficulty })
+    const questionIds = qResult.question_ids || []
+
+    if (packAbortRef.current) return null
+
+    // Step 2: Puzzle
+    setPackStep(1)
+    const pResult = await callEdgeFunction('generate-pack-puzzle', { theme, difficulty })
+    const puzzleId = pResult.puzzle_id
+    const puzzleData = pResult.puzzle_data || {}
+
+    if (packAbortRef.current) return null
+
+    // Step 3: Lesson
+    setPackStep(2)
+    const lResult = await callEdgeFunction('generate-pack-lesson', {
+      theme,
+      puzzle_id: puzzleId,
+      puzzle_title: puzzleData.title || 'Puzzle',
+      puzzle_answer: JSON.stringify(puzzleData.answer || ''),
+      puzzle_explanation: puzzleData.explanation || '',
+    })
+    const lessonId = lResult.lesson_id
+
+    if (packAbortRef.current) return null
+
+    // Step 4: Translate
+    setPackStep(3)
+    const tResult = await callEdgeFunction('translate-pack', {
+      question_ids: questionIds,
+      puzzle_id: puzzleId,
+      lesson_id: lessonId,
+    })
+
+    if (packAbortRef.current) return null
+
+    // Step 5: Assemble pack record client-side
+    setPackStep(4)
+    const { data: packRow, error: packErr } = await supabase
+      .from('daily_packs')
+      .insert({
+        theme,
+        difficulty,
+        question_ids: questionIds,
+        puzzle_id: puzzleId,
+        lesson_id: lessonId,
+        status: 'ready',
+      })
+      .select('id')
+      .single()
+
+    if (packErr) {
+      console.error('[Pack] daily_packs insert error:', packErr)
+    }
+
+    const totalStats = {
+      duration_s: (qResult.stats?.duration_s || 0) + (pResult.stats?.duration_s || 0) +
+        (lResult.stats?.duration_s || 0) + (tResult.stats?.duration_s || 0),
+      api_calls: 4,
+      estimated_cost_usd: +((qResult.stats?.estimated_cost_usd || 0) + (pResult.stats?.estimated_cost_usd || 0) +
+        (lResult.stats?.estimated_cost_usd || 0) + (tResult.stats?.estimated_cost_usd || 0)).toFixed(3),
+    }
+
+    return {
+      questions: questionIds.length,
+      puzzle: puzzleId ? 1 : 0,
+      lesson: lessonId ? 1 : 0,
+      packId: packRow?.id || null,
+      stats: totalStats,
+      translated: tResult.translated || {},
+    }
+  }
+
+  // B2: Batch generation (1-100 packs) with abort
   async function handleGeneratePack() {
     setPackGenerating(true)
     setPackStep(0)
     setPackResult(null)
     setPackError(null)
+    setPackBatchResults([])
+    setPackBatchProgress({ current: 0, total: packCount, step: 0, errors: [] })
+    packAbortRef.current = false
 
-    // Simulate progress steps
-    let stepIdx = 0
-    const stepInterval = setInterval(() => {
-      stepIdx++
-      if (stepIdx < PACK_STEPS.length) setPackStep(stepIdx)
-    }, 8000)
+    const startTime = Date.now()
+    const results = []
 
     try {
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-daily-pack`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify({
-            theme: packTheme,
-            difficulty: packDifficulty,
-            count: 1,
-          }),
-        }
-      )
-      clearInterval(stepInterval)
-      setPackStep(PACK_STEPS.length - 1)
+      for (let i = 0; i < packCount; i++) {
+        if (packAbortRef.current) break
 
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}))
-        throw new Error(errData.error || `HTTP ${res.status}`)
+        setPackBatchProgress(prev => ({ ...prev, current: i + 1, step: 0 }))
+
+        try {
+          const result = await generateOnePack(packTheme, packDifficulty)
+          if (result) {
+            results.push(result)
+            setPackBatchResults(prev => [...prev, result])
+          }
+        } catch (err) {
+          console.error(`[Pack ${i + 1}] Error:`, err)
+          setPackBatchProgress(prev => ({
+            ...prev,
+            errors: [...prev.errors, { index: i + 1, message: err.message }],
+          }))
+          // B2: Continue to next pack on error (error resilience)
+          continue
+        }
       }
 
-      const data = await res.json()
-      const pack = data.results?.[0]
-      setPackResult({
-        questions: pack?.questions?.length || 0,
-        puzzle: pack?.puzzle ? 1 : 0,
-        lesson: pack?.lesson ? 1 : 0,
-        packId: pack?.pack_id || null,
-        stats: data.stats || {},
-      })
+      const totalDuration = Math.round((Date.now() - startTime) / 1000)
+      const totalCost = results.reduce((sum, r) => sum + (r.stats?.estimated_cost_usd || 0), 0)
+      const totalApiCalls = results.reduce((sum, r) => sum + (r.stats?.api_calls || 0), 0)
+
+      if (results.length > 0) {
+        setPackResult({
+          questions: results.reduce((s, r) => s + (r.questions || 0), 0),
+          puzzle: results.reduce((s, r) => s + (r.puzzle || 0), 0),
+          lesson: results.reduce((s, r) => s + (r.lesson || 0), 0),
+          packCount: results.length,
+          packIds: results.map(r => r.packId).filter(Boolean),
+          stats: {
+            duration_s: totalDuration,
+            api_calls: totalApiCalls,
+            estimated_cost_usd: +totalCost.toFixed(3),
+          },
+        })
+      } else if (!packAbortRef.current) {
+        setPackError('All pack generations failed')
+      }
     } catch (err) {
-      clearInterval(stepInterval)
       setPackError(err.message)
     }
+
     setPackGenerating(false)
   }
 
   async function handleDeletePack(packId) {
     if (!packId || !window.confirm('Delete this pack and all its questions, puzzle and lesson?')) return
     try {
-      // Load pack details
       const { data: pack } = await supabase
         .from('daily_packs')
         .select('question_ids, puzzle_id, lesson_id')
@@ -722,22 +743,18 @@ export default function GeneratePage() {
         .single()
 
       if (pack) {
-        // Delete questions
         if (pack.question_ids?.length > 0) {
           await supabase.from('questions').delete().in('id', pack.question_ids)
         }
-        // Delete puzzle
-        if (pack.puzzle_id) {
-          await supabase.from('puzzles').delete().eq('id', pack.puzzle_id)
-        }
-        // Delete lesson
-        if (pack.lesson_id) {
-          await supabase.from('daily_lessons').delete().eq('id', pack.lesson_id)
-        }
-        // Delete pack
+        if (pack.puzzle_id) await supabase.from('puzzles').delete().eq('id', pack.puzzle_id)
+        if (pack.lesson_id) await supabase.from('daily_lessons').delete().eq('id', pack.lesson_id)
         await supabase.from('daily_packs').delete().eq('id', packId)
       }
-      setPackResult(null)
+      // Remove from batch results
+      setPackBatchResults(prev => prev.filter(r => r.packId !== packId))
+      if (packResult?.packIds?.length === 1 && packResult.packIds[0] === packId) {
+        setPackResult(null)
+      }
     } catch (err) {
       console.error('Delete pack error:', err)
     }
@@ -746,22 +763,13 @@ export default function GeneratePage() {
   async function approveAll() {
     const ids = generated.filter((q) => q.status === 'pending_review').map((q) => q.id)
     if (ids.length === 0) return
-
     try {
-      await supabase
-        .from('questions')
+      await supabase.from('questions')
         .update({ status: 'approved', updated_at: new Date().toISOString() })
         .in('id', ids)
-
-      setGenerated((prev) =>
-        prev.map((q) => (ids.includes(q.id) ? { ...q, status: 'approved' } : q))
-      )
-
+      setGenerated((prev) => prev.map((q) => (ids.includes(q.id) ? { ...q, status: 'approved' } : q)))
       if (batchId) {
-        await supabase
-          .from('ai_generation_batches')
-          .update({ approved_count: ids.length })
-          .eq('id', batchId)
+        await supabase.from('ai_generation_batches').update({ approved_count: ids.length }).eq('id', batchId)
       }
     } catch (err) {
       setError('Approve all failed: ' + err.message)
@@ -769,26 +777,14 @@ export default function GeneratePage() {
   }
 
   async function approveBatch(questions) {
-    const ids = questions
-      .filter(q => q.status === 'pending_review')
-      .map(q => q.id)
-      .filter(Boolean)
+    const ids = questions.filter(q => q.status === 'pending_review').map(q => q.id).filter(Boolean)
     if (ids.length === 0) return
-
     try {
-      const { error: err } = await supabase
-        .from('questions')
+      const { error: err } = await supabase.from('questions')
         .update({ status: 'approved', updated_at: new Date().toISOString() })
         .in('id', ids)
-
-      if (err) {
-        console.error('Approve batch error:', err)
-        return
-      }
-
-      // Update current batch
+      if (err) return
       setGenerated(prev => prev.map(q => ids.includes(q.id) ? { ...q, status: 'approved' } : q))
-      // Update archived batches
       setBatchHistory(prev => prev.map(batch => ({
         ...batch,
         questions: batch.questions.map(q => ids.includes(q.id) ? { ...q, status: 'approved' } : q),
@@ -799,24 +795,15 @@ export default function GeneratePage() {
   }
 
   async function quickAction(id, status) {
-    console.log(`[ACTION] ${status} clicked for question:`, id)
     try {
-      await supabase
-        .from('questions')
+      await supabase.from('questions')
         .update({ status, updated_at: new Date().toISOString() })
         .eq('id', id)
-
-      // Update current batch
-      setGenerated((prev) =>
-        prev.map((q) => (q.id === id ? { ...q, status } : q))
-      )
-      // Update archived batches too
-      setBatchHistory((prev) =>
-        prev.map((batch) => ({
-          ...batch,
-          questions: batch.questions.map((q) => (q.id === id ? { ...q, status } : q)),
-        }))
-      )
+      setGenerated((prev) => prev.map((q) => (q.id === id ? { ...q, status } : q)))
+      setBatchHistory((prev) => prev.map((batch) => ({
+        ...batch,
+        questions: batch.questions.map((q) => (q.id === id ? { ...q, status } : q)),
+      })))
     } catch (err) {
       console.error('Quick action error:', err)
     }
@@ -824,23 +811,14 @@ export default function GeneratePage() {
 
   function handleQuestionSaved() {
     if (editQuestion?.id) {
-      supabase
-        .from('questions')
-        .select('*')
-        .eq('id', editQuestion.id)
-        .single()
+      supabase.from('questions').select('*').eq('id', editQuestion.id).single()
         .then(({ data }) => {
           if (data) {
-            setGenerated((prev) =>
-              prev.map((q) => (q.id === data.id ? data : q))
-            )
-            // Also refresh in archived batches
-            setBatchHistory((prev) =>
-              prev.map((batch) => ({
-                ...batch,
-                questions: batch.questions.map((q) => (q.id === data.id ? data : q)),
-              }))
-            )
+            setGenerated((prev) => prev.map((q) => (q.id === data.id ? data : q)))
+            setBatchHistory((prev) => prev.map((batch) => ({
+              ...batch,
+              questions: batch.questions.map((q) => (q.id === data.id ? data : q)),
+            })))
           }
         })
     }
@@ -849,6 +827,21 @@ export default function GeneratePage() {
   const pendingCount = generated.filter((q) => q.status === 'pending_review').length
   const currentSteps = stepsRef.current
   const currentStep = currentSteps[stepIndex % currentSteps.length] || currentSteps[0]
+
+  // B3: Pill component
+  const Pill = ({ value, selected, onClick, disabled, children }) => (
+    <button
+      onClick={() => onClick(value)}
+      disabled={disabled}
+      className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all whitespace-nowrap ${
+        selected
+          ? 'bg-[#1B3D2F] text-white shadow-sm'
+          : 'bg-gray-100 text-[#6B7280] hover:bg-gray-200'
+      } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+    >
+      {children}
+    </button>
+  )
 
   return (
     <div>
@@ -863,9 +856,7 @@ export default function GeneratePage() {
         <div className="flex items-center gap-2">
           {promptLoaded && (
             <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-              customPrompt
-                ? 'bg-amber-100 text-amber-700'
-                : 'bg-green-100 text-green-700'
+              customPrompt ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'
             }`}>
               {customPrompt ? '✏️ Custom Prompt' : '✅ Default Prompt'}
             </span>
@@ -880,7 +871,7 @@ export default function GeneratePage() {
         </div>
       </div>
 
-      {/* ── Pack Generator Section ── */}
+      {/* ═══ Pack Generator Section (B1-B4) ═══ */}
       <Card className="mb-6">
         <div className="flex items-center gap-2 mb-4">
           <Package size={18} className="text-[#2ECC71]" />
@@ -888,80 +879,179 @@ export default function GeneratePage() {
           <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-medium">3 QCM + Puzzle + Lesson</span>
         </div>
 
-        <div className="flex flex-wrap items-end gap-4 mb-4">
-          <div>
-            <label className="block mb-1 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Theme</label>
-            <select
-              value={packTheme}
-              onChange={(e) => setPackTheme(e.target.value)}
+        {/* B3: Theme pills */}
+        <label className="block mb-2 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Theme</label>
+        <div className="flex flex-wrap gap-2 mb-4">
+          {PACK_THEMES.map(t => (
+            <Pill
+              key={t}
+              value={t}
+              selected={packTheme === t}
+              onClick={setPackTheme}
               disabled={packGenerating}
-              className="border border-[#D1D5DB] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2ECC71]"
             >
-              {['fundraising', 'cap_tables', 'term_sheets', 'unit_economics', 'revenue_growth', 'burn_analysis', 'market_comps', 'startup_valuation', 'due_diligence', 'exit_strategies'].map(t => (
-                <option key={t} value={t}>{t.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block mb-1 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Difficulty</label>
-            <select
-              value={packDifficulty}
-              onChange={(e) => setPackDifficulty(e.target.value)}
+              {t.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+            </Pill>
+          ))}
+        </div>
+
+        {/* B3: Difficulty pills */}
+        <label className="block mb-2 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Difficulty</label>
+        <div className="flex flex-wrap gap-2 mb-4">
+          {PACK_DIFFICULTIES.map(d => (
+            <Pill
+              key={d}
+              value={d}
+              selected={packDifficulty === d}
+              onClick={setPackDifficulty}
               disabled={packGenerating}
-              className="border border-[#D1D5DB] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2ECC71]"
             >
-              {['easy', 'medium', 'hard'].map(d => (
-                <option key={d} value={d}>{d.charAt(0).toUpperCase() + d.slice(1)}</option>
-              ))}
-            </select>
+              {d.charAt(0).toUpperCase() + d.slice(1)}
+            </Pill>
+          ))}
+        </div>
+
+        {/* B3: Pack count pills */}
+        <label className="block mb-2 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
+          <Hash size={12} className="inline mr-1" />
+          Number of Packs
+        </label>
+        <div className="flex flex-wrap gap-2 mb-4">
+          {[1, 3, 5, 7, 10, 14, 30].map(n => (
+            <Pill
+              key={n}
+              value={n}
+              selected={packCount === n}
+              onClick={setPackCount}
+              disabled={packGenerating}
+            >
+              {n}
+            </Pill>
+          ))}
+          {/* Custom count input */}
+          <div className="flex items-center gap-1">
+            <input
+              type="number"
+              min="1"
+              max="100"
+              value={packCount}
+              onChange={e => setPackCount(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
+              disabled={packGenerating}
+              className="w-16 px-2 py-1.5 rounded-full text-xs font-semibold text-center border border-[#D1D5DB] focus:outline-none focus:ring-2 focus:ring-[#2ECC71]"
+            />
           </div>
+        </div>
+
+        {/* Generate + Cancel buttons */}
+        <div className="flex items-center gap-3 mb-4">
           <button
             onClick={handleGeneratePack}
             disabled={packGenerating}
             className="flex items-center gap-2 px-5 py-2.5 bg-[#1B3D2F] text-white font-semibold rounded-xl hover:opacity-90 disabled:opacity-50 transition-opacity"
           >
             {packGenerating ? <Loader2 size={16} className="animate-spin" /> : <Package size={16} />}
-            {packGenerating ? 'Generating Pack...' : 'Generate Pack'}
+            {packGenerating
+              ? `Generating ${packCount > 1 ? `Pack ${packBatchProgress.current}/${packCount}` : 'Pack'}...`
+              : `Generate ${packCount > 1 ? `${packCount} Packs` : 'Pack'}`}
           </button>
+          {packGenerating && (
+            <button
+              onClick={() => { packAbortRef.current = true }}
+              className="flex items-center gap-1.5 px-4 py-2.5 text-sm text-red-600 font-medium border border-red-200 rounded-xl hover:bg-red-50 transition-colors"
+            >
+              <StopCircle size={16} />
+              Cancel
+            </button>
+          )}
         </div>
 
-        {/* C1: Animated progress bar */}
+        {/* B4: Batch progress */}
         {packGenerating && (
           <div className="mb-4">
             <div className="flex items-center gap-3 mb-2">
               <span className="text-xl animate-bounce">{PACK_STEPS[packStep]?.icon}</span>
-              <span className="text-sm font-medium text-[#1A1A1A]">{PACK_STEPS[packStep]?.label}</span>
+              <span className="text-sm font-medium text-[#1A1A1A]">
+                {packCount > 1 && `Pack ${packBatchProgress.current}/${packCount} — `}
+                {PACK_STEPS[packStep]?.label}
+              </span>
               <Loader2 size={14} className="text-[#2ECC71] animate-spin ml-auto" />
             </div>
-            <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
-              <div
-                className="bg-gradient-to-r from-[#2ECC71] to-[#27AE60] h-3 rounded-full transition-all duration-1000 ease-out"
-                style={{ width: `${Math.max(5, ((packStep + 1) / PACK_STEPS.length) * 100)}%` }}
-              />
+
+            {/* Step indicator pills */}
+            <div className="flex gap-1.5 mb-2">
+              {PACK_STEPS.map((s, i) => (
+                <div
+                  key={i}
+                  className={`flex-1 h-2 rounded-full transition-all duration-500 ${
+                    i < packStep ? 'bg-[#2ECC71]'
+                      : i === packStep ? 'bg-[#2ECC71] animate-pulse'
+                      : 'bg-gray-200'
+                  }`}
+                />
+              ))}
             </div>
-            <p className="text-xs text-[#6B7280] mt-1">Step {packStep + 1} of {PACK_STEPS.length}</p>
+
+            {/* Batch-level progress bar */}
+            {packCount > 1 && (
+              <div className="mt-2">
+                <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+                  <div
+                    className="bg-gradient-to-r from-[#2ECC71] to-[#27AE60] h-3 rounded-full transition-all duration-1000 ease-out"
+                    style={{ width: `${Math.max(2, ((packBatchProgress.current - 1 + (packStep + 1) / PACK_STEPS.length) / packCount) * 100)}%` }}
+                  />
+                </div>
+                <div className="flex justify-between mt-1">
+                  <p className="text-xs text-[#6B7280]">
+                    {packBatchResults.length} completed
+                    {packBatchProgress.errors.length > 0 && ` · ${packBatchProgress.errors.length} errors`}
+                  </p>
+                  <p className="text-xs text-[#6B7280]">
+                    ~{Math.round((packCount - packBatchProgress.current) * 45)}s remaining
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Error list for batch */}
+            {packBatchProgress.errors.length > 0 && (
+              <div className="mt-2 text-xs text-red-600 space-y-0.5">
+                {packBatchProgress.errors.map((e, i) => (
+                  <p key={i}>⚠️ Pack #{e.index}: {e.message}</p>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
-        {/* C3: Enriched feedback */}
+        {/* Pack result (single or batch) */}
         {packResult && (
           <div className="border border-[#2ECC71]/30 bg-emerald-50/50 rounded-xl p-4">
             <div className="flex items-center gap-2 mb-3">
               <CheckCircle size={18} className="text-[#2ECC71]" />
-              <p className="font-semibold text-[#1A1A1A]">Pack Generated Successfully</p>
+              <p className="font-semibold text-[#1A1A1A]">
+                {packResult.packCount > 1
+                  ? `${packResult.packCount} Packs Generated Successfully`
+                  : 'Pack Generated Successfully'}
+              </p>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-3">
+              {packResult.packCount > 1 && (
+                <div className="text-center">
+                  <p className="text-xl font-bold text-[#1A1A1A]">{packResult.packCount}</p>
+                  <p className="text-xs text-[#6B7280]">Packs</p>
+                </div>
+              )}
               <div className="text-center">
                 <p className="text-xl font-bold text-[#1A1A1A]">{packResult.questions}</p>
                 <p className="text-xs text-[#6B7280]">Questions</p>
               </div>
               <div className="text-center">
                 <p className="text-xl font-bold text-[#1A1A1A]">{packResult.puzzle}</p>
-                <p className="text-xs text-[#6B7280]">Puzzle</p>
+                <p className="text-xs text-[#6B7280]">Puzzles</p>
               </div>
               <div className="text-center">
                 <p className="text-xl font-bold text-[#1A1A1A]">{packResult.lesson}</p>
-                <p className="text-xs text-[#6B7280]">Lesson</p>
+                <p className="text-xs text-[#6B7280]">Lessons</p>
               </div>
               <div className="text-center">
                 <p className="text-xl font-bold text-[#1A1A1A]">{packResult.stats?.duration_s || '—'}s</p>
@@ -972,22 +1062,21 @@ export default function GeneratePage() {
               <span>{packResult.stats?.api_calls || 4} API calls</span>
               <span>·</span>
               <span>~${packResult.stats?.estimated_cost_usd || '0.060'} est. cost</span>
-              {packResult.packId && (
-                <>
-                  <span>·</span>
-                  <span className="font-mono text-[10px]">Pack {packResult.packId.slice(0, 8)}</span>
-                </>
-              )}
             </div>
-            {/* C4: Delete Pack */}
-            {packResult.packId && (
-              <button
-                onClick={() => handleDeletePack(packResult.packId)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-red-600 font-medium hover:bg-red-50 rounded-lg transition-colors"
-              >
-                <Trash2 size={12} />
-                Delete Pack
-              </button>
+            {/* Delete individual packs */}
+            {packResult.packIds?.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {packResult.packIds.map((pid, idx) => (
+                  <button
+                    key={pid}
+                    onClick={() => handleDeletePack(pid)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-red-600 font-medium hover:bg-red-50 rounded-lg transition-colors"
+                  >
+                    <Trash2 size={12} />
+                    {packResult.packCount > 1 ? `Delete Pack #${idx + 1}` : 'Delete Pack'}
+                  </button>
+                ))}
+              </div>
             )}
           </div>
         )}
@@ -1015,10 +1104,7 @@ export default function GeneratePage() {
             Questions: {count}
           </label>
           <input
-            type="range"
-            min="1"
-            max="50"
-            value={count}
+            type="range" min="1" max="50" value={count}
             onChange={(e) => setCount(Number(e.target.value))}
             disabled={generating}
             className="w-full mb-4 accent-[#1B3D2F]"
@@ -1028,9 +1114,7 @@ export default function GeneratePage() {
           </div>
 
           {/* Mode */}
-          <label className="block mb-2 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
-            Mode
-          </label>
+          <label className="block mb-2 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Mode</label>
           <div className="flex gap-2 mb-4">
             {[
               { value: 'auto', label: 'Auto' },
@@ -1042,9 +1126,7 @@ export default function GeneratePage() {
                 onClick={() => setMode(value)}
                 disabled={generating}
                 className={`px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-                  mode === value
-                    ? 'bg-[#1B3D2F] text-white'
-                    : 'bg-gray-100 text-[#6B7280] hover:bg-gray-200'
+                  mode === value ? 'bg-[#1B3D2F] text-white' : 'bg-gray-100 text-[#6B7280] hover:bg-gray-200'
                 }`}
               >
                 {label}
@@ -1054,42 +1136,30 @@ export default function GeneratePage() {
 
           {mode === 'category' && (
             <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
+              value={category} onChange={(e) => setCategory(e.target.value)}
               disabled={generating}
               className="w-full border border-[#D1D5DB] rounded-lg px-3 py-2 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-[#2ECC71]"
             >
-              {CATEGORIES.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
+              {CATEGORIES.map((c) => (<option key={c} value={c}>{c}</option>))}
             </select>
           )}
 
           {mode === 'theme' && (
             <input
-              type="text"
-              value={theme}
-              onChange={(e) => setTheme(e.target.value)}
-              disabled={generating}
-              placeholder="e.g. AI startups in healthcare"
+              type="text" value={theme} onChange={(e) => setTheme(e.target.value)}
+              disabled={generating} placeholder="e.g. AI startups in healthcare"
               className="w-full border border-[#D1D5DB] rounded-lg px-3 py-2 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-[#2ECC71]"
             />
           )}
 
           {/* Difficulty */}
-          <label className="block mb-2 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
-            Difficulty
-          </label>
+          <label className="block mb-2 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Difficulty</label>
           <div className="flex gap-2 mb-4 flex-wrap">
             {['mix', 'easy', 'medium', 'hard'].map((d) => (
               <button
-                key={d}
-                onClick={() => setDifficulty(d)}
-                disabled={generating}
+                key={d} onClick={() => setDifficulty(d)} disabled={generating}
                 className={`px-3 py-2 rounded-lg text-xs font-medium capitalize transition-all ${
-                  difficulty === d
-                    ? 'bg-[#1B3D2F] text-white'
-                    : 'bg-gray-100 text-[#6B7280] hover:bg-gray-200'
+                  difficulty === d ? 'bg-[#1B3D2F] text-white' : 'bg-gray-100 text-[#6B7280] hover:bg-gray-200'
                 }`}
               >
                 {d}
@@ -1098,9 +1168,7 @@ export default function GeneratePage() {
           </div>
 
           {/* Languages */}
-          <label className="block mb-2 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
-            Languages
-          </label>
+          <label className="block mb-2 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Languages</label>
           <div className="flex gap-2 mb-6 flex-wrap">
             {[
               { code: 'en', flag: '🇬🇧' },
@@ -1109,13 +1177,10 @@ export default function GeneratePage() {
               { code: 'es', flag: '🇪🇸' },
             ].map(({ code, flag }) => (
               <button
-                key={code}
-                onClick={() => toggleLang(code)}
+                key={code} onClick={() => toggleLang(code)}
                 disabled={generating || code === 'en'}
                 className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                  languages.includes(code)
-                    ? 'bg-[#1B3D2F] text-white'
-                    : 'bg-gray-100 text-[#6B7280]'
+                  languages.includes(code) ? 'bg-[#1B3D2F] text-white' : 'bg-gray-100 text-[#6B7280]'
                 } ${code === 'en' ? 'opacity-80 cursor-not-allowed' : 'hover:opacity-80'}`}
               >
                 {flag} {code.toUpperCase()}
@@ -1130,24 +1195,20 @@ export default function GeneratePage() {
             className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-[#1B3D2F] text-white font-semibold rounded-xl hover:opacity-90 disabled:opacity-50 transition-opacity"
           >
             {generating ? (
-              <>
-                <Loader2 size={18} className="animate-spin" />
-                Generating...
-              </>
+              <><Loader2 size={18} className="animate-spin" /> Generating...</>
             ) : (
-              <>
-                <Sparkles size={18} />
-                🚀 Generate
-              </>
+              <><Sparkles size={18} /> Generate</>
             )}
           </button>
 
+          {/* D1: Cancel button for classic generation */}
           {generating && (
             <button
               onClick={() => { abortRef.current = true }}
-              className="w-full mt-2 px-4 py-2 text-sm text-red-600 font-medium hover:bg-red-50 rounded-lg transition-colors"
+              className="w-full mt-2 flex items-center justify-center gap-1.5 px-4 py-2 text-sm text-red-600 font-medium border border-red-200 rounded-xl hover:bg-red-50 transition-colors"
             >
-              Cancel
+              <StopCircle size={14} />
+              Cancel Generation
             </button>
           )}
 
@@ -1165,16 +1226,14 @@ export default function GeneratePage() {
 
         {/* Right: Results */}
         <div className="lg:col-span-2 space-y-4">
-          {/* Streaming progress with animated messages */}
+          {/* Streaming progress */}
           {generating && (
             <Card className="overflow-hidden">
               <div className="flex items-center gap-3 mb-3">
                 <div className="text-2xl animate-bounce">{currentStep.icon}</div>
                 <div className="flex-1">
                   <p className="text-xs font-semibold text-[#1B3D2F] mb-0.5">{stepLabel}</p>
-                  <p className="text-sm font-medium text-[#1A1A1A] transition-all">
-                    {currentStep.text}
-                  </p>
+                  <p className="text-sm font-medium text-[#1A1A1A] transition-all">{currentStep.text}</p>
                   <p className="text-xs text-[#6B7280] mt-0.5">
                     {progress.done}/{progress.total} questions ready · {formatElapsed(elapsed)}
                   </p>
@@ -1190,25 +1249,23 @@ export default function GeneratePage() {
             </Card>
           )}
 
-          {/* Error + resume/keep buttons */}
+          {/* Error + resume */}
           {error && (
             <Card className="border-red-200 bg-red-50">
               <p className="text-sm text-red-700 whitespace-pre-wrap mb-3">{error}</p>
               {resumeInfo && (
                 <div className="flex gap-2">
-                  <button
-                    onClick={handleResume}
+                  <button onClick={handleResume}
                     className="flex items-center gap-1.5 px-4 py-2 bg-[#1B3D2F] text-white text-sm font-semibold rounded-lg hover:opacity-90 transition-opacity"
                   >
                     <Play size={14} />
-                    ▶️ Resume ({resumeInfo.resumeFrom}/{resumeInfo.totalRequested})
+                    Resume ({resumeInfo.resumeFrom}/{resumeInfo.totalRequested})
                   </button>
-                  <button
-                    onClick={keepPartial}
+                  <button onClick={keepPartial}
                     className="flex items-center gap-1.5 px-4 py-2 border border-[#D1D5DB] text-[#1A1A1A] text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
                   >
                     <Check size={14} />
-                    ✓ Keep {resumeInfo.resumeFrom} questions
+                    Keep {resumeInfo.resumeFrom} questions
                   </button>
                 </div>
               )}
@@ -1247,20 +1304,16 @@ export default function GeneratePage() {
               </div>
               <div className="flex gap-2">
                 {pendingCount > 0 && (
-                  <button
-                    onClick={approveAll}
+                  <button onClick={approveAll}
                     className="flex items-center gap-2 px-4 py-2 bg-[#2ECC71] text-white text-sm font-semibold rounded-lg hover:opacity-90 transition-opacity"
                   >
-                    <CheckCircle size={14} />
-                    Approve All ({pendingCount})
+                    <CheckCircle size={14} /> Approve All ({pendingCount})
                   </button>
                 )}
-                <button
-                  onClick={() => navigate('/admin/questions')}
+                <button onClick={() => navigate('/admin/questions')}
                   className="flex items-center gap-2 px-4 py-2 border border-[#D1D5DB] text-[#1A1A1A] text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
                 >
-                  View in Questions
-                  <ArrowRight size={14} />
+                  View in Questions <ArrowRight size={14} />
                 </button>
               </div>
             </Card>
@@ -1275,13 +1328,10 @@ export default function GeneratePage() {
                 </p>
                 <div className="flex items-center gap-2">
                   {generated.some(q => q.status === 'pending_review') && (
-                    <button
-                      onClick={() => approveBatch(generated)}
+                    <button onClick={() => approveBatch(generated)}
                       className="flex items-center gap-1 px-2 py-1 text-xs text-green-600 hover:bg-green-50 rounded-lg transition-colors cursor-pointer"
-                      title="Approve all questions in this batch"
                     >
-                      <CheckCircle size={12} />
-                      Approve All
+                      <CheckCircle size={12} /> Approve All
                     </button>
                   )}
                 </div>
@@ -1300,56 +1350,32 @@ export default function GeneratePage() {
                         {q.question_en?.slice(0, 80)}{q.question_en?.length > 80 ? '...' : ''}
                       </p>
                       <div className="flex items-center gap-2 mt-1">
-                        <span className="text-xs text-[#6B7280] truncate max-w-[150px]">
-                          {q.macro_category}
-                        </span>
+                        <span className="text-xs text-[#6B7280] truncate max-w-[150px]">{q.macro_category}</span>
                         <span className={`text-xs font-medium capitalize ${
                           q.difficulty === 'hard' ? 'text-red-600' : q.difficulty === 'medium' ? 'text-amber-600' : 'text-green-600'
-                        }`}>
-                          {q.difficulty}
-                        </span>
-                        {/* Language flags */}
+                        }`}>{q.difficulty}</span>
                         <span className="text-xs">
-                          🇬🇧
-                          {q.question_fr && ' 🇫🇷'}
-                          {q.question_it && ' 🇮🇹'}
-                          {q.question_es && ' 🇪🇸'}
+                          🇬🇧{q.question_fr && ' 🇫🇷'}{q.question_it && ' 🇮🇹'}{q.question_es && ' 🇪🇸'}
                         </span>
                         <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
-                          q.status === 'approved'
-                            ? 'bg-green-100 text-green-700'
-                            : q.status === 'rejected'
-                            ? 'bg-red-100 text-red-700'
+                          q.status === 'approved' ? 'bg-green-100 text-green-700'
+                            : q.status === 'rejected' ? 'bg-red-100 text-red-700'
                             : 'bg-amber-100 text-amber-700'
-                        }`}>
-                          {q.status?.replace('_', ' ')}
-                        </span>
+                        }`}>{q.status?.replace('_', ' ')}</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setEditQuestion(q) }}
-                        className="p-1.5 rounded-lg text-[#6B7280] hover:bg-gray-100 transition-colors"
-                        title="Edit"
-                      >
-                        <Pencil size={14} />
-                      </button>
+                      <button onClick={(e) => { e.stopPropagation(); setEditQuestion(q) }}
+                        className="p-1.5 rounded-lg text-[#6B7280] hover:bg-gray-100 transition-colors" title="Edit"
+                      ><Pencil size={14} /></button>
                       {q.status === 'pending_review' && (
                         <>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); quickAction(q.id, 'approved') }}
-                            className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 transition-colors"
-                            title="Approve"
-                          >
-                            <CheckCircle size={16} />
-                          </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); quickAction(q.id, 'rejected') }}
-                            className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition-colors"
-                            title="Reject"
-                          >
-                            <XCircle size={16} />
-                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); quickAction(q.id, 'approved') }}
+                            className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 transition-colors" title="Approve"
+                          ><CheckCircle size={16} /></button>
+                          <button onClick={(e) => { e.stopPropagation(); quickAction(q.id, 'rejected') }}
+                            className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition-colors" title="Reject"
+                          ><XCircle size={16} /></button>
                         </>
                       )}
                     </div>
@@ -1371,19 +1397,15 @@ export default function GeneratePage() {
                     {new Date(batch.timestamp).toLocaleTimeString()}
                   </span>
                   {batch.questions.some(q => q.status === 'pending_review') && (
-                    <button
-                      onClick={() => approveBatch(batch.questions)}
+                    <button onClick={() => approveBatch(batch.questions)}
                       className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-green-600 hover:bg-green-50 rounded transition-colors cursor-pointer"
-                      title="Approve all questions in this batch"
                     >
-                      <CheckCircle size={10} />
-                      Approve All
+                      <CheckCircle size={10} /> Approve All
                     </button>
                   )}
                   <button
                     onClick={() => setBatchHistory(prev => prev.filter((_, idx) => idx !== batchIndex))}
                     className="p-1 text-gray-400 hover:text-red-400 transition-colors cursor-pointer"
-                    title="Remove batch from view (questions stay in database)"
                   >
                     <Trash2 size={12} />
                   </button>
@@ -1391,9 +1413,7 @@ export default function GeneratePage() {
               </div>
               <div className="divide-y divide-gray-100 max-h-[300px] overflow-y-auto">
                 {batch.questions.map((q) => (
-                  <div
-                    key={q.id}
-                    onClick={() => setEditQuestion(q)}
+                  <div key={q.id} onClick={() => setEditQuestion(q)}
                     className="flex items-center justify-between px-4 py-2.5 hover:bg-gray-50/50 cursor-pointer"
                   >
                     <div className="flex-1 min-w-0 mr-3">
@@ -1413,29 +1433,17 @@ export default function GeneratePage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setEditQuestion(q) }}
+                      <button onClick={(e) => { e.stopPropagation(); setEditQuestion(q) }}
                         className="p-1.5 rounded-lg text-[#6B7280] hover:bg-gray-100 transition-colors"
-                        title="Edit"
-                      >
-                        <Pencil size={14} />
-                      </button>
+                      ><Pencil size={14} /></button>
                       {q.status === 'pending_review' && (
                         <>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); quickAction(q.id, 'approved') }}
+                          <button onClick={(e) => { e.stopPropagation(); quickAction(q.id, 'approved') }}
                             className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 transition-colors"
-                            title="Approve"
-                          >
-                            <CheckCircle size={16} />
-                          </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); quickAction(q.id, 'rejected') }}
+                          ><CheckCircle size={16} /></button>
+                          <button onClick={(e) => { e.stopPropagation(); quickAction(q.id, 'rejected') }}
                             className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition-colors"
-                            title="Reject"
-                          >
-                            <XCircle size={16} />
-                          </button>
+                          ><XCircle size={16} /></button>
                         </>
                       )}
                     </div>
