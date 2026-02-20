@@ -103,6 +103,25 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function callClaudeWithRetry(system: string, user: string, maxTokens = 8192, retries = 5): Promise<string> {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      return await callClaude(system, user, maxTokens);
+    } catch (err: any) {
+      const msg = err.message || "";
+      const isRetryable = msg.includes("529") || msg.includes("500") || msg.includes("overloaded") || msg.includes("rate");
+      if (isRetryable && attempt < retries) {
+        const delay = Math.min(attempt * 8000, 40000);
+        console.log(`[Retry] Attempt ${attempt}/${retries} failed, waiting ${delay}ms...`);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error("All retry attempts failed");
+}
+
 /** Validate that a summary is real content, not an error or raw JSON */
 function isValidSummary(text: string): boolean {
   if (!text || text.length < 50) return false;
@@ -220,7 +239,7 @@ Return ONLY valid JSON:
   "category": "one of: Funding, AI & Tech, M&A & Exits, Market Moves, European Tech, VC & Investors, Regulation"
 }
 Return ONLY the JSON object, no markdown, no code blocks.`;
-      const summaryResult = await callClaude(manualPrompt, `ARTICLE URL: ${manualUrl}\n\nARTICLE CONTENT:\n${fullContent}`);
+      const summaryResult = await callClaudeWithRetry(manualPrompt, `ARTICLE URL: ${manualUrl}\n\nARTICLE CONTENT:\n${fullContent}`);
 
       let parsed = robustParseJSON(summaryResult);
 
@@ -287,7 +306,7 @@ Return ONLY valid JSON:
 }
 Return ONLY the JSON object, no markdown, no code blocks.`;
 
-      const summaryResult = await callClaude(manualTextPrompt, `RAW TEXT CONTENT:\n\n${manualText.slice(0, 4000)}`, 2048);
+      const summaryResult = await callClaudeWithRetry(manualTextPrompt, `RAW TEXT CONTENT:\n\n${manualText.slice(0, 4000)}`, 2048);
       let parsed = robustParseJSON(summaryResult);
 
       // Clean all parsed fields
@@ -309,7 +328,7 @@ Return ONLY the JSON object, no markdown, no code blocks.`;
       if (translateLangs.length > 0 && parsed.summary_en && parsed.summary_en.length >= 50) {
         try {
           const transPrompt = buildTranslationPrompt(translateLangs);
-          const transResult = await callClaude(
+          const transResult = await callClaudeWithRetry(
             transPrompt,
             `TITLE TO TRANSLATE: ${finalTitle}\n\nENGLISH SUMMARY TO TRANSLATE:\n\n${parsed.summary_en}`,
             4096
@@ -400,7 +419,7 @@ Return ONLY the JSON object, no markdown, no code blocks.`;
       `${i + 1}. [${a.category}] ${a.title}\n   Source: ${a.source_name}\n   Description: ${(a.description || "").slice(0, 150)}`
     ).join("\n\n");
 
-    const selectionResult = await callClaude(
+    const selectionResult = await callClaudeWithRetry(
       selectionPrompt,
       `Here are ${articles.length} recent articles:\n\n${articleList}\n\nReturn ONLY a JSON array of the selected article numbers, e.g. [1, 3, 5, 7, 9]. Select 5-10 articles maximum.`,
       500
@@ -441,7 +460,7 @@ Return ONLY the JSON object, no markdown, no code blocks.`;
           fullContent = `Title: ${article.title}\nDescription: ${article.description || ""}\nContent: ${article.content || ""}`;
         }
         // --- CALL 1: Generate EN summary ---
-        const summaryResult = await callClaude(
+        const summaryResult = await callClaudeWithRetry(
           summaryPrompt,
           `ARTICLE TITLE: ${article.title}\nSOURCE: ${article.source_name}\nCATEGORY: ${article.category}\n\nFULL ARTICLE CONTENT:\n${fullContent}`,
           2048
@@ -456,7 +475,7 @@ Return ONLY the JSON object, no markdown, no code blocks.`;
         if (!isLocalLang && translateLangs.length > 0 && isValidSummary(parsed.summary_en)) {
           try {
             const transPrompt = buildTranslationPrompt(translateLangs);
-            const transResult = await callClaude(
+            const transResult = await callClaudeWithRetry(
               transPrompt,
               `TITLE TO TRANSLATE: ${article.title}\n\nENGLISH SUMMARY TO TRANSLATE:\n\n${parsed.summary_en}`,
               4096

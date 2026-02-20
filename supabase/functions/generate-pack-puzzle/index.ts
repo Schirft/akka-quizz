@@ -52,7 +52,7 @@ async function callClaude(prompt: string, maxTokens = 4096): Promise<string> {
   return data.content?.[0]?.text || "";
 }
 
-async function callClaudeWithRetry(prompt: string, maxTokens = 4096, retries = 3): Promise<string> {
+async function callClaudeWithRetry(prompt: string, maxTokens = 4096, retries = 5): Promise<string> {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       return await callClaude(prompt, maxTokens);
@@ -60,7 +60,7 @@ async function callClaudeWithRetry(prompt: string, maxTokens = 4096, retries = 3
       const msg = err.message || "";
       const isRetryable = msg.includes("529") || msg.includes("500") || msg.includes("overloaded") || msg.includes("rate");
       if (isRetryable && attempt < retries) {
-        const delay = attempt * 5000;
+        const delay = Math.min(attempt * 8000, 40000);
         console.log(`[Retry] Attempt ${attempt}/${retries} failed, waiting ${delay}ms...`);
         await new Promise(r => setTimeout(r, delay));
         continue;

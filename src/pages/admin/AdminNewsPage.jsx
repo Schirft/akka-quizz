@@ -25,6 +25,8 @@ export default function AdminNewsPage() {
   const [generating, setGenerating] = useState(false)
   const [genResult, setGenResult] = useState(null)
   const [genError, setGenError] = useState(null)
+  const [genStep, setGenStep] = useState('')
+  const [genCancelled, setGenCancelled] = useState(false)
 
   // B1: Batch generation controls
   const [batchArticleCount, setBatchArticleCount] = useState(5)
@@ -139,7 +141,7 @@ export default function AdminNewsPage() {
         .select('value')
         .eq('key', 'news_selection_prompt')
         .single()
-      if (selData?.value) setSelectionPrompt(selData.value)
+      if (selData?.value && selData.value !== 'default') setSelectionPrompt(selData.value)
     } catch {}
     try {
       const { data: sumData } = await supabase
@@ -147,8 +149,13 @@ export default function AdminNewsPage() {
         .select('value')
         .eq('key', 'news_summary_prompt')
         .single()
-      if (sumData?.value) setSummaryPrompt(sumData.value)
+      if (sumData?.value && sumData.value !== 'default') setSummaryPrompt(sumData.value)
     } catch {}
+  }
+
+  function handleResetPrompts() {
+    setSelectionPrompt(DEFAULT_SELECTION_PROMPT)
+    setSummaryPrompt(DEFAULT_SUMMARY_PROMPT)
   }
 
   // Section A: Generate today's news (B1: batch languages, B4: sessionStorage)
@@ -156,13 +163,19 @@ export default function AdminNewsPage() {
     setGenerating(true)
     setGenResult(null)
     setGenError(null)
+    setGenCancelled(false)
+    setGenStep('Starting...')
 
     // B4: Persist generating state
     sessionStorage.setItem('akka_news_generating', JSON.stringify({ generating: true, startedAt: Date.now() }))
 
     try {
       const results = []
-      for (const lang of batchLanguages) {
+      const langNames = { en: 'English', fr: 'French', it: 'Italian', es: 'Spanish' }
+      for (let i = 0; i < batchLanguages.length; i++) {
+        if (genCancelled) break
+        const lang = batchLanguages[i]
+        setGenStep(`Step ${i + 1}/${batchLanguages.length}: Generating ${langNames[lang] || lang.toUpperCase()} summaries...`)
         const { data, error } = await supabase.functions.invoke('generate-summaries', {
           body: { selectionPrompt, summaryPrompt, language: lang, max_articles: batchArticleCount },
         })
@@ -181,12 +194,20 @@ export default function AdminNewsPage() {
       })
       await loadArticles()
     } catch (err) {
-      setGenError(err.message || 'Generation failed')
+      if (!genCancelled) setGenError(err.message || 'Generation failed')
     } finally {
       setGenerating(false)
+      setGenStep('')
       // B4: Remove persisted state
       sessionStorage.removeItem('akka_news_generating')
     }
+  }
+
+  function handleCancelGeneration() {
+    setGenCancelled(true)
+    setGenerating(false)
+    setGenStep('')
+    sessionStorage.removeItem('akka_news_generating')
   }
 
   // Section B: Manual add by URL
@@ -376,6 +397,98 @@ export default function AdminNewsPage() {
     })
   }
 
+  // 7d: Split articles into today's and older
+  const today = new Date().toISOString().slice(0, 10)
+  const todayArticles = articles.filter((a) => a.published_at && a.published_at.slice(0, 10) === today)
+  const olderArticles = articles.filter((a) => !a.published_at || a.published_at.slice(0, 10) !== today)
+
+  // 7b: Language flags helper
+  function getLangFlags(article) {
+    const flags = []
+    if (article.summary_en) flags.push('🇬🇧')
+    if (article.summary_fr) flags.push('🇫🇷')
+    if (article.summary_it) flags.push('🇮🇹')
+    if (article.summary_es) flags.push('🇪🇸')
+    return flags.join('')
+  }
+
+  function renderArticleRow(article) {
+    return (
+      <div
+        key={article.id}
+        className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50/50 transition-colors"
+      >
+        {/* Thumbnail */}
+        {article.image_url ? (
+          <img
+            src={article.image_url}
+            alt=""
+            className="w-12 h-12 rounded-lg object-cover shrink-0"
+            onError={(e) => { e.target.style.display = 'none' }}
+          />
+        ) : (
+          <div className="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
+            <span className="text-lg">📰</span>
+          </div>
+        )}
+
+        {/* Content */}
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-gray-900 truncate">
+            {article.title_en || article.title}
+          </p>
+          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+            <span className="text-xs text-gray-500">
+              {article.source_name}
+            </span>
+            <span className="text-xs text-gray-400">·</span>
+            {/* 7c: Date more visible */}
+            <span className="text-xs font-semibold text-gray-700">
+              {formatDate(article.published_at)}
+            </span>
+            {article.category && (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-600">
+                {article.category}
+              </span>
+            )}
+            {/* 7b: Language flags */}
+            <span className="text-xs tracking-wide">{getLangFlags(article)}</span>
+          </div>
+          {(article.summary_en || article.description) && (
+            <p className="text-xs text-gray-600 mt-1 line-clamp-2">
+              {(article.summary_en || article.description || '').slice(0, 150)}...
+            </p>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={() => { setPreviewArticle(article); setPreviewLang('en') }}
+            className="p-1.5 rounded-lg text-[#6B7280] hover:bg-gray-100 transition-colors"
+            title="Preview summary"
+          >
+            <Eye size={16} />
+          </button>
+          <button
+            onClick={() => openEditModal(article)}
+            className="p-1.5 rounded-lg text-blue-400 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+            title="Edit titles"
+          >
+            <Edit3 size={16} />
+          </button>
+          <button
+            onClick={() => handleUnpublish(article.id)}
+            className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+            title="Unpublish"
+          >
+            <EyeOff size={16} />
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div>
       {/* Header */}
@@ -465,9 +578,17 @@ export default function AdminNewsPage() {
           </button>
 
           {generating && (
-            <p className="text-sm text-[#6B7280] mt-3 animate-pulse">
-              Analyzing articles, selecting top stories, generating summaries...
-            </p>
+            <div className="flex items-center gap-3 mt-3">
+              <p className="text-sm text-[#6B7280] animate-pulse">
+                {genStep || 'Analyzing articles, selecting top stories, generating summaries...'}
+              </p>
+              <button
+                onClick={handleCancelGeneration}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors shrink-0"
+              >
+                Cancel
+              </button>
+            </div>
           )}
 
           {genResult && (
@@ -654,83 +775,33 @@ export default function AdminNewsPage() {
               <p className="text-sm text-[#6B7280]">No published articles yet</p>
             </div>
           ) : (
-            <div className="divide-y divide-gray-100 max-h-[600px] overflow-y-auto">
-              {articles.map((article) => (
-                <div
-                  key={article.id}
-                  className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50/50 transition-colors"
-                >
-                  {/* Thumbnail */}
-                  {article.image_url ? (
-                    <img
-                      src={article.image_url}
-                      alt=""
-                      className="w-12 h-12 rounded-lg object-cover shrink-0"
-                      onError={(e) => { e.target.style.display = 'none' }}
-                    />
-                  ) : (
-                    <div className="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
-                      <span className="text-lg">📰</span>
-                    </div>
-                  )}
-
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 truncate">
-                      {article.title_en || article.title}
+            <div className="max-h-[700px] overflow-y-auto">
+              {/* 7d: Today's Articles */}
+              {todayArticles.length > 0 && (
+                <>
+                  <div className="px-4 py-2 bg-green-50/50 border-b border-green-100">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-green-700">
+                      Today's Articles ({todayArticles.length})
                     </p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-xs text-gray-500">
-                        {article.source_name}
-                      </span>
-                      <span className="text-xs text-gray-400">·</span>
-                      <span className="text-xs text-gray-500">
-                        {formatDate(article.published_at)}
-                      </span>
-                      {article.category && (
-                        <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-600">
-                          {article.category}
-                        </span>
-                      )}
-                      {article.language && (
-                        <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-50 text-blue-600 uppercase">
-                          {article.language}
-                        </span>
-                      )}
-                    </div>
-                    {(article.summary_en || article.description) && (
-                      <p className="text-xs text-gray-600 mt-1 line-clamp-2">
-                        {(article.summary_en || article.description || '').slice(0, 150)}...
-                      </p>
-                    )}
                   </div>
-
-                  {/* Actions */}
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      onClick={() => { setPreviewArticle(article); setPreviewLang('en') }}
-                      className="p-1.5 rounded-lg text-[#6B7280] hover:bg-gray-100 transition-colors"
-                      title="Preview summary"
-                    >
-                      <Eye size={16} />
-                    </button>
-                    <button
-                      onClick={() => openEditModal(article)}
-                      className="p-1.5 rounded-lg text-blue-400 hover:bg-blue-50 hover:text-blue-600 transition-colors"
-                      title="Edit titles"
-                    >
-                      <Edit3 size={16} />
-                    </button>
-                    <button
-                      onClick={() => handleUnpublish(article.id)}
-                      className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
-                      title="Unpublish"
-                    >
-                      <EyeOff size={16} />
-                    </button>
+                  <div className="divide-y divide-gray-100">
+                    {todayArticles.map((article) => renderArticleRow(article))}
                   </div>
-                </div>
-              ))}
+                </>
+              )}
+              {/* 7d: Older Articles */}
+              {olderArticles.length > 0 && (
+                <>
+                  <div className="px-4 py-2 bg-gray-50/80 border-b border-gray-200">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-[#6B7280]">
+                      {todayArticles.length > 0 ? 'Older Articles' : 'All Articles'} ({olderArticles.length})
+                    </p>
+                  </div>
+                  <div className="divide-y divide-gray-100">
+                    {olderArticles.map((article) => renderArticleRow(article))}
+                  </div>
+                </>
+              )}
             </div>
           )}
         </Card>
@@ -790,6 +861,12 @@ export default function AdminNewsPage() {
                     <Loader2 size={14} className="animate-spin" />
                   ) : null}
                   Save Prompts
+                </button>
+                <button
+                  onClick={handleResetPrompts}
+                  className="px-4 py-2 text-sm font-medium text-amber-700 bg-amber-50 rounded-xl hover:bg-amber-100 transition-colors"
+                >
+                  Reset to Default
                 </button>
                 {promptsSaved && (
                   <span className="text-sm text-green-600 font-medium">✓ Saved</span>
