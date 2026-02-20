@@ -838,7 +838,7 @@ export default function GeneratePage() {
 
     if (packAbortRef.current) return null
 
-    // Step 4: Translate (non-blocking — pack is still created if translation fails)
+    // Step 4: Translate all content to FR/IT/ES
     setPackStep(3)
     let tResult = { translated: {}, stats: { duration_s: 0, estimated_cost_usd: 0 } }
     let translationNote = null
@@ -849,14 +849,16 @@ export default function GeneratePage() {
         lesson_id: lessonId,
       })
     } catch (tErr) {
-      console.warn('[Pack] Translation failed (non-blocking):', tErr.message)
-      translationNote = `Translation skipped: ${tErr.message}`
+      console.error('[Pack] Translation failed:', tErr.message)
+      translationNote = `⚠️ Translation failed: ${tErr.message}. Pack created in English only.`
     }
 
     if (packAbortRef.current) return null
 
     // Step 5: Assemble pack record client-side
     setPackStep(4)
+    // Assign to today's date so the quiz can find it
+    const todayDate = new Date().toISOString().slice(0, 10)
     const { data: packRow, error: packErr } = await supabase
       .from('daily_packs')
       .insert({
@@ -866,6 +868,7 @@ export default function GeneratePage() {
         puzzle_id: puzzleId,
         lesson_id: lessonId,
         status: 'active',
+        assigned_date: todayDate,
       })
       .select('id')
       .single()

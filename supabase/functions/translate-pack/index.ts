@@ -72,15 +72,43 @@ async function callClaudeWithRetry(prompt: string, maxTokens = 8192, retries = 5
 }
 
 function extractJSON(text: string): any {
+  // Try code block first
   const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (jsonMatch) return JSON.parse(jsonMatch[1].trim());
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start >= 0 && end > start) return JSON.parse(text.slice(start, end + 1));
-  const arrStart = text.indexOf("[");
-  const arrEnd = text.lastIndexOf("]");
-  if (arrStart >= 0 && arrEnd > arrStart) return JSON.parse(text.slice(arrStart, arrEnd + 1));
-  throw new Error("No valid JSON found in response");
+  const raw = jsonMatch ? jsonMatch[1].trim() : (() => {
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start >= 0 && end > start) return text.slice(start, end + 1);
+    const arrStart = text.indexOf("[");
+    const arrEnd = text.lastIndexOf("]");
+    if (arrStart >= 0 && arrEnd > arrStart) return text.slice(arrStart, arrEnd + 1);
+    throw new Error("No valid JSON found in response");
+  })();
+
+  // Try parsing as-is first
+  try { return JSON.parse(raw); } catch (_) { /* try fixes */ }
+
+  // Fix common JSON issues from LLM output:
+  // 1. Replace literal newlines inside strings with \n
+  // 2. Fix unescaped quotes inside strings
+  let cleaned = raw;
+  // Replace literal control chars inside string values
+  cleaned = cleaned.replace(/:\s*"((?:[^"\\]|\\.)*)"/g, (_match, content) => {
+    const fixed = content
+      .replace(/\n/g, "\\n")
+      .replace(/\r/g, "\\r")
+      .replace(/\t/g, "\\t");
+    return `: "${fixed}"`;
+  });
+  try { return JSON.parse(cleaned); } catch (_) { /* try more aggressive fix */ }
+
+  // More aggressive: try to fix by removing all control characters
+  cleaned = raw.replace(/[\x00-\x1f\x7f]/g, (ch) => {
+    if (ch === "\n" || ch === "\r" || ch === "\t") return " ";
+    return "";
+  });
+  try { return JSON.parse(cleaned); } catch (e) {
+    throw new Error(`JSON parse failed after cleanup: ${(e as Error).message}`);
+  }
 }
 
 function buildTranslationPrompt(fields: Record<string, string>): string {
@@ -93,8 +121,11 @@ function buildTranslationPrompt(fields: Record<string, string>): string {
 
   return `Translate ALL the following fields into French (fr), Italian (it), and Spanish (es).
 Keep the same JSON keys. Maintain formatting (paragraphs, bullet points).
+CRITICAL: Return ONLY valid JSON. Escape all special characters properly.
+Do NOT use literal newlines inside JSON string values — use \\n instead.
+Do NOT use unescaped quotes inside string values — use \\" instead.
 
-Return ONLY valid JSON:
+Return ONLY valid JSON (no markdown, no explanation):
 {
   "fr": { ${keys.map((k) => `"${k}": "..."`).join(", ")} },
   "it": { ${keys.map((k) => `"${k}": "..."`).join(", ")} },
@@ -210,134 +241,129 @@ Deno.serve(async (req: Request) => {
       lesson = data;
     }
 
-    // ─── Build translation fields ────────────────────────────────────────
-    const transFields: Record<string, string> = {};
-
-    // Questions
-    questions.forEach((q: any, i: number) => {
-      transFields[`q${i}_question`] = q.question_en || "";
-      transFields[`q${i}_explanation`] = q.explanation_en || "";
-      if (q.answers_en) {
-        q.answers_en.forEach((a: string, j: number) => {
-          transFields[`q${i}_answer_${j}`] = a;
-        });
-      }
-    });
-
-    // Puzzle
-    if (puzzle) {
-      transFields["puzzle_title"] = puzzle.title || "";
-      transFields["puzzle_hint"] = puzzle.hint || "";
-      transFields["puzzle_explanation"] = puzzle.explanation || "";
-
-      // C1: Extract puzzle context_data translatable strings
-      const ctxStrings = extractContextDataStrings(puzzle.context_data);
-      for (const [key, val] of Object.entries(ctxStrings)) {
-        transFields[key] = val;
-      }
+    // ─── Helper: translate a small set of fields via Claude ──────────────
+    async function translateFields(fields: Record<string, string>): Promise<{ fr: Record<string, string>; it: Record<string, string>; es: Record<string, string> }> {
+      const prompt = buildTranslationPrompt(fields);
+      const resp = await callClaudeWithRetry(prompt, 8192);
+      const parsed = extractJSON(resp);
+      return { fr: parsed.fr || {}, it: parsed.it || {}, es: parsed.es || {} };
     }
 
-    // Lesson
-    if (lesson) {
-      transFields["lesson_title"] = lesson.title || "";
-      transFields["lesson_content"] = lesson.content || "";
-      transFields["lesson_key_takeaway"] = lesson.key_takeaway || "";
-    }
-
-    // ─── Call Claude for translation ─────────────────────────────────────
-    console.log(`[TranslatePack] Translating ${Object.keys(transFields).length} fields...`);
-
-    let translations: any = { fr: {}, it: {}, es: {} };
-    try {
-      const transResp = await callClaudeWithRetry(buildTranslationPrompt(transFields), 8192);
-      translations = extractJSON(transResp);
-    } catch (err) {
-      console.error("[TranslatePack] Translation failed:", err);
-      throw new Error(`Translation failed: ${(err as Error).message}`);
-    }
-
-    const fr = translations.fr || {};
-    const it = translations.it || {};
-    const es = translations.es || {};
-
-    // ─── Update Questions ────────────────────────────────────────────────
+    // ─── Translate & Update Questions (one call per question for reliability) ──
     let questionsUpdated = 0;
     for (let i = 0; i < questions.length; i++) {
       const q = questions[i];
-      const answersEn = q.answers_en || [];
-      const answersFr = answersEn.map((_: string, j: number) => fr[`q${i}_answer_${j}`] || answersEn[j]);
-      const answersIt = answersEn.map((_: string, j: number) => it[`q${i}_answer_${j}`] || answersEn[j]);
-      const answersEs = answersEn.map((_: string, j: number) => es[`q${i}_answer_${j}`] || answersEn[j]);
+      const qFields: Record<string, string> = {
+        question: q.question_en || "",
+        explanation: q.explanation_en || "",
+      };
+      if (q.answers_en) {
+        q.answers_en.forEach((a: string, j: number) => {
+          qFields[`answer_${j}`] = a;
+        });
+      }
 
-      const { error: uErr } = await supabase
-        .from("questions")
-        .update({
-          question_fr: fr[`q${i}_question`] || "",
-          question_it: it[`q${i}_question`] || "",
-          question_es: es[`q${i}_question`] || "",
-          answers_fr: answersFr,
-          answers_it: answersIt,
-          answers_es: answersEs,
-          explanation_fr: fr[`q${i}_explanation`] || "",
-          explanation_it: it[`q${i}_explanation`] || "",
-          explanation_es: es[`q${i}_explanation`] || "",
-        })
-        .eq("id", q.id);
-
-      if (!uErr) questionsUpdated++;
-      else console.error(`[TranslatePack] Question update error for ${q.id}:`, uErr);
+      console.log(`[TranslatePack] Translating question ${i + 1}/${questions.length}...`);
+      try {
+        const t = await translateFields(qFields);
+        const answersEn = q.answers_en || [];
+        const { error: uErr } = await supabase
+          .from("questions")
+          .update({
+            question_fr: t.fr["question"] || "",
+            question_it: t.it["question"] || "",
+            question_es: t.es["question"] || "",
+            answers_fr: answersEn.map((_: string, j: number) => t.fr[`answer_${j}`] || answersEn[j]),
+            answers_it: answersEn.map((_: string, j: number) => t.it[`answer_${j}`] || answersEn[j]),
+            answers_es: answersEn.map((_: string, j: number) => t.es[`answer_${j}`] || answersEn[j]),
+            explanation_fr: t.fr["explanation"] || "",
+            explanation_it: t.it["explanation"] || "",
+            explanation_es: t.es["explanation"] || "",
+          })
+          .eq("id", q.id);
+        if (!uErr) questionsUpdated++;
+        else console.error(`[TranslatePack] Question update error for ${q.id}:`, uErr);
+      } catch (err) {
+        console.error(`[TranslatePack] Question ${i} translation failed:`, (err as Error).message);
+      }
     }
 
-    // ─── Update Puzzle ───────────────────────────────────────────────────
+    // ─── Translate & Update Puzzle ────────────────────────────────────────
     let puzzleUpdated = false;
     if (puzzle) {
-      // C1: Rebuild context_data with translations for each language
-      const contextDataFr = rebuildContextData(puzzle.context_data, fr);
-      const contextDataIt = rebuildContextData(puzzle.context_data, it);
-      const contextDataEs = rebuildContextData(puzzle.context_data, es);
+      const pFields: Record<string, string> = {
+        title: puzzle.title || "",
+        hint: puzzle.hint || "",
+        explanation: puzzle.explanation || "",
+      };
+      // C1: Extract puzzle context_data translatable strings
+      const ctxStrings = extractContextDataStrings(puzzle.context_data);
+      for (const [key, val] of Object.entries(ctxStrings)) {
+        pFields[key] = val;
+      }
 
-      const { error: pErr } = await supabase
-        .from("puzzles")
-        .update({
-          title_fr: fr["puzzle_title"] || "",
-          title_it: it["puzzle_title"] || "",
-          title_es: es["puzzle_title"] || "",
-          hint_fr: fr["puzzle_hint"] || "",
-          hint_it: it["puzzle_hint"] || "",
-          hint_es: es["puzzle_hint"] || "",
-          explanation_fr: fr["puzzle_explanation"] || "",
-          explanation_it: it["puzzle_explanation"] || "",
-          explanation_es: es["puzzle_explanation"] || "",
-          context_data_fr: contextDataFr,
-          context_data_it: contextDataIt,
-          context_data_es: contextDataEs,
-        })
-        .eq("id", puzzle.id);
+      console.log(`[TranslatePack] Translating puzzle (${Object.keys(pFields).length} fields)...`);
+      try {
+        const t = await translateFields(pFields);
+        const contextDataFr = rebuildContextData(puzzle.context_data, t.fr);
+        const contextDataIt = rebuildContextData(puzzle.context_data, t.it);
+        const contextDataEs = rebuildContextData(puzzle.context_data, t.es);
 
-      if (!pErr) puzzleUpdated = true;
-      else console.error("[TranslatePack] Puzzle update error:", pErr);
+        const { error: pErr } = await supabase
+          .from("puzzles")
+          .update({
+            title_fr: t.fr["title"] || "",
+            title_it: t.it["title"] || "",
+            title_es: t.es["title"] || "",
+            hint_fr: t.fr["hint"] || "",
+            hint_it: t.it["hint"] || "",
+            hint_es: t.es["hint"] || "",
+            explanation_fr: t.fr["explanation"] || "",
+            explanation_it: t.it["explanation"] || "",
+            explanation_es: t.es["explanation"] || "",
+            context_data_fr: contextDataFr,
+            context_data_it: contextDataIt,
+            context_data_es: contextDataEs,
+          })
+          .eq("id", puzzle.id);
+        if (!pErr) puzzleUpdated = true;
+        else console.error("[TranslatePack] Puzzle update error:", pErr);
+      } catch (err) {
+        console.error("[TranslatePack] Puzzle translation failed:", (err as Error).message);
+      }
     }
 
-    // ─── Update Lesson ───────────────────────────────────────────────────
+    // ─── Translate & Update Lesson ───────────────────────────────────────
     let lessonUpdated = false;
     if (lesson) {
-      const { error: lErr } = await supabase
-        .from("daily_lessons")
-        .update({
-          title_fr: fr["lesson_title"] || "",
-          title_it: it["lesson_title"] || "",
-          title_es: es["lesson_title"] || "",
-          content_fr: fr["lesson_content"] || "",
-          content_it: it["lesson_content"] || "",
-          content_es: es["lesson_content"] || "",
-          key_takeaway_fr: fr["lesson_key_takeaway"] || "",
-          key_takeaway_it: it["lesson_key_takeaway"] || "",
-          key_takeaway_es: es["lesson_key_takeaway"] || "",
-        })
-        .eq("id", lesson.id);
+      const lFields: Record<string, string> = {
+        title: lesson.title || "",
+        content: lesson.content || "",
+        key_takeaway: lesson.key_takeaway || "",
+      };
 
-      if (!lErr) lessonUpdated = true;
-      else console.error("[TranslatePack] Lesson update error:", lErr);
+      console.log("[TranslatePack] Translating lesson...");
+      try {
+        const t = await translateFields(lFields);
+        const { error: lErr } = await supabase
+          .from("daily_lessons")
+          .update({
+            title_fr: t.fr["title"] || "",
+            title_it: t.it["title"] || "",
+            title_es: t.es["title"] || "",
+            content_fr: t.fr["content"] || "",
+            content_it: t.it["content"] || "",
+            content_es: t.es["content"] || "",
+            key_takeaway_fr: t.fr["key_takeaway"] || "",
+            key_takeaway_it: t.it["key_takeaway"] || "",
+            key_takeaway_es: t.es["key_takeaway"] || "",
+          })
+          .eq("id", lesson.id);
+        if (!lErr) lessonUpdated = true;
+        else console.error("[TranslatePack] Lesson update error:", lErr);
+      } catch (err) {
+        console.error("[TranslatePack] Lesson translation failed:", (err as Error).message);
+      }
     }
 
     const durationMs = Date.now() - startTime;
