@@ -30,7 +30,6 @@ export default function AdminNewsPage() {
 
   // B1: Batch generation controls
   const [batchArticleCount, setBatchArticleCount] = useState(5)
-  const [batchLanguages, setBatchLanguages] = useState(['en', 'fr', 'it', 'es'])
 
   // Section B: Manual add by URL
   const [manualUrl, setManualUrl] = useState('')
@@ -86,7 +85,6 @@ export default function AdminNewsPage() {
           setGenerating(true)
           const pollInterval = setInterval(async () => {
             await loadArticles()
-            // Check if still within 10 minute window
             const current = sessionStorage.getItem('akka_news_generating')
             if (!current) {
               clearInterval(pollInterval)
@@ -99,7 +97,7 @@ export default function AdminNewsPage() {
                 setGenerating(false)
               }
             }
-          }, 15000) // Poll every 15 seconds
+          }, 15000)
           return () => clearInterval(pollInterval)
         } else {
           sessionStorage.removeItem('akka_news_generating')
@@ -121,7 +119,6 @@ export default function AdminNewsPage() {
 
       setArticles(data || [])
       if (data && data.length > 0) {
-        // For lastPublished, always find the newest regardless of sort
         const newest = effectiveSort === 'oldest'
           ? data[data.length - 1].published_at
           : data[0].published_at
@@ -158,19 +155,18 @@ export default function AdminNewsPage() {
     setSummaryPrompt(DEFAULT_SUMMARY_PROMPT)
   }
 
-  // Section A: Generate today's news (B1: batch languages, B4: sessionStorage)
+  // Section A: Generate today's news — single call to generate-summaries (v25 handles EN + FR/IT/ES)
   async function handleGenerate() {
     setGenerating(true)
     setGenResult(null)
     setGenError(null)
     setGenCancelled(false)
-    setGenStep('Step 1: Fetching fresh articles from news sources...')
+    setGenStep('Step 1/2: Fetching fresh articles from news sources...')
 
-    // B4: Persist generating state
     sessionStorage.setItem('akka_news_generating', JSON.stringify({ generating: true, startedAt: Date.now() }))
 
     try {
-      // Step 1: Fetch fresh articles from GNews via fetch-news Edge Function
+      // Step 1: Fetch fresh articles from GNews
       const { data: fetchData, error: fetchError } = await supabase.functions.invoke('fetch-news', {
         body: {},
       })
@@ -180,31 +176,19 @@ export default function AdminNewsPage() {
 
       if (genCancelled) return
 
-      // Step 2+: Generate summaries per language
-      const results = []
-      const langNames = { en: 'English', fr: 'French', it: 'Italian', es: 'Spanish' }
-      const totalSteps = batchLanguages.length + 1 // +1 for fetch step
-      for (let i = 0; i < batchLanguages.length; i++) {
-        if (genCancelled) break
-        const lang = batchLanguages[i]
-        setGenStep(`Step ${i + 2}/${totalSteps}: Selecting & summarizing ${langNames[lang] || lang.toUpperCase()} articles...`)
-        const { data, error } = await supabase.functions.invoke('generate-summaries', {
-          body: { selectionPrompt, summaryPrompt, language: lang, max_articles: batchArticleCount },
-        })
-        if (error) throw error
-        results.push({ language: lang, ...data })
-      }
-      // Aggregate results
-      const totalAnalyzed = results.reduce((sum, r) => sum + (r.analyzed || 0), 0)
-      const totalSelected = results.reduce((sum, r) => sum + (r.selected || 0), 0)
-      const totalSummarized = results.reduce((sum, r) => sum + (r.summarized || 0), 0)
+      // Step 2: Generate summaries (EN) + translations (FR/IT/ES) in ONE call
+      setGenStep('Step 2/2: Selecting top stories, generating summaries & translations (EN→FR/IT/ES)...')
+      const { data, error } = await supabase.functions.invoke('generate-summaries', {
+        body: { max_articles: batchArticleCount },
+      })
+      if (error) throw error
+
       setGenResult({
         fetched,
         skipped,
-        analyzed: totalAnalyzed,
-        selected: totalSelected,
-        summarized: totalSummarized,
-        languages: results.map((r) => r.language),
+        analyzed: data?.analyzed || 0,
+        selected: data?.selected || 0,
+        summarized: data?.summarized || 0,
       })
       await loadArticles()
     } catch (err) {
@@ -212,7 +196,6 @@ export default function AdminNewsPage() {
     } finally {
       setGenerating(false)
       setGenStep('')
-      // B4: Remove persisted state
       sessionStorage.removeItem('akka_news_generating')
     }
   }
@@ -252,10 +235,8 @@ export default function AdminNewsPage() {
     setTextResult(null)
     setTextError(null)
     try {
-      // Determine image URL: file upload takes priority over URL
       let finalImageUrl = manualImageUrl
       if (manualImageFile) {
-        // Upload to Supabase Storage
         const ext = manualImageFile.name.split('.').pop()
         const path = `news/${Date.now()}.${ext}`
         const { data: uploadData, error: uploadErr } = await supabase.storage
@@ -272,7 +253,6 @@ export default function AdminNewsPage() {
           manualText: manualText.trim(),
           manualTitle: manualTitle.trim() || undefined,
           manualImageUrl: finalImageUrl || undefined,
-          manualSourceName: 'Manual Entry',
         },
       })
       if (error) throw error
@@ -331,7 +311,6 @@ export default function AdminNewsPage() {
     }
   }
 
-  // A1 FIX: Preview title uses localized title
   function getPreviewTitle() {
     if (!previewArticle) return ''
     if (previewLang === 'fr') return previewArticle.title_fr || previewArticle.title
@@ -340,7 +319,6 @@ export default function AdminNewsPage() {
     return previewArticle.title_en || previewArticle.title
   }
 
-  // A1 FIX: Open edit modal with correct title per language + B3: summaries
   function openEditModal(article) {
     setEditArticle(article)
     setEditTitles({
@@ -374,7 +352,6 @@ export default function AdminNewsPage() {
           summary_es: editSummaries.es,
         })
         .eq('id', editArticle.id)
-      // Update local state
       setArticles((prev) =>
         prev.map((a) =>
           a.id === editArticle.id
@@ -411,12 +388,10 @@ export default function AdminNewsPage() {
     })
   }
 
-  // 7d: Split articles into today's and older
   const today = new Date().toISOString().slice(0, 10)
   const todayArticles = articles.filter((a) => a.published_at && a.published_at.slice(0, 10) === today)
   const olderArticles = articles.filter((a) => !a.published_at || a.published_at.slice(0, 10) !== today)
 
-  // 7b: Language flags helper
   function getLangFlags(article) {
     const flags = []
     if (article.summary_en) flags.push('🇬🇧')
@@ -432,7 +407,6 @@ export default function AdminNewsPage() {
         key={article.id}
         className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50/50 transition-colors"
       >
-        {/* Thumbnail */}
         {article.image_url ? (
           <img
             src={article.image_url}
@@ -446,7 +420,6 @@ export default function AdminNewsPage() {
           </div>
         )}
 
-        {/* Content */}
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-gray-900 truncate">
             {article.title_en || article.title}
@@ -456,7 +429,6 @@ export default function AdminNewsPage() {
               {article.source_name}
             </span>
             <span className="text-xs text-gray-400">·</span>
-            {/* 7c: Date more visible */}
             <span className="text-xs font-semibold text-gray-700">
               {formatDate(article.published_at)}
             </span>
@@ -465,7 +437,6 @@ export default function AdminNewsPage() {
                 {article.category}
               </span>
             )}
-            {/* 7b: Language flags */}
             <span className="text-xs tracking-wide">{getLangFlags(article)}</span>
           </div>
           {(article.summary_en || article.description) && (
@@ -475,7 +446,6 @@ export default function AdminNewsPage() {
           )}
         </div>
 
-        {/* Actions */}
         <div className="flex items-center gap-1 shrink-0">
           <button
             onClick={() => { setPreviewArticle(article); setPreviewLang('en') }}
@@ -528,7 +498,7 @@ export default function AdminNewsPage() {
             </p>
           </div>
 
-          {/* B1: Batch generation controls */}
+          {/* B1: Article count control */}
           <div className="flex flex-wrap items-center gap-4 mb-4">
             <div className="flex items-center gap-2">
               <label className="text-xs font-medium text-[#6B7280]">Articles:</label>
@@ -543,37 +513,9 @@ export default function AdminNewsPage() {
                 ))}
               </select>
             </div>
-
-            <div className="flex items-center gap-2">
-              <label className="text-xs font-medium text-[#6B7280]">Languages:</label>
-              <div className="flex gap-1">
-                {['en', 'fr', 'it', 'es'].map((lng) => {
-                  const isEn = lng === 'en'
-                  const isSelected = batchLanguages.includes(lng)
-                  return (
-                    <button
-                      key={lng}
-                      disabled={generating || isEn}
-                      onClick={() => {
-                        if (isEn) return
-                        setBatchLanguages((prev) =>
-                          prev.includes(lng)
-                            ? prev.filter((l) => l !== lng)
-                            : [...prev, lng]
-                        )
-                      }}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold uppercase transition-colors ${
-                        isSelected
-                          ? 'bg-[#1B3D2F] text-white'
-                          : 'bg-gray-100 text-[#6B7280] hover:bg-gray-200'
-                      } ${isEn ? 'opacity-80 cursor-not-allowed' : ''} disabled:opacity-50`}
-                    >
-                      {lng}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
+            <p className="text-xs text-[#6B7280]">
+              Each article → EN summary + FR/IT/ES translations
+            </p>
           </div>
 
           <button
@@ -615,7 +557,7 @@ export default function AdminNewsPage() {
               )}
               {genResult.analyzed != null && (
                 <p className="text-xs text-green-700 mt-1">
-                  {genResult.analyzed} articles analyzed · {genResult.selected} selected · {genResult.summarized} summarized
+                  {genResult.analyzed} analyzed · {genResult.selected} selected · {genResult.summarized} summarized (EN + FR/IT/ES)
                 </p>
               )}
             </div>
@@ -706,11 +648,8 @@ export default function AdminNewsPage() {
               className="w-full border border-[#D1D5DB] rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2ECC71] resize-y"
             />
 
-            {/* A3: Image — upload OR URL */}
             <div className="flex flex-col gap-2">
               <label className="text-xs text-gray-500 font-medium">Article image</label>
-
-              {/* Option 1: Upload file */}
               <div className="flex items-center gap-2">
                 <input
                   type="file"
@@ -722,8 +661,6 @@ export default function AdminNewsPage() {
                   <img src={imagePreview} alt="" className="h-10 w-10 object-cover rounded" />
                 )}
               </div>
-
-              {/* Option 2: Paste URL */}
               <div className="flex items-center gap-2">
                 <span className="text-xs text-gray-400">or</span>
                 <input
@@ -795,7 +732,6 @@ export default function AdminNewsPage() {
             </div>
           ) : (
             <div className="max-h-[700px] overflow-y-auto">
-              {/* 7d: Today's Articles */}
               {todayArticles.length > 0 && (
                 <>
                   <div className="px-4 py-2 bg-green-50/50 border-b border-green-100">
@@ -808,7 +744,6 @@ export default function AdminNewsPage() {
                   </div>
                 </>
               )}
-              {/* 7d: Older Articles */}
               {olderArticles.length > 0 && (
                 <>
                   <div className="px-4 py-2 bg-gray-50/80 border-b border-gray-200">
@@ -900,7 +835,6 @@ export default function AdminNewsPage() {
       {previewArticle && (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 overflow-y-auto py-8 px-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl">
-            {/* Header — A1 FIX: use localized title */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-[#D1D5DB]">
               <h2 className="text-lg font-bold text-[#1A1A1A] truncate mr-4">
                 {getPreviewTitle()}
@@ -913,7 +847,6 @@ export default function AdminNewsPage() {
               </button>
             </div>
 
-            {/* Image */}
             {previewArticle.image_url && (
               <img
                 src={previewArticle.image_url}
@@ -923,7 +856,6 @@ export default function AdminNewsPage() {
               />
             )}
 
-            {/* Language tabs */}
             <div className="flex gap-1 px-6 pt-4">
               {['en', 'fr', 'it', 'es'].map((lng) => (
                 <button
@@ -940,7 +872,6 @@ export default function AdminNewsPage() {
               ))}
             </div>
 
-            {/* Summary content — A1 FIX: localized title */}
             <div className="px-6 py-4 max-h-[50vh] overflow-y-auto">
               <p className="text-sm font-semibold text-[#1A1A1A] mb-1">
                 {getPreviewTitle()}
@@ -960,7 +891,6 @@ export default function AdminNewsPage() {
               </div>
             </div>
 
-            {/* Footer */}
             <div className="flex items-center justify-end px-6 py-4 border-t border-[#D1D5DB]">
               <button
                 onClick={() => setPreviewArticle(null)}
