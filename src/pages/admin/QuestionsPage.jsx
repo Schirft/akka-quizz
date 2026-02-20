@@ -438,7 +438,7 @@ export default function QuestionsPage() {
       if (pack.question_ids?.length > 0) {
         const { data: qs } = await supabase
           .from('questions')
-          .select('id, question_en, answers_en, correct_answer_index, macro_category, difficulty, status')
+          .select('id, question_en, answers_en, correct_answer_index, question_fr, question_it, question_es, macro_category, difficulty, status')
           .in('id', pack.question_ids)
         details.questions = qs || []
       }
@@ -793,7 +793,7 @@ export default function QuestionsPage() {
                             ))}
                           </div>
                         ) : (
-                          <p className="text-xs text-red-500">No questions found (IDs missing?)</p>
+                          <p className="text-[10px] text-[#6B7280] italic">No questions</p>
                         )}
                       </div>
 
@@ -1186,23 +1186,30 @@ export default function QuestionsPage() {
                       </td>
                       <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center gap-1">
-                          {q.status === 'pending_review' && (
-                            <>
-                              <button
-                                onClick={(e) => { e.stopPropagation(); quickStatusChange(q.id, 'approved') }}
-                                className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 cursor-pointer transition-colors"
-                                title="Approve"
-                              >
-                                <CheckCircle size={16} className="pointer-events-none" />
-                              </button>
-                              <button
-                                onClick={(e) => { e.stopPropagation(); quickStatusChange(q.id, 'rejected') }}
-                                className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 cursor-pointer transition-colors"
-                                title="Reject"
-                              >
-                                <XCircle size={16} className="pointer-events-none" />
-                              </button>
-                            </>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setModalQuestion(q) }}
+                            className="p-1.5 rounded-lg text-[#6B7280] hover:text-[#1A1A1A] hover:bg-gray-100 cursor-pointer transition-colors"
+                            title="Edit"
+                          >
+                            <Pencil size={16} className="pointer-events-none" />
+                          </button>
+                          {(q.status === 'pending_review' || q.status === 'rejected') && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); quickStatusChange(q.id, 'approved') }}
+                              className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 cursor-pointer transition-colors"
+                              title="Approve"
+                            >
+                              <CheckCircle size={16} className="pointer-events-none" />
+                            </button>
+                          )}
+                          {(q.status === 'pending_review' || q.status === 'approved') && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); quickStatusChange(q.id, 'rejected') }}
+                              className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 cursor-pointer transition-colors"
+                              title="Reject"
+                            >
+                              <XCircle size={16} className="pointer-events-none" />
+                            </button>
                           )}
                         </div>
                       </td>

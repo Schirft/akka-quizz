@@ -134,6 +134,7 @@ export default function GeneratePage() {
   const [packResult, setPackResult] = useState(null)
   const [packError, setPackError] = useState(null)
   const packAbortRef = useRef(false)
+  const [retryingTranslation, setRetryingTranslation] = useState(false)
 
   // B4: Batch progress state
   const [packBatchProgress, setPackBatchProgress] = useState({ current: 0, total: 0, step: 0, errors: [] })
@@ -374,6 +375,44 @@ export default function GeneratePage() {
     window.dispatchEvent(new Event('akka-gen-state'))
     return () => { window.__akka_generating = false }
   }, [generating])
+
+  // ── Part E: Restore pack generation state from sessionStorage on mount ──
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem('akka_gen_state')
+      if (!saved) return
+      const data = JSON.parse(saved)
+      if (!data.generating) return
+      // Stale after 10 min
+      if (data.startTime && Date.now() - data.startTime > 600_000) {
+        sessionStorage.removeItem('akka_gen_state')
+        return
+      }
+      // Restore pack generating UI
+      setPackGenerating(true)
+      setPackTheme(data.theme || 'fundraising')
+      setPackDifficulty(data.difficulty || 'medium')
+      setPackStep(PACK_STEPS.length - 1) // show final step
+      // Poll for completion — check if a pack was created since startTime
+      const pollId = setInterval(async () => {
+        try {
+          const { data: packs } = await supabase
+            .from('daily_packs')
+            .select('id')
+            .gte('created_at', new Date(data.startTime).toISOString())
+            .order('created_at', { ascending: false })
+            .limit(1)
+          if (packs?.length > 0) {
+            clearInterval(pollId)
+            setPackGenerating(false)
+            setPackResult({ questions: 3, puzzle: 1, lesson: 1, packId: packs[0].id })
+            sessionStorage.removeItem('akka_gen_state')
+          }
+        } catch {}
+      }, 3000)
+      return () => clearInterval(pollId)
+    } catch {}
+  }, [])
 
   function toggleLang(code) {
     if (code === 'en') return
@@ -1022,6 +1061,21 @@ export default function GeneratePage() {
     }
   }
 
+  async function retryTranslations(packId) {
+    if (!packId) return
+    setRetryingTranslation(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('translate-pack', { body: { pack_id: packId } })
+      if (error) throw error
+      console.log('Translation retry result:', data)
+      setPackResult(prev => prev ? { ...prev, translationRetried: true } : prev)
+    } catch (err) {
+      console.error('Translation retry error:', err)
+      setPackError(`Translation retry failed: ${err.message}`)
+    }
+    setRetryingTranslation(false)
+  }
+
   async function approveAll() {
     const ids = generated.filter((q) => q.status === 'pending_review').map((q) => q.id)
     if (ids.length === 0) return
@@ -1338,10 +1392,20 @@ export default function GeneratePage() {
               <span>·</span>
               <span>~${packResult.stats?.estimated_cost_usd || '0.060'} est. cost</span>
             </div>
-            {/* Delete individual packs */}
-            {packResult.packIds?.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {packResult.packIds.map((pid, idx) => (
+            {/* Pack actions */}
+            {(packResult.packIds?.length > 0 || packResult.packId) && (
+              <div className="flex flex-wrap items-center gap-2">
+                {packResult.packId && (
+                  <button
+                    onClick={() => retryTranslations(packResult.packId)}
+                    disabled={retryingTranslation || packResult.translationRetried}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-amber-700 font-medium hover:bg-amber-50 rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    {retryingTranslation ? <Loader2 size={12} className="animate-spin" /> : <Globe size={12} />}
+                    {packResult.translationRetried ? 'Translations Retried' : retryingTranslation ? 'Translating...' : 'Retry Translations'}
+                  </button>
+                )}
+                {packResult.packIds?.length > 0 ? packResult.packIds.map((pid, idx) => (
                   <button
                     key={pid}
                     onClick={() => handleDeletePack(pid)}
@@ -1350,7 +1414,15 @@ export default function GeneratePage() {
                     <Trash2 size={12} />
                     {packResult.packCount > 1 ? `Delete Pack #${idx + 1}` : 'Delete Pack'}
                   </button>
-                ))}
+                )) : packResult.packId && (
+                  <button
+                    onClick={() => handleDeletePack(packResult.packId)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-red-600 font-medium hover:bg-red-50 rounded-lg transition-colors"
+                  >
+                    <Trash2 size={12} />
+                    Delete Pack
+                  </button>
+                )}
               </div>
             )}
           </div>

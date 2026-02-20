@@ -277,6 +277,25 @@ summary {
   animation: streak-glow 2s ease-in-out infinite;
 }
 
+/* ====== G1: Bottom sheet slide-up animation ====== */
+@keyframes slideUp {
+  0% { -webkit-transform: translateY(100%); transform: translateY(100%); opacity: 0; }
+  100% { -webkit-transform: translateY(0); transform: translateY(0); opacity: 1; }
+}
+.animate-slide-up {
+  -webkit-animation: slideUp 0.35s ease-out forwards;
+  animation: slideUp 0.35s ease-out forwards;
+}
+
+@keyframes slideDown {
+  0% { -webkit-transform: translateY(0); transform: translateY(0); opacity: 1; }
+  100% { -webkit-transform: translateY(100%); transform: translateY(100%); opacity: 0; }
+}
+.animate-slide-down {
+  -webkit-animation: slideDown 0.25s ease-in forwards;
+  animation: slideDown 0.25s ease-in forwards;
+}
+
 /* ====== Accessibility: reduced motion ====== */
 @media (prefers-reduced-motion: reduce) {
   *,

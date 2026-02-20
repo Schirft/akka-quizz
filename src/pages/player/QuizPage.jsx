@@ -628,6 +628,7 @@ export default function QuizPage() {
   const questionText = question ? (question[`question_${lang}`] || question.question_en) : ''
   const answersArr = question ? (question[`answers_${lang}`] || question.answers_en || []) : []
   const explanation = question ? (question[`explanation_${lang}`] || question.explanation_en) : ''
+  const langFallback = question && lang !== 'en' && !question[`question_${lang}`]
 
   // Timer progress (0 → 1)
   const timerProgress = timeLeft / QUESTION_TIMER_SECONDS
@@ -772,39 +773,52 @@ export default function QuizPage() {
   // Puzzle phase
   if (quizState === 'puzzle' || quizState === 'puzzle_feedback') {
     const puzzleExplanation = puzzleData[`explanation_${lang}`] || puzzleData.explanation || ''
+    const puzzleLangFallback = lang !== 'en' && !puzzleData[`explanation_${lang}`]
     return (
       <div className="min-h-screen bg-akka-bg flex flex-col pb-24">
         <QuizHeader onBack={() => navigate('/')} muted={muted} onToggleMute={handleToggleMute} title="The Catch" />
         <div className="flex-1 px-4 pt-4">
+          {puzzleLangFallback && (
+            <div className="mb-3 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-1.5">
+              <span className="text-amber-600 text-xs font-semibold">⚠️ {lang.toUpperCase()} translation unavailable — showing English</span>
+            </div>
+          )}
           <PuzzleRenderer puzzle={puzzleData} onAnswer={handlePuzzleAnswer} lang={lang} />
 
-          {quizState === 'puzzle_feedback' && (
-            <div className="mt-4">
-              <div className={`p-4 rounded-2xl border border-l-4 mb-4 ${
-                puzzleCorrect
-                  ? 'bg-[#F0FDF4] border-[#BBF7D0] border-l-[#2ECC71]'
-                  : 'bg-[#FEF2F2] border-[#FECACA] border-l-[#E74C3C]'
-              }`}>
-                <div className="flex items-start gap-2 mb-2">
+        </div>
+
+        {/* G3: Bottom sheet puzzle feedback */}
+        {quizState === 'puzzle_feedback' && (
+          <>
+            <div className="fixed inset-0 bg-black/20 z-40" />
+            <div className={`fixed bottom-0 left-0 right-0 z-50 animate-slide-up rounded-t-3xl shadow-2xl pb-safe ${
+              puzzleCorrect ? 'bg-[#F0FDF4]' : 'bg-[#FEF2F2]'
+            }`}>
+              <div className="px-5 pt-5 pb-6 max-w-lg mx-auto">
+                <div className="flex items-center gap-2 mb-3">
                   {puzzleCorrect ? (
-                    <CheckCircle size={18} className="text-[#2ECC71] shrink-0 mt-0.5" />
+                    <CheckCircle size={24} className="text-[#2ECC71] shrink-0" />
                   ) : (
-                    <XCircle size={18} className="text-[#E74C3C] shrink-0 mt-0.5" />
+                    <XCircle size={24} className="text-[#E74C3C] shrink-0" />
                   )}
-                  <p className={`text-sm font-bold ${puzzleCorrect ? 'text-[#166534]' : 'text-[#991B1B]'}`}>
+                  <p className={`text-lg font-bold ${puzzleCorrect ? 'text-[#166534]' : 'text-[#991B1B]'}`}>
                     {puzzleCorrect ? t('correct') : getQuizText('wrongAnswer', lang)}
                   </p>
                 </div>
-                <p className="text-sm text-[#1A1A1A] leading-relaxed">
+                <p className="text-sm text-[#1A1A1A] leading-relaxed font-medium mb-4">
                   {puzzleExplanation}
                 </p>
+                <Button variant="primary" className="w-full" onClick={() => finishQuiz()}>
+                  {t('see_results')}
+                </Button>
               </div>
               <Button variant="primary" className="w-full" onClick={() => lessonData ? setQuizState('lesson') : finishQuiz()}>
                 {lessonData ? (t('continue') || 'Continue') : t('see_results')}
               </Button>
             </div>
-          )}
-        </div>
+          </>
+        )}
+
         <TabBar />
       </div>
     )
@@ -961,6 +975,13 @@ export default function QuizPage() {
         </p>
       </div>
 
+      {/* Language fallback badge */}
+      {langFallback && (
+        <div className="mx-4 mt-2 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-1.5">
+          <span className="text-amber-600 text-xs font-semibold">⚠️ {lang.toUpperCase()} translation unavailable — showing English</span>
+        </div>
+      )}
+
       {/* Question text */}
       <div key={currentIndex} className="px-4 pt-3 pb-4 animate-slide-in">
         <h2 className="text-lg font-bold text-akka-text leading-snug">
@@ -1087,55 +1108,58 @@ export default function QuizPage() {
         )}
       </div>
 
-      {/* Feedback section */}
+      {/* G2: Bottom sheet feedback (Duolingo-style) */}
       {quizState === 'feedback' && (
-        <div className="px-4 pt-4 pb-6">
-          {/* XP Float animation */}
-          {xpFloat && (
-            <div key={xpFloat.key} className="flex justify-center mb-3 animate-float-up">
-              <span className="text-[#1B3D2F] font-bold text-lg">+{xpFloat.amount} XP</span>
-            </div>
-          )}
-
-          {/* Explanation card — enhanced readability */}
-          <div
-            className={`mb-4 p-4 rounded-2xl border border-l-4 ${
-              isCorrect
-                ? 'bg-[#F0FDF4] border-[#BBF7D0] border-l-[#2ECC71]'
-                : 'bg-[#FEF2F2] border-[#FECACA] border-l-[#E74C3C]'
-            }`}
-          >
-            <div className="flex items-start gap-2 mb-2">
-              {isCorrect ? (
-                <CheckCircle size={18} className="text-[#2ECC71] shrink-0 mt-0.5" />
-              ) : (
-                <XCircle size={18} className="text-[#E74C3C] shrink-0 mt-0.5" />
+        <>
+          {/* Backdrop */}
+          <div className="fixed inset-0 bg-black/20 z-40" />
+          {/* Bottom sheet */}
+          <div className={`fixed bottom-0 left-0 right-0 z-50 animate-slide-up rounded-t-3xl shadow-2xl pb-safe ${
+            isCorrect ? 'bg-[#F0FDF4]' : 'bg-[#FEF2F2]'
+          }`}>
+            <div className="px-5 pt-5 pb-6 max-w-lg mx-auto">
+              {/* XP Float */}
+              {xpFloat && (
+                <div key={xpFloat.key} className="flex justify-center mb-2 animate-float-up">
+                  <span className="text-[#1B3D2F] font-bold text-lg">+{xpFloat.amount} XP</span>
+                </div>
               )}
-              <p className={`text-sm font-bold ${isCorrect ? 'text-[#166534]' : 'text-[#991B1B]'}`}>
-                {isCorrect ? t('correct') : getQuizText('wrongAnswer', lang)}
-              </p>
-            </div>
-            <p className="text-sm text-[#1A1A1A] leading-relaxed font-medium">
-              {explanation}
-            </p>
-            <p className={`text-xs mt-2 font-semibold ${isCorrect ? 'text-[#166534]' : 'text-[#991B1B]'}`}>
-              {tp('answered_in', { time: timeSpentSec })}
-              {answers[answers.length - 1]?.speedBonus > 0 && ` · ⚡ ${t('speed_bonus')}`}
-            </p>
-          </div>
 
-          {/* Next button */}
-          <Button variant="primary" className="w-full gap-2" onClick={handleNext}>
-            {currentIndex + 1 < questions.length ? (
-              <>
-                {t('next_question')}
-                <ChevronRight size={18} />
-              </>
-            ) : (
-              t('see_results')
-            )}
-          </Button>
-        </div>
+              {/* Header */}
+              <div className="flex items-center gap-2 mb-3">
+                {isCorrect ? (
+                  <CheckCircle size={24} className="text-[#2ECC71] shrink-0" />
+                ) : (
+                  <XCircle size={24} className="text-[#E74C3C] shrink-0" />
+                )}
+                <p className={`text-lg font-bold ${isCorrect ? 'text-[#166534]' : 'text-[#991B1B]'}`}>
+                  {isCorrect ? t('correct') : getQuizText('wrongAnswer', lang)}
+                </p>
+              </div>
+
+              {/* Explanation */}
+              <p className="text-sm text-[#1A1A1A] leading-relaxed font-medium mb-2">
+                {explanation}
+              </p>
+              <p className={`text-xs font-semibold mb-4 ${isCorrect ? 'text-[#166534]' : 'text-[#991B1B]'}`}>
+                {tp('answered_in', { time: timeSpentSec })}
+                {answers[answers.length - 1]?.speedBonus > 0 && ` · ⚡ ${t('speed_bonus')}`}
+              </p>
+
+              {/* Next button */}
+              <Button variant="primary" className="w-full gap-2" onClick={handleNext}>
+                {currentIndex + 1 < questions.length ? (
+                  <>
+                    {t('next_question')}
+                    <ChevronRight size={18} />
+                  </>
+                ) : (
+                  t('see_results')
+                )}
+              </Button>
+            </div>
+          </div>
+        </>
       )}
 
       {/* TabBar visible during quiz */}

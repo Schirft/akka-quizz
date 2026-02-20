@@ -13,6 +13,7 @@ import {
   Edit3,
   Image as ImageIcon,
   FileText,
+  ArrowUpDown,
 } from 'lucide-react'
 
 // Default prompts (from Edge Function)
@@ -24,6 +25,10 @@ export default function AdminNewsPage() {
   const [generating, setGenerating] = useState(false)
   const [genResult, setGenResult] = useState(null)
   const [genError, setGenError] = useState(null)
+
+  // B1: Batch generation controls
+  const [batchArticleCount, setBatchArticleCount] = useState(5)
+  const [batchLanguages, setBatchLanguages] = useState(['en', 'fr', 'it', 'es'])
 
   // Section B: Manual add by URL
   const [manualUrl, setManualUrl] = useState('')
@@ -46,6 +51,9 @@ export default function AdminNewsPage() {
   const [loadingArticles, setLoadingArticles] = useState(true)
   const [lastPublished, setLastPublished] = useState(null)
 
+  // B2: Sort toggle
+  const [sortOrder, setSortOrder] = useState('newest')
+
   // Section D: Prompts
   const [promptsExpanded, setPromptsExpanded] = useState(false)
   const [selectionPrompt, setSelectionPrompt] = useState(DEFAULT_SELECTION_PROMPT)
@@ -60,26 +68,62 @@ export default function AdminNewsPage() {
   // Edit modal
   const [editArticle, setEditArticle] = useState(null)
   const [editTitles, setEditTitles] = useState({ en: '', fr: '', it: '', es: '' })
+  const [editSummaries, setEditSummaries] = useState({ en: '', fr: '', it: '', es: '' })
   const [editSaving, setEditSaving] = useState(false)
 
   useEffect(() => {
     loadArticles()
     loadPrompts()
+
+    // B4: Check sessionStorage for persisted generating state
+    try {
+      const stored = sessionStorage.getItem('akka_news_generating')
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (parsed.generating && Date.now() - parsed.startedAt < 10 * 60 * 1000) {
+          setGenerating(true)
+          const pollInterval = setInterval(async () => {
+            await loadArticles()
+            // Check if still within 10 minute window
+            const current = sessionStorage.getItem('akka_news_generating')
+            if (!current) {
+              clearInterval(pollInterval)
+              setGenerating(false)
+            } else {
+              const p = JSON.parse(current)
+              if (!p.generating || Date.now() - p.startedAt >= 10 * 60 * 1000) {
+                sessionStorage.removeItem('akka_news_generating')
+                clearInterval(pollInterval)
+                setGenerating(false)
+              }
+            }
+          }, 15000) // Poll every 15 seconds
+          return () => clearInterval(pollInterval)
+        } else {
+          sessionStorage.removeItem('akka_news_generating')
+        }
+      }
+    } catch {}
   }, [])
 
-  async function loadArticles() {
+  async function loadArticles(sort) {
+    const effectiveSort = sort || sortOrder
     setLoadingArticles(true)
     try {
       const { data } = await supabase
         .from('news_articles')
         .select('*')
         .eq('is_published', true)
-        .order('published_at', { ascending: false })
+        .order('published_at', { ascending: effectiveSort === 'oldest' })
         .limit(100)
 
       setArticles(data || [])
       if (data && data.length > 0) {
-        setLastPublished(data[0].published_at)
+        // For lastPublished, always find the newest regardless of sort
+        const newest = effectiveSort === 'oldest'
+          ? data[data.length - 1].published_at
+          : data[0].published_at
+        setLastPublished(newest)
       }
     } catch (err) {
       console.error('Load articles error:', err)
@@ -107,22 +151,41 @@ export default function AdminNewsPage() {
     } catch {}
   }
 
-  // Section A: Generate today's news
+  // Section A: Generate today's news (B1: batch languages, B4: sessionStorage)
   async function handleGenerate() {
     setGenerating(true)
     setGenResult(null)
     setGenError(null)
+
+    // B4: Persist generating state
+    sessionStorage.setItem('akka_news_generating', JSON.stringify({ generating: true, startedAt: Date.now() }))
+
     try {
-      const { data, error } = await supabase.functions.invoke('generate-summaries', {
-        body: { selectionPrompt, summaryPrompt },
+      const results = []
+      for (const lang of batchLanguages) {
+        const { data, error } = await supabase.functions.invoke('generate-summaries', {
+          body: { selectionPrompt, summaryPrompt, language: lang, max_articles: batchArticleCount },
+        })
+        if (error) throw error
+        results.push({ language: lang, ...data })
+      }
+      // Aggregate results
+      const totalAnalyzed = results.reduce((sum, r) => sum + (r.analyzed || 0), 0)
+      const totalSelected = results.reduce((sum, r) => sum + (r.selected || 0), 0)
+      const totalSummarized = results.reduce((sum, r) => sum + (r.summarized || 0), 0)
+      setGenResult({
+        analyzed: totalAnalyzed,
+        selected: totalSelected,
+        summarized: totalSummarized,
+        languages: results.map((r) => r.language),
       })
-      if (error) throw error
-      setGenResult(data)
       await loadArticles()
     } catch (err) {
       setGenError(err.message || 'Generation failed')
     } finally {
       setGenerating(false)
+      // B4: Remove persisted state
+      sessionStorage.removeItem('akka_news_generating')
     }
   }
 
@@ -242,7 +305,7 @@ export default function AdminNewsPage() {
     return previewArticle.title_en || previewArticle.title
   }
 
-  // A1 FIX: Open edit modal with correct title per language
+  // A1 FIX: Open edit modal with correct title per language + B3: summaries
   function openEditModal(article) {
     setEditArticle(article)
     setEditTitles({
@@ -250,6 +313,12 @@ export default function AdminNewsPage() {
       fr: article.title_fr || (article.language === 'fr' ? article.title : ''),
       it: article.title_it || (article.language === 'it' ? article.title : ''),
       es: article.title_es || (article.language === 'es' ? article.title : ''),
+    })
+    setEditSummaries({
+      en: article.summary_en || '',
+      fr: article.summary_fr || '',
+      it: article.summary_it || '',
+      es: article.summary_es || '',
     })
   }
 
@@ -264,13 +333,27 @@ export default function AdminNewsPage() {
           title_fr: editTitles.fr,
           title_it: editTitles.it,
           title_es: editTitles.es,
+          summary_en: editSummaries.en,
+          summary_fr: editSummaries.fr,
+          summary_it: editSummaries.it,
+          summary_es: editSummaries.es,
         })
         .eq('id', editArticle.id)
       // Update local state
       setArticles((prev) =>
         prev.map((a) =>
           a.id === editArticle.id
-            ? { ...a, title_en: editTitles.en, title_fr: editTitles.fr, title_it: editTitles.it, title_es: editTitles.es }
+            ? {
+                ...a,
+                title_en: editTitles.en,
+                title_fr: editTitles.fr,
+                title_it: editTitles.it,
+                title_es: editTitles.es,
+                summary_en: editSummaries.en,
+                summary_fr: editSummaries.fr,
+                summary_it: editSummaries.it,
+                summary_es: editSummaries.es,
+              }
             : a
         )
       )
@@ -318,6 +401,54 @@ export default function AdminNewsPage() {
             </p>
           </div>
 
+          {/* B1: Batch generation controls */}
+          <div className="flex flex-wrap items-center gap-4 mb-4">
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-medium text-[#6B7280]">Articles:</label>
+              <select
+                value={batchArticleCount}
+                onChange={(e) => setBatchArticleCount(Number(e.target.value))}
+                disabled={generating}
+                className="border border-[#D1D5DB] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2ECC71] disabled:opacity-50"
+              >
+                {[3, 5, 10, 15, 20].map((n) => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-medium text-[#6B7280]">Languages:</label>
+              <div className="flex gap-1">
+                {['en', 'fr', 'it', 'es'].map((lng) => {
+                  const isEn = lng === 'en'
+                  const isSelected = batchLanguages.includes(lng)
+                  return (
+                    <button
+                      key={lng}
+                      disabled={generating || isEn}
+                      onClick={() => {
+                        if (isEn) return
+                        setBatchLanguages((prev) =>
+                          prev.includes(lng)
+                            ? prev.filter((l) => l !== lng)
+                            : [...prev, lng]
+                        )
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold uppercase transition-colors ${
+                        isSelected
+                          ? 'bg-[#1B3D2F] text-white'
+                          : 'bg-gray-100 text-[#6B7280] hover:bg-gray-200'
+                      } ${isEn ? 'opacity-80 cursor-not-allowed' : ''} disabled:opacity-50`}
+                    >
+                      {lng}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+
           <button
             onClick={handleGenerate}
             disabled={generating}
@@ -329,7 +460,7 @@ export default function AdminNewsPage() {
                 Generating...
               </>
             ) : (
-              "🚀 Generate Today's News"
+              "Generate Today's News"
             )}
           </button>
 
@@ -496,10 +627,22 @@ export default function AdminNewsPage() {
 
         {/* ─── Section C: Published Articles ─── */}
         <Card className="p-0 overflow-hidden">
-          <div className="px-4 py-3 border-b border-[#D1D5DB] bg-gray-50/50">
+          <div className="px-4 py-3 border-b border-[#D1D5DB] bg-gray-50/50 flex items-center justify-between">
             <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
               Published Articles ({articles.length})
             </p>
+            <button
+              onClick={() => {
+                const newSort = sortOrder === 'newest' ? 'oldest' : 'newest'
+                setSortOrder(newSort)
+                loadArticles(newSort)
+              }}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-[#6B7280] hover:bg-gray-100 transition-colors"
+              title={`Sort by ${sortOrder === 'newest' ? 'oldest' : 'newest'} first`}
+            >
+              <ArrowUpDown size={14} />
+              {sortOrder === 'newest' ? 'Newest' : 'Oldest'}
+            </button>
           </div>
 
           {loadingArticles ? (
@@ -737,9 +880,9 @@ export default function AdminNewsPage() {
       {/* ─── Edit Titles Modal ─── */}
       {editArticle && (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 overflow-y-auto py-8 px-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl">
             <div className="flex items-center justify-between px-6 py-4 border-b border-[#D1D5DB]">
-              <h2 className="text-lg font-bold text-[#1A1A1A]">Edit Titles</h2>
+              <h2 className="text-lg font-bold text-[#1A1A1A]">Edit Article</h2>
               <button
                 onClick={() => setEditArticle(null)}
                 className="text-[#6B7280] hover:text-[#1A1A1A]"
@@ -748,10 +891,10 @@ export default function AdminNewsPage() {
               </button>
             </div>
 
-            <div className="px-6 py-4 space-y-3">
+            <div className="px-6 py-4 space-y-3 max-h-[70vh] overflow-y-auto">
               {['en', 'fr', 'it', 'es'].map((lng) => (
-                <div key={lng}>
-                  <label className="block text-xs font-semibold uppercase text-[#6B7280] mb-1">
+                <div key={lng} className="space-y-2">
+                  <label className="block text-xs font-semibold uppercase text-[#6B7280]">
                     Title {lng.toUpperCase()}
                   </label>
                   <input
@@ -759,6 +902,16 @@ export default function AdminNewsPage() {
                     value={editTitles[lng]}
                     onChange={(e) => setEditTitles((prev) => ({ ...prev, [lng]: e.target.value }))}
                     className="w-full border border-[#D1D5DB] rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2ECC71]"
+                  />
+                  <label className="block text-xs font-semibold uppercase text-[#6B7280]">
+                    Summary {lng.toUpperCase()}
+                  </label>
+                  <textarea
+                    value={editSummaries[lng]}
+                    onChange={(e) => setEditSummaries((prev) => ({ ...prev, [lng]: e.target.value }))}
+                    rows={4}
+                    className="w-full border border-[#D1D5DB] rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2ECC71] resize-y"
+                    placeholder={`Summary in ${lng.toUpperCase()}...`}
                   />
                 </div>
               ))}

@@ -65,6 +65,13 @@ export default function DashboardPage() {
   const [packHealth, setPackHealth] = useState([])
   const [loading, setLoading] = useState(true)
   const [seeding, setSeeding] = useState(false)
+  const [now, setNow] = useState(new Date())
+
+  // Live clock — tick every 60s
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60_000)
+    return () => clearInterval(id)
+  }, [])
   const [seedResult, setSeedResult] = useState(null)
   const [seedStatus, setSeedStatus] = useState('')
 
@@ -266,7 +273,11 @@ export default function DashboardPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-[#1A1A1A]">Dashboard</h1>
-          <p className="text-sm text-[#6B7280] mt-1">Overview of your question bank & packs</p>
+          <p className="text-sm text-[#6B7280] mt-1">
+            {now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+            {' · '}
+            {now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={seedTestArticles} disabled={seeding}
