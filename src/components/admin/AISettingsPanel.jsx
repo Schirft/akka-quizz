@@ -1,41 +1,74 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { AI_SYSTEM_PROMPT } from '../../config/aiPrompts'
 import { X, Save, RotateCcw, Loader2 } from 'lucide-react'
 
 /**
- * AISettingsPanel — modal to edit the AI system prompt.
- * Saves to app_settings table. FIX 10.
+ * AISettingsPanel — modal to edit AI prompts with separate tabs.
+ * Saves to app_settings table. Round 15: separate Pack + Questions prompts.
  */
 export default function AISettingsPanel({ onClose, currentPrompt, onPromptChanged }) {
-  const [prompt, setPrompt] = useState(currentPrompt || '')
+  const [activeTab, setActiveTab] = useState('questions')
+  const [questionsPrompt, setQuestionsPrompt] = useState(currentPrompt || '')
+  const [packPrompt, setPackPrompt] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState(null)
 
-  const isCustom = prompt.trim() !== '' && prompt.trim() !== AI_SYSTEM_PROMPT.trim()
+  // Load pack prompt on mount
+  useEffect(() => {
+    async function loadPackPrompt() {
+      try {
+        const { data } = await supabase
+          .from('app_settings')
+          .select('value')
+          .eq('key', 'pack_system_prompt')
+          .single()
+        if (data?.value) setPackPrompt(data.value)
+      } catch {}
+    }
+    loadPackPrompt()
+  }, [])
+
+  const currentText = activeTab === 'questions' ? questionsPrompt : packPrompt
+  const setCurrentText = activeTab === 'questions' ? setQuestionsPrompt : setPackPrompt
+  const isCustom = currentText.trim() !== '' && currentText.trim() !== AI_SYSTEM_PROMPT.trim()
 
   async function handleSave() {
     setSaving(true)
     setError(null)
     setSaved(false)
     try {
-      const trimmed = prompt.trim()
-      if (!trimmed || trimmed === AI_SYSTEM_PROMPT.trim()) {
-        // Clear custom prompt — use default
-        await supabase.from('app_settings').delete().eq('key', 'custom_system_prompt')
-        onPromptChanged?.(null)
+      if (activeTab === 'questions') {
+        const trimmed = questionsPrompt.trim()
+        if (!trimmed || trimmed === AI_SYSTEM_PROMPT.trim()) {
+          await supabase.from('app_settings').delete().eq('key', 'custom_system_prompt')
+          onPromptChanged?.(null)
+        } else {
+          const { error: err } = await supabase
+            .from('app_settings')
+            .upsert({
+              key: 'custom_system_prompt',
+              value: trimmed,
+              updated_at: new Date().toISOString(),
+            }, { onConflict: 'key' })
+          if (err) throw err
+          onPromptChanged?.(trimmed)
+        }
       } else {
-        // Upsert custom prompt
-        const { error: err } = await supabase
-          .from('app_settings')
-          .upsert({
-            key: 'custom_system_prompt',
-            value: trimmed,
-            updated_at: new Date().toISOString(),
-          }, { onConflict: 'key' })
-        if (err) throw err
-        onPromptChanged?.(trimmed)
+        const trimmed = packPrompt.trim()
+        if (!trimmed) {
+          await supabase.from('app_settings').delete().eq('key', 'pack_system_prompt')
+        } else {
+          const { error: err } = await supabase
+            .from('app_settings')
+            .upsert({
+              key: 'pack_system_prompt',
+              value: trimmed,
+              updated_at: new Date().toISOString(),
+            }, { onConflict: 'key' })
+          if (err) throw err
+        }
       }
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
@@ -47,7 +80,7 @@ export default function AISettingsPanel({ onClose, currentPrompt, onPromptChange
   }
 
   function handleReset() {
-    setPrompt('')
+    setCurrentText('')
   }
 
   return (
@@ -56,7 +89,7 @@ export default function AISettingsPanel({ onClose, currentPrompt, onPromptChange
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#D1D5DB]">
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-bold text-[#1A1A1A]">⚙️ AI Settings</h2>
+            <h2 className="text-lg font-bold text-[#1A1A1A]">AI Settings</h2>
             <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
               isCustom ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'
             }`}>
@@ -68,6 +101,26 @@ export default function AISettingsPanel({ onClose, currentPrompt, onPromptChange
           </button>
         </div>
 
+        {/* Tabs */}
+        <div className="flex border-b border-[#D1D5DB]">
+          {[
+            { key: 'questions', label: 'Questions Prompt' },
+            { key: 'pack', label: 'Pack Prompt' },
+          ].map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex-1 py-3 text-sm font-semibold transition-colors ${
+                activeTab === tab.key
+                  ? 'text-[#1B3D2F] border-b-2 border-[#2ECC71]'
+                  : 'text-[#6B7280] hover:text-[#1A1A1A]'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
         <div className="px-6 py-4 max-h-[70vh] overflow-y-auto">
           {error && (
             <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>
@@ -75,29 +128,30 @@ export default function AISettingsPanel({ onClose, currentPrompt, onPromptChange
 
           {saved && (
             <div className="mb-4 p-3 bg-green-50 text-green-700 rounded-lg text-sm flex items-center gap-2">
-              ✅ Settings saved successfully
+              Settings saved successfully
             </div>
           )}
 
-          {/* Custom prompt editor */}
           <label className="block mb-2 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
-            Custom System Prompt
+            {activeTab === 'questions' ? 'Custom Questions System Prompt' : 'Custom Pack System Prompt'}
           </label>
           <p className="text-xs text-[#6B7280] mb-2">
-            Override the default prompt used when generating questions. Leave empty to use the default.
+            {activeTab === 'questions'
+              ? 'Override the default prompt used when generating classic QCM questions. Leave empty to use the default.'
+              : 'Override the default prompt used by the Edge Function for daily pack generation. Leave empty to use the default.'
+            }
           </p>
           <textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
+            value={currentText}
+            onChange={(e) => setCurrentText(e.target.value)}
             rows={10}
             className="w-full border border-[#D1D5DB] rounded-xl px-4 py-3 text-sm font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-[#2ECC71] mb-2 resize-y"
-            placeholder="Enter your custom system prompt here..."
+            placeholder={`Enter your custom ${activeTab === 'questions' ? 'questions' : 'pack'} prompt here...`}
           />
           <p className="text-xs text-[#6B7280] mb-4">
-            {prompt.length} characters
+            {currentText.length} characters
           </p>
 
-          {/* Reset button */}
           <button
             onClick={handleReset}
             className="flex items-center gap-1.5 px-3 py-2 text-sm text-[#6B7280] font-medium hover:bg-gray-100 rounded-lg transition-colors mb-6"
@@ -106,15 +160,16 @@ export default function AISettingsPanel({ onClose, currentPrompt, onPromptChange
             Reset to Default
           </button>
 
-          {/* Default prompt (read-only) */}
-          <div className="border-t border-[#D1D5DB] pt-4">
-            <label className="block mb-2 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
-              Default System Prompt (read-only)
-            </label>
-            <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-xs font-mono text-[#6B7280] max-h-[200px] overflow-y-auto whitespace-pre-wrap leading-relaxed">
-              {AI_SYSTEM_PROMPT}
+          {activeTab === 'questions' && (
+            <div className="border-t border-[#D1D5DB] pt-4">
+              <label className="block mb-2 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
+                Default System Prompt (read-only)
+              </label>
+              <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-xs font-mono text-[#6B7280] max-h-[200px] overflow-y-auto whitespace-pre-wrap leading-relaxed">
+                {AI_SYSTEM_PROMPT}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Footer */}

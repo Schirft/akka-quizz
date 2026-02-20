@@ -15,6 +15,7 @@ import {
   XP_PERFECT_QUIZ,
   SPEED_FAST_THRESHOLD,
   SPEED_MEDIUM_THRESHOLD,
+  QUESTIONS_PER_QUIZ,
 } from '../../config/constants'
 import {
   playCorrect,
@@ -26,6 +27,7 @@ import {
 } from '../../lib/sounds'
 import Button from '../../components/ui/Button'
 import TabBar from '../../components/layout/TabBar'
+import PuzzleRenderer from '../../components/puzzles/PuzzleRenderer'
 import { getRandomEncouragement, getQuizText } from '../../utils/quizI18n'
 import {
   ArrowLeft,
@@ -37,19 +39,19 @@ import {
   AlertTriangle,
   Volume2,
   VolumeX,
-  Lightbulb,
-  Play,
 } from 'lucide-react'
 
 /**
- * QuizPage — Pack-based quiz experience.
+ * QuizPage — the full quiz experience with timer, feedback, sounds, and transitions.
  *
- * Flow: 3 QCM (with timer, gamification) → Puzzle → Celebration → Lesson → Results
+ * Schema notes:
+ * - daily_quizzes: question_1_id..question_5_id (individual FK columns)
+ * - questions.answers_en: jsonb array ["A","B","C","D"], correct_answer_index 1-4
+ * - quiz_sessions: total_xp_earned, duration_seconds, speed_bonuses, is_perfect
+ * - quiz_answers: question_order, response_time_ms, speed_bonus (no user_id)
+ * - profiles: current_streak, total_quizzes, total_correct, total_questions
  *
- * Loads today's pack from daily_packs table:
- *   - question_ids: UUID[] (3 questions)
- *   - puzzle_id: UUID (puzzle from puzzles table)
- *   - lesson_id: UUID (lesson from daily_lessons table)
+ * Language priority: localStorage('akka_lang') > profile.language > 'en'
  */
 export default function QuizPage() {
   const { user } = useAuth()
@@ -57,8 +59,8 @@ export default function QuizPage() {
   const { lang, t, tp } = useLang()
   const navigate = useNavigate()
 
-  // Phase: 'loading' | 'ready' | 'question' | 'feedback' | 'puzzle' | 'celebration' | 'lesson' | 'error'
-  const [phase, setPhase] = useState('loading')
+  // Quiz state
+  const [quizState, setQuizState] = useState('loading') // loading | ready | question | feedback | puzzle | puzzle_feedback | error
   const [questions, setQuestions] = useState([])
   const [currentIndex, setCurrentIndex] = useState(0)
   const [selectedAnswer, setSelectedAnswer] = useState(null)
@@ -74,36 +76,32 @@ export default function QuizPage() {
   const [shakeAnswer, setShakeAnswer] = useState(false)
   const [timerMessage, setTimerMessage] = useState(null)
 
+  // Puzzle state
+  const [puzzleData, setPuzzleData] = useState(null)
+  const [puzzleAnswer, setPuzzleAnswer] = useState(null)
+  const [puzzleCorrect, setPuzzleCorrect] = useState(null)
+
   // Gamification states
   const [combo, setCombo] = useState(0)
   const [maxCombo, setMaxCombo] = useState(0)
   const [showEncouragement, setShowEncouragement] = useState(null)
   const [memberStats, setMemberStats] = useState(null)
 
-  // Pack data
-  const [pack, setPack] = useState(null)
-  const [puzzle, setPuzzle] = useState(null)
-  const [lesson, setLesson] = useState(null)
-
-  // Puzzle state
-  const [puzzleAnswered, setPuzzleAnswered] = useState(false)
-  const [puzzleCorrect, setPuzzleCorrect] = useState(false)
-  const [puzzleSelectedIdx, setPuzzleSelectedIdx] = useState(null)
-
   const timerRef = useRef(null)
   const startTimeRef = useRef(null)
-  const lastTickRef = useRef(null)
+  const lastTickRef = useRef(null) // track last tick sound to avoid repeats
 
+  // Handle mute toggle
   function handleToggleMute() {
     const next = toggleMute()
     setMutedState(next)
   }
 
-  // ── Load today's pack ──
+  // Load daily quiz
   useEffect(() => {
     let cancelled = false
 
-    async function loadPack() {
+    async function loadQuiz() {
       try {
         const today = new Date().toISOString().split('T')[0]
 
@@ -118,22 +116,28 @@ export default function QuizPage() {
         if (cancelled) return
         if (existingSession && existingSession.length > 0) {
           setErrorMsg('already_completed')
-          setPhase('error')
+          setQuizState('error')
           return
         }
 
-        // Find today's pack
-        const { data: todayPack, error: packError } = await supabase
-          .from('daily_packs')
-          .select('*')
-          .eq('status', 'active')
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single()
+        // Try pack-based flow first (daily_packs with assigned_date)
+        let questionIds = []
+        let packPuzzleId = null
 
-        if (cancelled) return
-        if (packError || !todayPack) {
-          // Fallback: try daily_quizzes for backward compatibility
+        const { data: dailyPack } = await supabase
+          .from('daily_packs')
+          .select('id, question_ids, puzzle_id, lesson_id')
+          .eq('assigned_date', today)
+          .eq('status', 'ready')
+          .limit(1)
+          .maybeSingle()
+
+        if (dailyPack && dailyPack.question_ids?.length > 0) {
+          setQuizId(dailyPack.id)
+          questionIds = dailyPack.question_ids
+          packPuzzleId = dailyPack.puzzle_id
+        } else {
+          // Fallback: legacy daily_quizzes table
           const { data: dailyQuiz, error: dqError } = await supabase
             .from('daily_quizzes')
             .select('id, question_1_id, question_2_id, question_3_id, question_4_id, question_5_id')
@@ -143,62 +147,31 @@ export default function QuizPage() {
           if (cancelled) return
           if (dqError || !dailyQuiz) {
             setErrorMsg('no_quiz')
-            setPhase('error')
+            setQuizState('error')
             return
           }
 
-          // Legacy flow: use daily_quizzes
           setQuizId(dailyQuiz.id)
-          const questionIds = [
+          questionIds = [
             dailyQuiz.question_1_id,
             dailyQuiz.question_2_id,
             dailyQuiz.question_3_id,
             dailyQuiz.question_4_id,
             dailyQuiz.question_5_id,
           ].filter(Boolean)
-
-          const { data: questionData } = await supabase
-            .from('questions')
-            .select('*')
-            .in('id', questionIds)
-
-          if (cancelled) return
-          if (!questionData || questionData.length === 0) {
-            setErrorMsg('load_failed')
-            setPhase('error')
-            return
-          }
-
-          const ordered = questionIds
-            .map((id) => questionData.find((q) => q.id === id))
-            .filter(Boolean)
-
-          setQuestions(shuffleQuestionAnswers(ordered))
-          setPhase('ready')
-          return
         }
 
-        // Pack-based flow
-        setPack(todayPack)
-        setQuizId(todayPack.id)
+        if (cancelled) return
 
-        const questionIds = todayPack.question_ids || []
-        if (questionIds.length === 0) {
-          setErrorMsg('load_failed')
-          setPhase('error')
-          return
-        }
-
-        // Load questions
-        const { data: questionData } = await supabase
+        const { data: questionData, error: qError } = await supabase
           .from('questions')
           .select('*')
           .in('id', questionIds)
 
         if (cancelled) return
-        if (!questionData || questionData.length === 0) {
+        if (qError || !questionData || questionData.length === 0) {
           setErrorMsg('load_failed')
-          setPhase('error')
+          setQuizState('error')
           return
         }
 
@@ -206,73 +179,64 @@ export default function QuizPage() {
           .map((id) => questionData.find((q) => q.id === id))
           .filter(Boolean)
 
-        setQuestions(shuffleQuestionAnswers(ordered))
+        // Shuffle answer order so correct answer isn't always first
+        const shuffledQuestions = ordered.map((q) => {
+          const answersEn = q.answers_en || []
+          const correctIdx = q.correct_answer_index // 1-based
 
-        // Load puzzle if present
-        if (todayPack.puzzle_id) {
-          const { data: puzzleData } = await supabase
+          // Create indexed array: [{text, originalIndex}]
+          const indexed = answersEn.map((text, i) => ({ text, originalIndex: i + 1 }))
+
+          // Fisher-Yates shuffle
+          for (let i = indexed.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [indexed[i], indexed[j]] = [indexed[j], indexed[i]]
+          }
+
+          // Find new position of correct answer (1-based)
+          const newCorrectIndex = indexed.findIndex((a) => a.originalIndex === correctIdx) + 1
+
+          // Build shuffled answers for each language
+          const shuffledEn = indexed.map((a) => a.text)
+          const shuffledFr = q.answers_fr ? indexed.map((a) => q.answers_fr[a.originalIndex - 1]) : null
+          const shuffledEs = q.answers_es ? indexed.map((a) => q.answers_es[a.originalIndex - 1]) : null
+          const shuffledIt = q.answers_it ? indexed.map((a) => q.answers_it[a.originalIndex - 1]) : null
+
+          return {
+            ...q,
+            answers_en: shuffledEn,
+            answers_fr: shuffledFr,
+            answers_es: shuffledEs,
+            answers_it: shuffledIt,
+            correct_answer_index: newCorrectIndex,
+          }
+        })
+
+        // Load puzzle if pack has one
+        if (packPuzzleId) {
+          const { data: pzl } = await supabase
             .from('puzzles')
             .select('*')
-            .eq('id', todayPack.puzzle_id)
+            .eq('id', packPuzzleId)
             .single()
-          if (!cancelled && puzzleData) setPuzzle(puzzleData)
+          if (pzl) setPuzzleData(pzl)
         }
 
-        // Load lesson if present
-        if (todayPack.lesson_id) {
-          const { data: lessonData } = await supabase
-            .from('daily_lessons')
-            .select('*')
-            .eq('id', todayPack.lesson_id)
-            .single()
-          if (!cancelled && lessonData) setLesson(lessonData)
-        }
-
-        if (!cancelled) setPhase('ready')
+        if (cancelled) return
+        setQuestions(shuffledQuestions)
+        setQuizState('ready')
       } catch (err) {
-        if (err?.name !== 'AbortError') console.error('Pack load error:', err)
+        if (err?.name !== 'AbortError') console.error('Quiz load error:', err)
         if (!cancelled) {
           setErrorMsg('load_failed')
-          setPhase('error')
+          setQuizState('error')
         }
       }
     }
 
-    if (user) loadPack()
+    if (user) loadQuiz()
     return () => { cancelled = true }
   }, [user])
-
-  // Shuffle answer order so correct answer isn't always first
-  function shuffleQuestionAnswers(ordered) {
-    return ordered.map((q) => {
-      const answersEn = q.answers_en || []
-      const correctIdx = q.correct_answer_index // 1-based
-
-      const indexed = answersEn.map((text, i) => ({ text, originalIndex: i + 1 }))
-
-      // Fisher-Yates shuffle
-      for (let i = indexed.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [indexed[i], indexed[j]] = [indexed[j], indexed[i]]
-      }
-
-      const newCorrectIndex = indexed.findIndex((a) => a.originalIndex === correctIdx) + 1
-
-      const shuffledEn = indexed.map((a) => a.text)
-      const shuffledFr = q.answers_fr ? indexed.map((a) => q.answers_fr[a.originalIndex - 1]) : null
-      const shuffledEs = q.answers_es ? indexed.map((a) => q.answers_es[a.originalIndex - 1]) : null
-      const shuffledIt = q.answers_it ? indexed.map((a) => q.answers_it[a.originalIndex - 1]) : null
-
-      return {
-        ...q,
-        answers_en: shuffledEn,
-        answers_fr: shuffledFr,
-        answers_es: shuffledEs,
-        answers_it: shuffledIt,
-        correct_answer_index: newCorrectIndex,
-      }
-    })
-  }
 
   // Start the timer
   const startTimer = useCallback(() => {
@@ -285,16 +249,19 @@ export default function QuizPage() {
       const remaining = Math.max(QUESTION_TIMER_SECONDS - elapsed, 0)
       setTimeLeft(remaining)
 
+      // Play tick sound at critical threshold
       if (remaining <= TIMER_CRITICAL_SECONDS && remaining > 0 && remaining !== lastTickRef.current) {
         lastTickRef.current = remaining
         playTimerTick()
       }
 
+      // Timer pressure messages — use i18n via imported t function with current lang
       if (remaining === 5) {
         const currentLang = localStorage.getItem('akka_lang') || 'en'
         setTimerMessage({ text: `⏳ ${tRaw('hurry_up', currentLang)}`, type: 'warning' })
         setTimeout(() => setTimerMessage(null), 1500)
-      } else if (remaining === 3) {
+      }
+      if (remaining === 3) {
         const currentLang = localStorage.getItem('akka_lang') || 'en'
         setTimerMessage({ text: `🔥 ${tRaw('last_chance', currentLang)}`, type: 'critical' })
         setTimeout(() => setTimerMessage(null), 1500)
@@ -307,6 +274,7 @@ export default function QuizPage() {
     }, 100)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Clean up timer on unmount
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current)
@@ -335,12 +303,12 @@ export default function QuizPage() {
 
   function handleStart() {
     playTap()
-    setPhase('question')
+    setQuizState('question')
     startTimer()
   }
 
   function handleTimeUp() {
-    if (phase !== 'question') return
+    if (quizState !== 'question') return
     processAnswer(null, QUESTION_TIMER_SECONDS * 1000)
   }
 
@@ -373,8 +341,10 @@ export default function QuizPage() {
     setIsCorrect(correct)
     setTimeSpentMs(clampedMs)
 
+    // Sound effects
     if (correct) {
       playCorrect()
+      // Gamification: combo + encouragement
       const newCombo = combo + 1
       setCombo(newCombo)
       setMaxCombo(prev => Math.max(prev, newCombo))
@@ -387,10 +357,11 @@ export default function QuizPage() {
       setCombo(0)
     }
 
+    // Fake member stats for this question
     setMemberStats(generateMemberStats(question.correct_answer_index - 1))
 
     if (xpEarned > 0) {
-      setXpFloat({ amount: xpEarned, speedBonus, key: Date.now() })
+      setXpFloat({ amount: xpEarned, key: Date.now() })
     }
 
     setAnswers((prev) => [
@@ -406,7 +377,7 @@ export default function QuizPage() {
     ])
 
     loadCommunityStats(question.id)
-    setPhase('feedback')
+    setQuizState('feedback')
   }
 
   async function loadCommunityStats(questionId) {
@@ -454,76 +425,24 @@ export default function QuizPage() {
 
     if (currentIndex + 1 < questions.length) {
       setCurrentIndex((i) => i + 1)
-      setPhase('question')
+      setQuizState('question')
       startTimer()
-    } else {
-      // Quiz done — go to puzzle or celebration or finish
-      if (puzzle) {
-        setPhase('puzzle')
-      } else {
-        finishQuiz()
-      }
-    }
-  }
-
-  // ── Puzzle handlers ──
-  function puzzleGetLang(key) {
-    if (!puzzle?.context_data) return ''
-    return puzzle.context_data[`${key}_${lang}`] || puzzle.context_data[`${key}_en`] || ''
-  }
-
-  function puzzleGetList(key) {
-    if (!puzzle?.context_data) return []
-    return puzzle.context_data[`${key}_${lang}`] || puzzle.context_data[`${key}_en`] || []
-  }
-
-  function handlePuzzleSelect(idx, correctIdx) {
-    if (puzzleAnswered) return
-    setPuzzleSelectedIdx(idx)
-    setPuzzleAnswered(true)
-    setPuzzleCorrect(idx === correctIdx)
-
-    if (user && puzzle) {
-      supabase.from('puzzle_attempts').insert({
-        user_id: user.id,
-        puzzle_id: puzzle.id,
-        is_correct: idx === correctIdx,
-        response_time_ms: 0,
-      }).then(() => {})
-    }
-  }
-
-  function handlePuzzleDone() {
-    setPhase('celebration')
-  }
-
-  function handleCelebrationDone() {
-    if (lesson) {
-      setPhase('lesson')
+    } else if (puzzleData && !puzzleAnswer) {
+      // Show puzzle phase before results
+      setQuizState('puzzle')
     } else {
       finishQuiz()
     }
   }
 
-  function handleLessonDone() {
-    finishQuiz()
-  }
-
-  // Lesson helpers
-  function lessonGetLang(key) {
-    if (!lesson) return ''
-    return lesson[`${key}_${lang}`] || lesson[`${key}_en`] || ''
-  }
-
   async function finishQuiz() {
     const score = answers.filter((a) => a.correct).length
-    const isPerfect = score === questions.length
+    const isPerfect = score === QUESTIONS_PER_QUIZ
     const totalSpeedBonuses = answers.filter((a) => a.speedBonus > 0).length
     const totalXP =
       XP_QUIZ_STARTED +
       answers.reduce((sum, a) => sum + a.xpEarned, 0) +
-      (isPerfect ? XP_PERFECT_QUIZ : 0) +
-      (puzzleCorrect ? 25 : 0) // bonus XP for puzzle
+      (isPerfect ? XP_PERFECT_QUIZ : 0)
     const totalDurationSec = Math.round(
       answers.reduce((sum, a) => sum + a.timeMs, 0) / 1000
     )
@@ -626,23 +545,44 @@ export default function QuizPage() {
   // --- RENDER ---
 
   const question = questions[currentIndex]
+
+  // Language-aware question content — localStorage is the source of truth
   const questionText = question ? (question[`question_${lang}`] || question.question_en) : ''
   const answersArr = question ? (question[`answers_${lang}`] || question.answers_en || []) : []
   const explanation = question ? (question[`explanation_${lang}`] || question.explanation_en) : ''
 
+  // Timer progress (0 → 1)
   const timerProgress = timeLeft / QUESTION_TIMER_SECONDS
+
+  // Timer colors — blue/orange/red to differentiate from green progress bar
   const timerPercent = (timeLeft / QUESTION_TIMER_SECONDS) * 100
   const timerColor =
-    timerPercent > 50 ? 'text-[#3498DB]' : timerPercent > 25 ? 'text-[#F39C12]' : 'text-[#E74C3C]'
+    timerPercent > 50
+      ? 'text-[#3498DB]'
+      : timerPercent > 25
+        ? 'text-[#F39C12]'
+        : 'text-[#E74C3C]'
+
   const timerBarColor =
-    timerPercent > 50 ? 'bg-[#3498DB]' : timerPercent > 25 ? 'bg-[#F39C12]' : 'bg-[#E74C3C] animate-pulse'
+    timerPercent > 50
+      ? 'bg-[#3498DB]'
+      : timerPercent > 25
+        ? 'bg-[#F39C12]'
+        : 'bg-[#E74C3C] animate-pulse'
+
   const timerBg =
-    timerPercent > 50 ? 'bg-blue-50' : timerPercent > 25 ? 'bg-amber-50' : 'bg-red-50'
-  const isCritical = timeLeft <= TIMER_CRITICAL_SECONDS && timeLeft > 0 && phase === 'question'
+    timerPercent > 50
+      ? 'bg-blue-50'
+      : timerPercent > 25
+        ? 'bg-amber-50'
+        : 'bg-red-50'
+
+  const isCritical = timeLeft <= TIMER_CRITICAL_SECONDS && timeLeft > 0 && quizState === 'question'
+
   const timeSpentSec = Math.round(timeSpentMs / 1000)
 
   // Loading state
-  if (phase === 'loading') {
+  if (quizState === 'loading') {
     return (
       <div className="min-h-screen bg-akka-bg flex flex-col items-center justify-center">
         <Loader2 size={32} className="text-akka-green animate-spin mb-4" />
@@ -651,8 +591,8 @@ export default function QuizPage() {
     )
   }
 
-  // Already completed
-  if (phase === 'error' && errorMsg === 'already_completed') {
+  // Already completed state — friendly screen instead of error
+  if (quizState === 'error' && errorMsg === 'already_completed') {
     return (
       <div className="min-h-screen bg-akka-bg flex flex-col">
         <QuizHeader onBack={() => navigate('/')} muted={muted} onToggleMute={handleToggleMute} title={t('quiz_of_the_day')} />
@@ -672,8 +612,8 @@ export default function QuizPage() {
     )
   }
 
-  // Generic error
-  if (phase === 'error') {
+  // Generic error state
+  if (quizState === 'error') {
     return (
       <div className="min-h-screen bg-akka-bg flex flex-col">
         <QuizHeader onBack={() => navigate('/')} muted={muted} onToggleMute={handleToggleMute} title={t('quiz_of_the_day')} />
@@ -693,13 +633,14 @@ export default function QuizPage() {
     )
   }
 
-  // Ready state
-  if (phase === 'ready') {
+  // Ready state — dark green gradient with glow
+  if (quizState === 'ready') {
     const streak = profile?.current_streak || 0
     return (
       <div className="min-h-screen bg-gradient-to-b from-[#1B3D2F] via-[#1B3D2F] to-[#0B1A14] flex flex-col">
         <QuizHeader onBack={() => navigate('/')} muted={muted} onToggleMute={handleToggleMute} title={t('quiz_of_the_day')} dark />
         <div className="flex-1 flex flex-col items-center justify-center px-6">
+          {/* Glowing emoji */}
           <div className="relative mb-6">
             <div className="absolute inset-0 rounded-full bg-[#2ECC71] opacity-20 blur-2xl scale-150" />
             <div className="relative w-24 h-24 rounded-3xl bg-[#2ECC71]/15 flex items-center justify-center border border-[#2ECC71]/20">
@@ -710,16 +651,10 @@ export default function QuizPage() {
           <p className="text-[#A7C4B8] text-center mb-1">
             {tp('questions_per_question', { count: questions.length, timer: QUESTION_TIMER_SECONDS })}
           </p>
-          {pack && (
-            <p className="text-xs text-[#A7C4B8]/70 mb-1">
-              {pack.theme && `📚 ${pack.theme}`}
-              {puzzle && ' · 🧩 Puzzle'}
-              {lesson && ' · 📖 Lesson'}
-            </p>
-          )}
           <p className="text-xs text-[#A7C4B8] mb-4">
             {t('answer_quickly')}
           </p>
+          {/* Streak badge */}
           {streak > 0 && (
             <div className="flex items-center gap-2 mb-6 px-4 py-2 rounded-full bg-[#2ECC71]/10 border border-[#2ECC71]/20">
               <span className="text-lg">🔥</span>
@@ -727,6 +662,7 @@ export default function QuizPage() {
             </div>
           )}
           {!streak && <div className="mb-6" />}
+          {/* Shimmer CTA button */}
           <button
             onClick={handleStart}
             className="relative w-full max-w-xs py-4 rounded-2xl bg-[#2ECC71] text-white font-bold text-lg shadow-lg shadow-[#2ECC71]/30 active:scale-[0.97] transition-transform overflow-hidden"
@@ -739,292 +675,58 @@ export default function QuizPage() {
     )
   }
 
-  // ── PUZZLE PHASE ──
-  if (phase === 'puzzle' && puzzle) {
-    const c = puzzle.context_data || {}
-    const type = puzzle.interaction_type
-
-    return (
-      <div className="min-h-screen bg-white flex flex-col">
-        <div className="px-4 pt-4 pb-2 flex items-center gap-3">
-          <button onClick={() => handlePuzzleDone()} className="p-2 -ml-2">
-            <ArrowLeft size={20} className="text-[#6B7280]" />
-          </button>
-          <div>
-            <p className="text-xs uppercase tracking-wider text-purple-600 font-bold">The Catch</p>
-            <p className="text-[10px] text-[#6B7280]">{puzzle.theme}</p>
-          </div>
-        </div>
-        <div className="flex-1 px-4 py-4">
-          {renderPuzzleContent(type, c)}
-        </div>
-        {puzzleAnswered && (
-          <div className="px-4 py-4">
-            <div className={`p-3 rounded-xl mb-3 ${puzzleCorrect ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
-              <div className="flex items-center gap-2 mb-1">
-                {puzzleCorrect ? <CheckCircle size={16} className="text-green-600" /> : <XCircle size={16} className="text-red-600" />}
-                <p className={`text-sm font-bold ${puzzleCorrect ? 'text-green-800' : 'text-red-800'}`}>
-                  {puzzleCorrect ? 'Correct!' : 'Not quite!'}
-                </p>
-              </div>
-              <p className="text-xs text-gray-700">
-                {puzzle.context_data?.[`explanation_${lang}`]
-                  || puzzle.context_data?.explanation_en
-                  || puzzle[`explanation_${lang}`]
-                  || puzzle.explanation || ''}
-              </p>
-            </div>
-            <button
-              onClick={handlePuzzleDone}
-              className="w-full py-3.5 bg-[#1B3D2F] text-white font-bold rounded-xl text-sm"
-            >
-              Continue
-            </button>
-          </div>
-        )}
-      </div>
-    )
+  // Puzzle handler
+  function handlePuzzleAnswer(answer) {
+    const correct = String(answer) === String(puzzleData.answer)
+    setPuzzleAnswer(answer)
+    setPuzzleCorrect(correct)
+    if (correct) playCorrect()
+    else playWrong()
+    setQuizState('puzzle_feedback')
   }
 
-  // ── CELEBRATION PHASE ──
-  if (phase === 'celebration') {
-    const score = answers.filter((a) => a.correct).length
-    const totalXP = XP_QUIZ_STARTED +
-      answers.reduce((sum, a) => sum + a.xpEarned, 0) +
-      (score === questions.length ? XP_PERFECT_QUIZ : 0) +
-      (puzzleCorrect ? 25 : 0)
-
+  // Puzzle phase
+  if (quizState === 'puzzle' || quizState === 'puzzle_feedback') {
+    const puzzleExplanation = puzzleData[`explanation_${lang}`] || puzzleData.explanation || ''
     return (
-      <div className="min-h-screen bg-gradient-to-b from-[#1B3D2F] to-[#2D5A45] flex flex-col items-center justify-center px-6 text-white">
-        <div className="text-6xl mb-4">🎉</div>
-        <h2 className="text-2xl font-bold mb-2">Challenge Complete!</h2>
-        <p className="text-white/70 mb-2">
-          Quiz: {score}/{questions.length} correct
-          {puzzleAnswered && ` · Puzzle: ${puzzleCorrect ? '✅' : '❌'}`}
-        </p>
-        <p className="text-5xl font-black my-4">
-          +{totalXP} XP
-        </p>
-        <p className="text-sm text-white/60 mb-8">Keep learning to build your investor skills!</p>
-        <button
-          onClick={handleCelebrationDone}
-          className="px-8 py-3.5 bg-white text-[#1B3D2F] font-bold rounded-xl"
-        >
-          {lesson ? "Today's Lesson →" : 'See Results'}
-        </button>
-      </div>
-    )
-  }
+      <div className="min-h-screen bg-akka-bg flex flex-col pb-24">
+        <QuizHeader onBack={() => navigate('/')} muted={muted} onToggleMute={handleToggleMute} title="The Catch" />
+        <div className="flex-1 px-4 pt-4">
+          <PuzzleRenderer puzzle={puzzleData} onAnswer={handlePuzzleAnswer} lang={lang} />
 
-  // ── LESSON PHASE ──
-  if (phase === 'lesson' && lesson) {
-    return (
-      <div className="min-h-screen bg-white flex flex-col">
-        <div className="px-4 pt-4 pb-2 flex items-center gap-3">
-          <button onClick={handleLessonDone} className="p-2 -ml-2">
-            <ArrowLeft size={20} className="text-[#6B7280]" />
-          </button>
-          <div>
-            <p className="text-xs uppercase tracking-wider text-amber-600 font-bold">
-              Lesson of the Day
-            </p>
-            <p className="text-[10px] text-[#6B7280]">{lesson.theme}</p>
-          </div>
-        </div>
-
-        <div className="flex-1 px-4 py-4">
-          <h1 className="text-xl font-bold text-[#1A1A1A] mb-4">{lessonGetLang('title')}</h1>
-
-          <div className="w-full aspect-video bg-gradient-to-br from-[#1B3D2F] to-[#2D5A45] rounded-2xl flex flex-col items-center justify-center mb-6">
-            <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center mb-2">
-              <Play size={28} className="text-white ml-1" />
-            </div>
-            <p className="text-white/70 text-xs">Video coming soon</p>
-          </div>
-
-          <div className="space-y-3">
-            {lessonGetLang('content')
-              .split('\n')
-              .filter(Boolean)
-              .map((p, i) => (
-                <p key={i} className="text-sm text-gray-700 leading-relaxed">
-                  {p}
-                </p>
-              ))}
-          </div>
-
-          {lessonGetLang('key_takeaway') && (
-            <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
-              <div className="flex items-center gap-2 mb-2">
-                <Lightbulb size={16} className="text-amber-600" />
-                <p className="text-xs font-bold uppercase tracking-wide text-amber-700">
-                  Key Takeaway
+          {quizState === 'puzzle_feedback' && (
+            <div className="mt-4">
+              <div className={`p-4 rounded-2xl border border-l-4 mb-4 ${
+                puzzleCorrect
+                  ? 'bg-[#F0FDF4] border-[#BBF7D0] border-l-[#2ECC71]'
+                  : 'bg-[#FEF2F2] border-[#FECACA] border-l-[#E74C3C]'
+              }`}>
+                <div className="flex items-start gap-2 mb-2">
+                  {puzzleCorrect ? (
+                    <CheckCircle size={18} className="text-[#2ECC71] shrink-0 mt-0.5" />
+                  ) : (
+                    <XCircle size={18} className="text-[#E74C3C] shrink-0 mt-0.5" />
+                  )}
+                  <p className={`text-sm font-bold ${puzzleCorrect ? 'text-[#166534]' : 'text-[#991B1B]'}`}>
+                    {puzzleCorrect ? t('correct') : getQuizText('wrongAnswer', lang)}
+                  </p>
+                </div>
+                <p className="text-sm text-[#1A1A1A] leading-relaxed">
+                  {puzzleExplanation}
                 </p>
               </div>
-              <p className="text-sm text-amber-900 font-medium leading-relaxed">
-                {lessonGetLang('key_takeaway')}
-              </p>
+              <Button variant="primary" className="w-full" onClick={() => finishQuiz()}>
+                {t('see_results')}
+              </Button>
             </div>
           )}
         </div>
-
-        <div className="px-4 py-4">
-          <button
-            onClick={handleLessonDone}
-            className="w-full py-3.5 bg-[#1B3D2F] text-white font-bold rounded-xl text-sm"
-          >
-            Done — See Results
-          </button>
-        </div>
+        <TabBar />
       </div>
     )
   }
 
-  // ── Puzzle content renderer ──
-  function renderPuzzleContent(type, data) {
-    // data = puzzle.context_data
-    // Correct answer index from puzzle.answer (string like "0", "1", "2")
-    const correctIdx = parseInt(puzzle?.answer, 10) || 0
-    const options = puzzleGetList('options')
-
-    if (type === 'tap_to_spot') {
-      return (
-        <>
-          <h2 className="text-lg font-bold text-[#1A1A1A] mb-2">Spot the Error</h2>
-          <p className="text-sm text-[#6B7280] mb-4">Tap the part that's wrong:</p>
-          <div className="p-4 bg-gray-50 rounded-xl text-sm text-gray-800 leading-relaxed mb-4">
-            {puzzleGetLang('statement')}
-          </div>
-          {!puzzleAnswered ? (
-            <button
-              onClick={() => handlePuzzleSelect(0, 0)}
-              className="w-full py-3 border-2 border-purple-300 rounded-xl text-sm font-medium text-purple-700 hover:bg-purple-50"
-            >
-              I found the error!
-            </button>
-          ) : (
-            <div className="space-y-2">
-              <div className="p-3 bg-red-50 rounded-lg">
-                <p className="text-xs text-red-600 font-medium">Error: {puzzleGetLang('error_part')}</p>
-              </div>
-              <div className="p-3 bg-green-50 rounded-lg">
-                <p className="text-xs text-green-600 font-medium">Correct: {puzzleGetLang('correction')}</p>
-              </div>
-            </div>
-          )}
-        </>
-      )
-    }
-
-    if (type === 'ab_choice') {
-      // For ab_choice, correctIdx from puzzle.answer (0 or 1)
-      const correctOpt = correctIdx
-      return (
-        <>
-          <h2 className="text-lg font-bold text-[#1A1A1A] mb-2">A/B Choice</h2>
-          <p className="text-sm text-gray-700 mb-4 leading-relaxed">{puzzleGetLang('scenario')}</p>
-          <div className="space-y-3">
-            {['option_a', 'option_b'].map((key, idx) => {
-              let style = 'border-gray-200 bg-white'
-              if (puzzleAnswered) {
-                if (idx === correctOpt) style = 'border-green-500 bg-green-50'
-                else if (idx === puzzleSelectedIdx) style = 'border-red-500 bg-red-50'
-                else style = 'border-gray-100 bg-gray-50'
-              }
-              return (
-                <button
-                  key={idx}
-                  onClick={() => handlePuzzleSelect(idx, correctOpt)}
-                  disabled={puzzleAnswered}
-                  className={`w-full text-left px-4 py-3.5 rounded-xl border-2 text-sm font-medium ${style}`}
-                >
-                  <span className="font-bold mr-2">{idx === 0 ? 'A' : 'B'}.</span>
-                  {puzzleGetLang(key)}
-                </button>
-              )
-            })}
-          </div>
-        </>
-      )
-    }
-
-    // Generic options-based puzzles (fill_gap, match_chart, before_after, crash_point)
-    const titles = {
-      fill_gap: 'Fill the Gap',
-      match_chart: 'Match the Chart',
-      before_after: 'Before & After',
-      crash_point: 'Crash Point',
-    }
-
-    return (
-      <>
-        <h2 className="text-lg font-bold text-[#1A1A1A] mb-2">{titles[type] || type}</h2>
-
-        {type === 'fill_gap' && (
-          <div className="p-4 bg-gray-50 rounded-xl text-sm text-gray-800 leading-relaxed mb-4">
-            {puzzleGetLang('statement')}
-          </div>
-        )}
-
-        {type === 'match_chart' && (
-          <>
-            <div className="p-4 bg-blue-50 rounded-xl text-sm text-blue-800 mb-4">
-              📈 {puzzleGetLang('chart_description')}
-            </div>
-            <p className="text-sm text-[#6B7280] mb-3">What does this chart represent?</p>
-          </>
-        )}
-
-        {type === 'before_after' && (
-          <>
-            <div className="grid grid-cols-2 gap-3 mb-4">
-              <div className="p-3 bg-gray-50 rounded-xl">
-                <p className="text-[10px] uppercase text-[#6B7280] font-bold mb-1">Before</p>
-                <p className="text-sm text-gray-800">{puzzleGetLang('before')}</p>
-              </div>
-              <div className="p-3 bg-amber-50 rounded-xl">
-                <p className="text-[10px] uppercase text-amber-600 font-bold mb-1">After</p>
-                <p className="text-sm text-gray-800">{puzzleGetLang('after')}</p>
-              </div>
-            </div>
-            <p className="text-sm font-medium text-[#1A1A1A] mb-3">{puzzleGetLang('question')}</p>
-          </>
-        )}
-
-        {type === 'crash_point' && (
-          <>
-            <div className="p-4 bg-red-50 rounded-xl text-sm text-red-800 mb-4">
-              💥 {puzzleGetLang('timeline')}
-            </div>
-            <p className="text-sm font-medium text-[#1A1A1A] mb-3">{puzzleGetLang('question')}</p>
-          </>
-        )}
-
-        <div className="space-y-2">
-          {options.map((opt, idx) => {
-            let style = 'border-gray-200 bg-white'
-            if (puzzleAnswered) {
-              if (idx === correctIdx) style = 'border-green-500 bg-green-50'
-              else if (idx === puzzleSelectedIdx) style = 'border-red-500 bg-red-50'
-              else style = 'border-gray-100 bg-gray-50'
-            }
-            return (
-              <button
-                key={idx}
-                onClick={() => handlePuzzleSelect(idx, correctIdx)}
-                disabled={puzzleAnswered}
-                className={`w-full text-left px-4 py-3 rounded-xl border-2 text-sm font-medium ${style}`}
-              >
-                {opt}
-              </button>
-            )
-          })}
-        </div>
-      </>
-    )
-  }
-
-  // ── Question + Feedback states (quiz phase) ──
+  // Question + Feedback states
   return (
     <div className="min-h-screen bg-akka-bg flex flex-col pb-24">
       {/* Header with progress + mute */}
@@ -1035,33 +737,24 @@ export default function QuizPage() {
         >
           <ArrowLeft size={20} />
         </button>
-        {/* Segmented progress bar */}
-        <div className="flex-1 flex items-center gap-1">
-          {questions.map((_, i) => {
-            const answered = answers[i]
-            let segColor = 'bg-gray-200'
-            if (i < currentIndex && answered) {
-              segColor = answered.correct ? 'bg-akka-green' : 'bg-akka-red'
-            } else if (i === currentIndex) {
-              segColor = phase === 'feedback'
-                ? isCorrect ? 'bg-akka-green' : 'bg-akka-red'
-                : 'bg-akka-dark'
-            }
-            return (
-              <div
-                key={i}
-                className={`h-2 flex-1 rounded-full transition-all duration-300 ${segColor} ${
-                  i === currentIndex && phase === 'question' ? 'animate-progress-pulse' : ''
-                }`}
-              />
-            )
-          })}
-          {/* Puzzle indicator */}
-          {puzzle && (
-            <div className={`h-2 w-6 rounded-full transition-all duration-300 ${
-              phase === 'puzzle' ? 'bg-purple-500' : 'bg-gray-200'
-            }`} />
-          )}
+        {/* Progress dots */}
+        <div className="flex-1 flex items-center gap-1.5">
+          {questions.map((_, i) => (
+            <div
+              key={i}
+              className={`h-1.5 flex-1 rounded-full transition-colors ${
+                i < currentIndex
+                  ? 'bg-akka-green'
+                  : i === currentIndex
+                    ? quizState === 'feedback'
+                      ? isCorrect
+                        ? 'bg-akka-green'
+                        : 'bg-akka-red'
+                      : 'bg-akka-dark'
+                    : 'bg-gray-200'
+              }`}
+            />
+          ))}
         </div>
         {/* Timer badge */}
         <div
@@ -1082,7 +775,7 @@ export default function QuizPage() {
       </div>
 
       {/* Timer progress bar */}
-      {phase === 'question' && (
+      {quizState === 'question' && (
         <div className="w-full h-2 bg-gray-100">
           <div
             className={`h-full rounded-r-full transition-all duration-200 ease-linear ${timerBarColor}`}
@@ -1139,8 +832,9 @@ export default function QuizPage() {
           const num = idx + 1
           const isSelected = selectedAnswer === num
           const isCorrectAnswer = question.correct_answer_index === num
-          const showResult = phase === 'feedback'
+          const showResult = quizState === 'feedback'
 
+          // Enhanced feedback styles
           let cardStyle = 'bg-white border-akka-border'
           let textColor = 'text-akka-text'
           let fontWeight = 'font-medium'
@@ -1169,12 +863,11 @@ export default function QuizPage() {
           return (
             <button
               key={num}
-              onClick={() => phase === 'question' && handleAnswer(num)}
-              disabled={phase === 'feedback'}
-              className={`relative w-full text-left p-4 rounded-2xl border-2 transition-all duration-200 active:scale-[0.98] animate-fadeInUp ${cardStyle} ${
+              onClick={() => quizState === 'question' && handleAnswer(num)}
+              disabled={quizState === 'feedback'}
+              className={`relative w-full text-left p-4 rounded-2xl border-2 transition-all duration-200 active:scale-[0.98] ${cardStyle} ${
                 shouldShake ? 'animate-shake' : shouldPulse ? 'animate-pulse-select' : ''
               }`}
-              style={{ animationDelay: `${idx * 0.07}s` }}
             >
               <div className="flex items-center gap-3">
                 <div
@@ -1201,6 +894,7 @@ export default function QuizPage() {
                 </span>
               </div>
 
+              {/* Community stats bar */}
               {showResult && communityPct !== null && (
                 <div className="mt-2 flex items-center gap-2">
                   <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
@@ -1220,8 +914,8 @@ export default function QuizPage() {
           )
         })}
 
-        {/* How Akka members answered */}
-        {phase === 'feedback' && !communityStats && memberStats && (
+        {/* How Akka members answered — Kahoot-style bars */}
+        {quizState === 'feedback' && !communityStats && memberStats && (
           <div className="mt-5 px-1">
             <p className="text-xs font-semibold text-akka-text-secondary uppercase tracking-wide mb-3">{getQuizText('membersAnswered', lang)}</p>
             <div className="space-y-2">
@@ -1252,19 +946,16 @@ export default function QuizPage() {
       </div>
 
       {/* Feedback section */}
-      {phase === 'feedback' && (
+      {quizState === 'feedback' && (
         <div className="px-4 pt-4 pb-6">
+          {/* XP Float animation */}
           {xpFloat && (
             <div key={xpFloat.key} className="flex justify-center mb-3 animate-float-up">
-              <span className="text-[#1B3D2F] font-black text-xl">
-                +{xpFloat.amount} XP
-                {xpFloat.speedBonus > 0 && (
-                  <span className="text-sm font-bold text-[#F39C12] ml-1.5">⚡ Speed!</span>
-                )}
-              </span>
+              <span className="text-[#1B3D2F] font-bold text-lg">+{xpFloat.amount} XP</span>
             </div>
           )}
 
+          {/* Explanation card — enhanced readability */}
           <div
             className={`mb-4 p-4 rounded-2xl border border-l-4 ${
               isCorrect
@@ -1291,14 +982,13 @@ export default function QuizPage() {
             </p>
           </div>
 
+          {/* Next button */}
           <Button variant="primary" className="w-full gap-2" onClick={handleNext}>
             {currentIndex + 1 < questions.length ? (
               <>
                 {t('next_question')}
                 <ChevronRight size={18} />
               </>
-            ) : puzzle ? (
-              'Continue to Puzzle →'
             ) : (
               t('see_results')
             )}
@@ -1306,6 +996,7 @@ export default function QuizPage() {
         </div>
       )}
 
+      {/* TabBar visible during quiz */}
       <TabBar />
     </div>
   )

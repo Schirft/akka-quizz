@@ -1,15 +1,15 @@
 /**
  * Edge Function: generate-daily-pack
  *
- * Generates a complete daily challenge pack for a given date and theme:
- *   - 3 QCM questions (themed)
- *   - 1 Puzzle ("The Catch")
+ * Generates a complete daily challenge pack:
+ *   - 3 QCM questions (easy/medium/hard)
+ *   - 1 Puzzle "The Catch"
  *   - 1 Lesson of the Day
- *   - Translations for all 4 languages (EN, FR, IT, ES)
+ *   - Translations in FR/IT/ES
  *
- * Body: { date: "YYYY-MM-DD", theme?: string }
+ * Body: { theme, count?, difficulty? }
  *
- * DEPLOYMENT:
+ * Deployment:
  *   supabase functions deploy generate-daily-pack --no-verify-jwt
  */
 
@@ -18,45 +18,19 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
+const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") || "";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+function corsHeaders() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Content-Type": "application/json",
+  };
+}
 
-// ── Weekly theme rotation (Mon=0 … Sun=6) ──
-const WEEKLY_THEMES: Record<number, string> = {
-  1: "Fundraising & Dilution",
-  2: "Cap Tables & Valuation",
-  3: "Due Diligence",
-  4: "Term Sheets & Legal",
-  5: "Portfolio Strategy",
-  6: "Startup Metrics & KPIs",
-  0: "Ecosystem & Trends",
-};
-
-// ── Puzzle types ──
-const PUZZLE_TYPES = [
-  "tap_to_spot",
-  "ab_choice",
-  "fill_gap",
-  "match_chart",
-  "before_after",
-  "crash_point",
-] as const;
-
-// ── Helpers ──
-
-async function callClaude(
-  system: string,
-  user: string,
-  maxTokens = 4096
-): Promise<string> {
+async function callClaude(prompt: string, maxTokens = 4096): Promise<string> {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -67,350 +41,448 @@ async function callClaude(
     body: JSON.stringify({
       model: "claude-sonnet-4-20250514",
       max_tokens: maxTokens,
-      system,
-      messages: [{ role: "user", content: user }],
+      messages: [{ role: "user", content: prompt }],
     }),
   });
+
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Claude API error ${res.status}: ${err}`);
+    const errText = await res.text();
+    throw new Error(`Claude API error ${res.status}: ${errText}`);
   }
+
   const data = await res.json();
   return data.content?.[0]?.text || "";
 }
 
-function robustParse(raw: string): Record<string, unknown> {
-  const trimmed = raw.trim();
-  let clean = trimmed;
-  if (clean.startsWith("```json"))
-    clean = clean.replace(/^```json\s*/, "").replace(/```\s*$/, "");
-  if (clean.startsWith("```"))
-    clean = clean.replace(/^```\s*/, "").replace(/```\s*$/, "");
-  try {
-    return JSON.parse(clean);
-  } catch {}
-  try {
-    const m = trimmed.match(/\{[\s\S]*\}/);
-    if (m) return JSON.parse(m[0]);
-  } catch {}
-  throw new Error("Could not parse AI response as JSON");
+function extractJSON(text: string): any {
+  const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (jsonMatch) return JSON.parse(jsonMatch[1].trim());
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start >= 0 && end > start) return JSON.parse(text.slice(start, end + 1));
+  // Try array
+  const arrStart = text.indexOf("[");
+  const arrEnd = text.lastIndexOf("]");
+  if (arrStart >= 0 && arrEnd > arrStart) return JSON.parse(text.slice(arrStart, arrEnd + 1));
+  throw new Error("No valid JSON found in response");
 }
 
-// ── Main ──
+// ─── PROMPTS ────────────────────────────────────────────────────────────────
 
-Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
+function buildQCMPrompt(theme: string, difficulty: string): string {
+  return `You are creating quiz questions for AKKA, a European startup investment club.
 
-  try {
-    const body = await req.json();
-    const targetDate: string = body.date || new Date().toISOString().split("T")[0];
+Theme: ${theme}
+Difficulty: ${difficulty}
 
-    // Determine theme from day of week or override
-    const dow = new Date(targetDate + "T12:00:00Z").getDay();
-    const theme: string = body.theme || WEEKLY_THEMES[dow] || "General";
+Create 3 multiple-choice questions about ${theme} in startup investing:
+- Question 1: Easy — general knowledge, culture, famous examples
+- Question 2: Medium — analytical thinking, understanding concepts
+- Question 3: Hard — scenario-based, requires deep understanding
 
-    // Pick a random puzzle type for today
-    const puzzleType =
-      PUZZLE_TYPES[Math.floor(Math.random() * PUZZLE_TYPES.length)];
-
-    // ────────────────────────────────
-    // STEP 1: Generate 3 QCM questions
-    // ────────────────────────────────
-    const qcmPrompt = `You are an expert quiz creator for a startup investment learning app called Akka.
-Today's theme: "${theme}"
-
-Generate exactly 3 multiple-choice questions about "${theme}" for aspiring startup investors.
-
-Rules:
-- Each question has exactly 4 answer options
-- Exactly one answer is correct (0-based index)
-- Questions should be educational and challenging but fair
-- Include a short explanation for the correct answer
-- Provide all content in English first
+For EACH question provide:
+- question: the question text
+- answers: array of 4 possible answers
+- correct_answer_index: 0-3
+- explanation: why the correct answer is right (100-200 words)
+- category: subcategory within the theme
 
 Return ONLY valid JSON:
 {
   "questions": [
     {
-      "question_en": "Question text in English",
-      "answers_en": ["Option A", "Option B", "Option C", "Option D"],
+      "question": "...",
+      "answers": ["A", "B", "C", "D"],
       "correct_answer_index": 0,
-      "explanation_en": "Short explanation of why this is correct",
-      "category": "${theme}"
+      "explanation": "...",
+      "category": "..."
     }
   ]
 }`;
+}
 
-    const qcmRaw = await callClaude(qcmPrompt, `Generate 3 questions for theme: ${theme}`);
-    const qcmData = robustParse(qcmRaw) as {
-      questions: Array<{
-        question_en: string;
-        answers_en: string[];
-        correct_answer_index: number;
-        explanation_en: string;
-        category: string;
-      }>;
-    };
+function buildPuzzlePrompt(theme: string, difficulty: string): string {
+  return `You are creating an investment analysis puzzle for "The Catch" — a daily game where startup investors must solve a visual puzzle about real-looking startup data.
 
-    if (!qcmData.questions || qcmData.questions.length < 3) {
-      throw new Error("AI did not generate 3 questions");
-    }
+Theme: ${theme}
+Difficulty: ${difficulty}
 
-    // ────────────────────────────────
-    // STEP 2: Translate QCM to FR, IT, ES
-    // ────────────────────────────────
-    const transQcmPrompt = `Translate these 3 quiz questions and their answer options into French, Italian, and Spanish.
-Keep the same structure. Return ONLY valid JSON:
+6 PUZZLE MECHANICS (choose the best one for this theme + difficulty):
+
+MECHANIC 1: "SPOT THE FLAW" (tap to identify)
+User sees a data document (cap table, chart, term sheet). One element is wrong/suspicious. User taps the problematic element.
+interaction_type: "tap_to_spot"
+context_data format: { "rows": [...] } or { "clauses": [...] } — each item has an "id" field
+answer: the "id" of the wrong element
+
+MECHANIC 2: "A/B COMPARISON" (pick the better deal)
+User sees two deals/charts/scenarios side by side. User picks A or B. Then sees detailed breakdown of why.
+interaction_type: "ab_choice"
+context_data format: { "option_a": { "title": "Deal A", "metrics": {...} }, "option_b": { "title": "Deal B", "metrics": {...} }, "question": "Which deal gives you ≥3x return?" }
+answer: "a" or "b"
+
+MECHANIC 3: "FILL THE GAP" (choose the missing number)
+A cap table, P&L, or financial table with ONE number replaced by "?". User picks from 3-4 options.
+interaction_type: "fill_gap"
+context_data format: { "rows": [...], "missing_field": {"row_id": "...", "field": "..."}, "options": [12, 15, 18, 22], "correct_option": 15 }
+answer: the correct number
+
+MECHANIC 4: "MATCH THE CHART" (match description to visual)
+2-3 mini charts + 1 text description. User matches the description to the right chart.
+interaction_type: "match_chart"
+context_data format: { "charts": [{"id": "a", "type": "line", "data": [...], "label": "Chart A"}, ...], "description": "..." }
+answer: "a" (the id of the matching chart)
+
+MECHANIC 5: "BEFORE/AFTER" (find the inconsistency)
+Two versions of the same document (before/after a round). One number changed incorrectly.
+interaction_type: "before_after"
+context_data format: { "before": { "title": "Pre-Series A", "rows": [...] }, "after": { "title": "Post-Series A", "rows": [...] }, "question": "Which number doesn't match the round terms?" }
+answer: the "id" of the inconsistent element in "after"
+
+MECHANIC 6: "CRASH POINT" (tap the danger moment on a timeline)
+A cash balance curve or runway chart over 18-24 months. User taps the month where danger occurs.
+interaction_type: "crash_point"
+context_data format: { "chart_type": "cash_balance", "data": [{"month": "Jan 2025", "cash": 2400000}, ...], "monthly_burn": [{"month": "Jan 2025", "burn": 180000}, ...], "question": "In which month does the startup have less than 3 months of runway?" }
+answer: "Sep 2025" (a specific month)
+
+THEMES → BEST MECHANIC COMBINATIONS:
+- Fundraising: ab_choice, fill_gap, before_after
+- Cap Tables: tap_to_spot, fill_gap, before_after
+- Term Sheets: tap_to_spot, ab_choice
+- Unit Economics: fill_gap, tap_to_spot
+- Revenue & Growth: match_chart, crash_point, tap_to_spot
+- Burn Analysis: crash_point, tap_to_spot, fill_gap
+- Market & Comps: tap_to_spot, ab_choice, match_chart
+
+Create a puzzle and return ONLY valid JSON:
 {
-  "questions": [
-    {
-      "question_fr": "...", "answers_fr": ["...","...","...","..."], "explanation_fr": "...",
-      "question_it": "...", "answers_it": ["...","...","...","..."], "explanation_it": "...",
-      "question_es": "...", "answers_es": ["...","...","...","..."], "explanation_es": "..."
-    }
-  ]
+  "title": "The Phantom Shares",
+  "subtitle": "Series A · SaaS · €5M",
+  "puzzle_type": "${theme.toLowerCase().replace(/ /g, "_")}",
+  "interaction_type": "tap_to_spot",
+  "context_data": { ... },
+  "hint": "Check if the total adds up",
+  "answer": "advisor_shares_row",
+  "explanation": "Detailed explanation 200-300 words...",
+  "timer_seconds": 90
+}
+
+IMPORTANT:
+- context_data MUST be valid JSON that a React frontend can render directly
+- Every clickable/interactive element MUST have a unique "id" field
+- The puzzle must be solvable — there is exactly ONE correct answer
+- The explanation should teach a real investment concept
+- Vary the mechanics — don't always use tap_to_spot`;
+}
+
+function buildLessonPrompt(theme: string, puzzleTitle: string, answer: string, explanation: string): string {
+  return `Based on this puzzle about ${theme}:
+Title: ${puzzleTitle}
+Flaw found: ${answer}
+Explanation: ${explanation}
+
+Write a "Lesson of the Day" for startup investors (300-500 words):
+1. title: educational title about the underlying concept
+2. content: structured text with:
+   - What is the concept
+   - Why it matters for angel investors
+   - How to spot this issue in real deals
+   - A real-world example or analogy
+   - One actionable takeaway
+3. key_takeaway: 1 sentence summary
+
+Return ONLY valid JSON:
+{ "title": "...", "content": "...", "key_takeaway": "..." }`;
+}
+
+function buildTranslationPrompt(fields: Record<string, string>): string {
+  const entries = Object.entries(fields)
+    .filter(([_, v]) => v && v.trim())
+    .map(([k, v]) => `"${k}": ${JSON.stringify(v)}`)
+    .join(",\n  ");
+
+  const keys = Object.keys(fields);
+
+  return `Translate ALL the following fields into French (fr), Italian (it), and Spanish (es).
+Keep the same JSON keys. Maintain formatting (paragraphs, bullet points).
+
+Return ONLY valid JSON:
+{
+  "fr": { ${keys.map((k) => `"${k}": "..."`).join(", ")} },
+  "it": { ${keys.map((k) => `"${k}": "..."`).join(", ")} },
+  "es": { ${keys.map((k) => `"${k}": "..."`).join(", ")} }
+}
+
+Fields to translate:
+{
+  ${entries}
 }`;
+}
 
-    const questionsJson = JSON.stringify(
-      qcmData.questions.map((q) => ({
-        question_en: q.question_en,
-        answers_en: q.answers_en,
-        explanation_en: q.explanation_en,
-      }))
-    );
+// ─── Generate one pack ──────────────────────────────────────────────────────
 
-    const transQcmRaw = await callClaude(transQcmPrompt, questionsJson);
-    const transQcm = robustParse(transQcmRaw) as {
-      questions: Array<Record<string, unknown>>;
-    };
+async function generateOnePack(theme: string, difficulty: string) {
+  const results: any = { questions: [], puzzle: null, lesson: null };
 
-    // Insert questions into DB
-    const questionIds: string[] = [];
-    for (let i = 0; i < 3; i++) {
-      const q = qcmData.questions[i];
-      const tr = transQcm.questions?.[i] || {};
+  // CALL 1: Generate 3 QCM
+  console.log(`[Pack] Generating 3 QCM for ${theme}...`);
+  const qcmResp = await callClaude(buildQCMPrompt(theme, difficulty), 4096);
+  const qcmData = extractJSON(qcmResp);
+  const questions = qcmData.questions || [];
 
-      // DB uses 1-based correct_answer_index
-      const correctIndex1 = (q.correct_answer_index || 0) + 1;
+  // CALL 2: Generate 1 Puzzle
+  console.log(`[Pack] Generating puzzle for ${theme}...`);
+  const puzzleResp = await callClaude(buildPuzzlePrompt(theme, difficulty), 4096);
+  const puzzleData = extractJSON(puzzleResp);
 
-      const { data: inserted, error: qErr } = await supabase
-        .from("questions")
-        .insert({
-          question_en: q.question_en,
-          question_fr: (tr.question_fr as string) || "",
-          question_it: (tr.question_it as string) || "",
-          question_es: (tr.question_es as string) || "",
-          answers_en: q.answers_en,
-          answers_fr: (tr.answers_fr as string[]) || [],
-          answers_it: (tr.answers_it as string[]) || [],
-          answers_es: (tr.answers_es as string[]) || [],
-          correct_answer_index: correctIndex1,
-          explanation_en: q.explanation_en || "",
-          explanation_fr: (tr.explanation_fr as string) || "",
-          explanation_it: (tr.explanation_it as string) || "",
-          explanation_es: (tr.explanation_es as string) || "",
-          macro_category: theme,
-          theme: theme,
-          difficulty: "medium",
-          status: "approved",
-        })
-        .select("id")
-        .single();
+  // CALL 3: Generate 1 Lesson
+  console.log(`[Pack] Generating lesson for ${theme}...`);
+  const lessonResp = await callClaude(
+    buildLessonPrompt(
+      theme,
+      puzzleData.title || "Puzzle",
+      JSON.stringify(puzzleData.answer),
+      puzzleData.explanation || ""
+    ),
+    4096
+  );
+  const lessonData = extractJSON(lessonResp);
 
-      if (qErr) throw new Error(`Insert question ${i}: ${qErr.message}`);
-      questionIds.push(inserted.id);
+  // CALL 4: Translate everything
+  console.log(`[Pack] Translating pack for ${theme}...`);
+
+  // Build translation fields for questions
+  const transFields: Record<string, string> = {};
+  questions.forEach((q: any, i: number) => {
+    transFields[`q${i}_question`] = q.question;
+    transFields[`q${i}_explanation`] = q.explanation;
+    q.answers.forEach((a: string, j: number) => {
+      transFields[`q${i}_answer_${j}`] = a;
+    });
+  });
+
+  // Add puzzle fields
+  transFields["puzzle_title"] = puzzleData.title || "";
+  transFields["puzzle_hint"] = puzzleData.hint || "";
+  transFields["puzzle_explanation"] = puzzleData.explanation || "";
+
+  // Add lesson fields
+  transFields["lesson_title"] = lessonData.title || "";
+  transFields["lesson_content"] = lessonData.content || "";
+  transFields["lesson_key_takeaway"] = lessonData.key_takeaway || "";
+
+  let translations: any = { fr: {}, it: {}, es: {} };
+  try {
+    const transResp = await callClaude(buildTranslationPrompt(transFields), 8192);
+    translations = extractJSON(transResp);
+  } catch (err) {
+    console.error("[Pack] Translation failed, using EN fallback:", err);
+  }
+
+  // ─── Insert Questions ─────────────────────────────────────────────────
+  const difficultyLevels = ["easy", "medium", "hard"];
+
+  for (let i = 0; i < questions.length; i++) {
+    const q = questions[i];
+    const fr = translations.fr || {};
+    const it = translations.it || {};
+    const es = translations.es || {};
+
+    const answersEn = q.answers;
+    const answersFr = q.answers.map((_: string, j: number) => fr[`q${i}_answer_${j}`] || q.answers[j]);
+    const answersIt = q.answers.map((_: string, j: number) => it[`q${i}_answer_${j}`] || q.answers[j]);
+    const answersEs = q.answers.map((_: string, j: number) => es[`q${i}_answer_${j}`] || q.answers[j]);
+
+    const { data: insertedQ, error: qErr } = await supabase
+      .from("questions")
+      .insert({
+        question_en: q.question,
+        question_fr: fr[`q${i}_question`] || "",
+        question_it: it[`q${i}_question`] || "",
+        question_es: es[`q${i}_question`] || "",
+        answers_en: answersEn,
+        answers_fr: answersFr,
+        answers_it: answersIt,
+        answers_es: answersEs,
+        correct_answer_index: (q.correct_answer_index || 0) + 1, // Convert 0-based to 1-based
+        explanation_en: q.explanation || "",
+        explanation_fr: fr[`q${i}_explanation`] || "",
+        explanation_it: it[`q${i}_explanation`] || "",
+        explanation_es: es[`q${i}_explanation`] || "",
+        macro_category: q.category || theme,
+        sub_category: theme,
+        topic: theme,
+        difficulty: difficultyLevels[i] || "medium",
+        theme: theme,
+        status: "approved",
+        source: "ai_daily_pack",
+      })
+      .select("id")
+      .single();
+
+    if (qErr) {
+      console.error(`[Pack] Question insert error:`, qErr);
+    } else {
+      results.questions.push(insertedQ);
     }
+  }
 
-    // ────────────────────────────────
-    // STEP 3: Generate puzzle
-    // ────────────────────────────────
-    const puzzlePrompts: Record<string, string> = {
-      tap_to_spot: `Create a "Spot the Error" puzzle about "${theme}".
-Present a short statement (2-3 sentences) about startup investing that contains ONE factual error.
-The user must tap/identify the wrong part.
-Return JSON: { "title": "catchy puzzle name", "subtitle": "Series A · SaaS · €5M (or similar context)", "hint": "a subtle clue", "statement_en": "...", "error_part_en": "the specific wrong phrase", "correction_en": "the correct phrase", "explanation_en": "why (200+ words)" }`,
-      ab_choice: `Create an A/B choice puzzle about "${theme}".
-Present a startup scenario and two possible strategies. One is clearly better.
-Return JSON: { "title": "catchy puzzle name", "subtitle": "context like Series A · Fintech", "hint": "a subtle clue", "scenario_en": "...", "option_a_en": "...", "option_b_en": "...", "correct_option": "a" or "b", "explanation_en": "detailed explanation (200+ words)" }`,
-      fill_gap: `Create a fill-the-gap puzzle about "${theme}".
-Present a statement with one missing key term (shown as ___).
-Provide 3 options, one correct.
-Return JSON: { "title": "catchy puzzle name", "subtitle": "context like Seed · B2B · €2M", "hint": "a subtle clue", "statement_en": "... ___ ...", "options_en": ["opt1","opt2","opt3"], "correct_index": 0, "explanation_en": "detailed explanation (200+ words)" }`,
-      match_chart: `Create a chart matching puzzle about "${theme}".
-Describe a chart pattern (e.g. "J-curve in VC returns") and ask what it represents.
-Provide 3 options.
-Return JSON: { "title": "catchy puzzle name", "subtitle": "context", "hint": "a subtle clue", "chart_description_en": "...", "options_en": ["opt1","opt2","opt3"], "correct_index": 0, "explanation_en": "detailed explanation (200+ words)" }`,
-      before_after: `Create a before/after puzzle about "${theme}".
-Show a startup metric before and after an event, ask what happened.
-Return JSON: { "title": "catchy puzzle name", "subtitle": "context", "hint": "a subtle clue", "before_en": "...", "after_en": "...", "question_en": "What happened?", "options_en": ["opt1","opt2","opt3"], "correct_index": 0, "explanation_en": "detailed explanation (200+ words)" }`,
-      crash_point: `Create a "crash point" puzzle about "${theme}".
-Describe a startup timeline with a critical decision point.
-Return JSON: { "title": "catchy puzzle name", "subtitle": "context", "hint": "a subtle clue", "timeline_en": "...", "question_en": "Where did it go wrong?", "options_en": ["opt1","opt2","opt3"], "correct_index": 0, "explanation_en": "detailed explanation (200+ words)" }`,
-    };
+  // ─── Insert Puzzle ────────────────────────────────────────────────────
+  const fr = translations.fr || {};
+  const it = translations.it || {};
+  const es = translations.es || {};
 
-    const puzzleRaw = await callClaude(
-      `You are creating an interactive puzzle for a startup investment app. Theme: "${theme}". Puzzle type: "${puzzleType}".
-Return ONLY valid JSON as specified.`,
-      puzzlePrompts[puzzleType]
-    );
-    const puzzleData = robustParse(puzzleRaw);
+  // A2: Normalize answer to string (DB column is text, not jsonb)
+  const rawAnswer = puzzleData.answer;
+  const answerStr = typeof rawAnswer === "object"
+    ? JSON.stringify(rawAnswer)
+    : String(rawAnswer ?? "");
 
-    // Translate puzzle
-    const transPuzzleRaw = await callClaude(
-      `Translate all _en fields in this JSON to French (_fr), Italian (_it), and Spanish (_es).
-Keep _en fields, add translations. Return ONLY the complete JSON with all fields.`,
-      JSON.stringify(puzzleData)
-    );
-    const puzzleTranslated = robustParse(transPuzzleRaw);
+  const { data: insertedPuzzle, error: pErr } = await supabase
+    .from("puzzles")
+    .insert({
+      theme: theme,
+      difficulty: difficulty,
+      puzzle_type: puzzleData.puzzle_type || theme.toLowerCase().replace(/ /g, "_"),
+      interaction_type: puzzleData.interaction_type || "tap_to_spot",
+      title: puzzleData.title || "The Catch",
+      title_fr: fr["puzzle_title"] || "",
+      title_it: it["puzzle_title"] || "",
+      title_es: es["puzzle_title"] || "",
+      subtitle: puzzleData.subtitle || "",
+      context_data: puzzleData.context_data || {},
+      hint: puzzleData.hint || "",
+      hint_fr: fr["puzzle_hint"] || "",
+      hint_it: it["puzzle_hint"] || "",
+      hint_es: es["puzzle_hint"] || "",
+      answer: answerStr,
+      explanation: puzzleData.explanation || "",
+      explanation_fr: fr["puzzle_explanation"] || "",
+      explanation_it: it["puzzle_explanation"] || "",
+      explanation_es: es["puzzle_explanation"] || "",
+      timer_seconds: puzzleData.timer_seconds || 90,
+      status: "active",
+    })
+    .select("id")
+    .single();
 
-    // Merge originals + translations
-    const fullPuzzle = { ...puzzleData, ...puzzleTranslated };
+  if (pErr) {
+    console.error("[Pack] Puzzle insert error:", pErr);
+  } else {
+    results.puzzle = insertedPuzzle;
+    console.log(`[Pack] Puzzle inserted: ${insertedPuzzle.id} (type: ${puzzleData.interaction_type})`);
+  }
 
-    const { data: insertedPuzzle, error: puzzleErr } = await supabase
-      .from("puzzles")
+  // ─── Insert Lesson (A1: wrapped in try/catch — pack can survive without lesson) ──
+  let insertedLesson: any = null;
+  try {
+    const { data: lessonRow, error: lErr } = await supabase
+      .from("daily_lessons")
       .insert({
         theme: theme,
-        difficulty: "medium",
-        puzzle_type: fullPuzzle.puzzle_type || puzzleType || "cap_table",
-        interaction_type: fullPuzzle.interaction_type || puzzleType || "tap_to_spot",
-        title: fullPuzzle.title || fullPuzzle.title_en || "Untitled Puzzle",
-        title_fr: fullPuzzle.title_fr || "",
-        title_it: fullPuzzle.title_it || "",
-        title_es: fullPuzzle.title_es || "",
-        subtitle: fullPuzzle.subtitle || "",
-        context_data: fullPuzzle.context_data || fullPuzzle,
-        hint: fullPuzzle.hint || fullPuzzle.hint_en || "Look carefully at the data",
-        hint_fr: fullPuzzle.hint_fr || "",
-        hint_it: fullPuzzle.hint_it || "",
-        hint_es: fullPuzzle.hint_es || "",
-        answer: fullPuzzle.answer || fullPuzzle.answer_element || fullPuzzle.correct_option || fullPuzzle.error_part_en || String(fullPuzzle.correct_index ?? ""),
-        explanation: fullPuzzle.explanation_en || fullPuzzle.explanation || "",
-        explanation_fr: fullPuzzle.explanation_fr || "",
-        explanation_it: fullPuzzle.explanation_it || "",
-        explanation_es: fullPuzzle.explanation_es || "",
-        timer_seconds: fullPuzzle.timer_seconds || 90,
+        title: lessonData.title || "Lesson of the Day",
+        title_fr: fr["lesson_title"] || "",
+        title_it: it["lesson_title"] || "",
+        title_es: es["lesson_title"] || "",
+        content: lessonData.content || "",
+        content_fr: fr["lesson_content"] || "",
+        content_it: it["lesson_content"] || "",
+        content_es: es["lesson_content"] || "",
+        key_takeaway: lessonData.key_takeaway || "",
+        key_takeaway_fr: fr["lesson_key_takeaway"] || "",
+        key_takeaway_it: it["lesson_key_takeaway"] || "",
+        key_takeaway_es: es["lesson_key_takeaway"] || "",
+        puzzle_id: insertedPuzzle?.id || null,
         status: "active",
       })
       .select("id")
       .single();
 
-    if (puzzleErr) throw new Error(`Insert puzzle: ${puzzleErr.message}`);
+    if (lErr) {
+      console.error("[Pack] Lesson insert error:", lErr);
+    } else {
+      insertedLesson = lessonRow;
+      results.lesson = insertedLesson;
+      console.log(`[Pack] Lesson inserted: ${insertedLesson.id}`);
+    }
+  } catch (lessonErr) {
+    console.error("[Pack] Lesson generation/insert failed (non-blocking):", lessonErr);
+  }
 
-    // ────────────────────────────────
-    // STEP 4: Generate lesson
-    // ────────────────────────────────
-    const lessonRaw = await callClaude(
-      `You are creating a "Lesson of the Day" for a startup investment app.
-Theme: "${theme}". Write a concise, high-value micro-lesson (150-250 words).
-Structure: Key concept → Real example → Actionable takeaway.
-Return ONLY valid JSON:
-{
-  "title_en": "Lesson title",
-  "content_en": "Full lesson text (150-250 words)",
-  "key_takeaway_en": "One-sentence key takeaway"
-}`,
-      `Create a lesson about: ${theme}`
-    );
-    const lessonData = robustParse(lessonRaw);
-
-    // Translate lesson
-    const transLessonRaw = await callClaude(
-      `Translate these fields to French, Italian, and Spanish. Return ONLY valid JSON with all fields:
-{
-  "title_fr": "...", "content_fr": "...", "key_takeaway_fr": "...",
-  "title_it": "...", "content_it": "...", "key_takeaway_it": "...",
-  "title_es": "...", "content_es": "...", "key_takeaway_es": "..."
-}`,
-      JSON.stringify(lessonData)
-    );
-    const lessonTrans = robustParse(transLessonRaw);
-
-    const { data: insertedLesson, error: lessonErr } = await supabase
-      .from("daily_lessons")
-      .insert({
-        title: (lessonData.title_en as string) || "",
-        title_fr: (lessonTrans.title_fr as string) || "",
-        title_it: (lessonTrans.title_it as string) || "",
-        title_es: (lessonTrans.title_es as string) || "",
-        content: (lessonData.content_en as string) || "",
-        content_fr: (lessonTrans.content_fr as string) || "",
-        content_it: (lessonTrans.content_it as string) || "",
-        content_es: (lessonTrans.content_es as string) || "",
-        key_takeaway: (lessonData.key_takeaway_en as string) || "",
-        key_takeaway_fr: (lessonTrans.key_takeaway_fr as string) || "",
-        key_takeaway_it: (lessonTrans.key_takeaway_it as string) || "",
-        key_takeaway_es: (lessonTrans.key_takeaway_es as string) || "",
-        theme: theme,
-      })
-      .select("id")
-      .single();
-
-    if (lessonErr) throw new Error(`Insert lesson: ${lessonErr.message}`);
-
-    // ────────────────────────────────
-    // STEP 5: Create pack linking everything together
-    // ────────────────────────────────
-    const { data: insertedPack, error: packErr } = await supabase
+  // ─── Insert daily_packs record ─────────────────────────────────────────
+  const questionIds = results.questions.map((q: any) => q.id).filter(Boolean);
+  try {
+    const { data: packRow, error: packErr } = await supabase
       .from("daily_packs")
       .insert({
         theme: theme,
-        difficulty: body.difficulty || "medium",
+        difficulty: difficulty,
         question_ids: questionIds,
-        puzzle_id: insertedPuzzle.id,
-        lesson_id: insertedLesson.id,
-        status: "active",
+        puzzle_id: results.puzzle?.id || null,
+        lesson_id: insertedLesson?.id || null,
+        status: "ready",
       })
       .select("id")
       .single();
 
-    if (packErr) throw new Error(`Insert pack: ${packErr.message}`);
+    if (packErr) {
+      console.error("[Pack] daily_packs insert error:", packErr);
+    } else {
+      results.pack_id = packRow.id;
+      console.log(`[Pack] daily_packs record created: ${packRow.id}`);
+    }
+  } catch (packInsertErr) {
+    console.error("[Pack] daily_packs insert failed:", packInsertErr);
+  }
 
-    // ────────────────────────────────
-    // STEP 6: Create/update daily_quizzes entry
-    // ────────────────────────────────
-    const q1 = questionIds[0] || null;
-    const q2 = questionIds[1] || null;
-    const q3 = questionIds[2] || null;
+  return results;
+}
 
-    const { error: quizErr } = await supabase.from("daily_quizzes").upsert(
-      {
-        quiz_date: targetDate,
-        question_1_id: q1,
-        question_2_id: q2,
-        question_3_id: q3,
-        question_4_id: null,
-        question_5_id: null,
-        theme: theme,
-        puzzle_id: insertedPuzzle.id,
-        lesson_id: insertedLesson.id,
-      },
-      { onConflict: "quiz_date" }
-    );
+// ─── Main Handler ───────────────────────────────────────────────────────────
 
-    if (quizErr) throw new Error(`Upsert daily_quizzes: ${quizErr.message}`);
+Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders() });
+  }
+
+  try {
+    const body = await req.json().catch(() => ({}));
+    const theme = body.theme || "fundraising";
+    const count = Math.min(body.count || 1, 10);
+    const difficulty = body.difficulty || "medium";
+
+    const startTime = Date.now();
+    const allResults = [];
+    let totalApiCalls = 0;
+    for (let i = 0; i < count; i++) {
+      console.log(`[Pack] Generating pack ${i + 1}/${count} for theme: ${theme}`);
+      const result = await generateOnePack(theme, difficulty);
+      allResults.push(result);
+      totalApiCalls += 4; // 4 Claude calls per pack (QCM, puzzle, lesson, translations)
+    }
+    const durationMs = Date.now() - startTime;
 
     return new Response(
       JSON.stringify({
         success: true,
-        pack_id: insertedPack.id,
-        date: targetDate,
+        packs: allResults.length,
         theme,
-        questions: questionIds.length,
-        puzzle_type: puzzleType,
-        puzzle_id: insertedPuzzle.id,
-        lesson_id: insertedLesson.id,
+        difficulty,
+        results: allResults,
+        stats: {
+          duration_ms: durationMs,
+          duration_s: Math.round(durationMs / 1000),
+          api_calls: totalApiCalls,
+          estimated_cost_usd: +(totalApiCalls * 0.015).toFixed(3),
+        },
       }),
-      { headers: { "Content-Type": "application/json", ...corsHeaders } }
+      { headers: corsHeaders() }
     );
   } catch (err) {
+    console.error("generate-daily-pack error:", err);
     return new Response(
-      JSON.stringify({ success: false, error: (err as Error).message }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json", ...corsHeaders },
-      }
+      JSON.stringify({ error: (err as Error).message }),
+      { status: 500, headers: corsHeaders() }
     );
   }
 });

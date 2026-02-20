@@ -22,14 +22,6 @@ import {
   Play,
   Check,
   Package,
-  ChevronDown,
-  ChevronRight,
-  Eye,
-  EyeOff,
-  BookOpen,
-  Puzzle,
-  X,
-  Save,
 } from 'lucide-react'
 
 const STORAGE_KEY = 'akka_last_generation'
@@ -116,6 +108,22 @@ export default function GeneratePage() {
   const elapsedTimerRef = useRef(null)
   const stepsRef = useRef(STEP1_MESSAGES)
 
+  // Pack generation state
+  const [packGenerating, setPackGenerating] = useState(false)
+  const [packTheme, setPackTheme] = useState('fundraising')
+  const [packDifficulty, setPackDifficulty] = useState('medium')
+  const [packStep, setPackStep] = useState(0)
+  const [packResult, setPackResult] = useState(null)
+  const [packError, setPackError] = useState(null)
+
+  const PACK_STEPS = [
+    { label: 'Generating 3 QCM questions...', icon: '🧠', duration: 8000 },
+    { label: 'Creating puzzle "The Catch"...', icon: '🧩', duration: 10000 },
+    { label: 'Writing lesson of the day...', icon: '📚', duration: 8000 },
+    { label: 'Translating to FR/IT/ES...', icon: '🌍', duration: 12000 },
+    { label: 'Saving pack to database...', icon: '💾', duration: 2000 },
+  ]
+
   // Edit modal
   const [editQuestion, setEditQuestion] = useState(null)
 
@@ -126,23 +134,6 @@ export default function GeneratePage() {
 
   // HOTFIX A: Resume state
   const [resumeInfo, setResumeInfo] = useState(null) // { resumeFrom, totalRequested, batchId, mode, category, theme, difficulty, languages }
-
-  // Pack generation state
-  const [packTheme, setPackTheme] = useState('')
-  const [packDifficulty, setPackDifficulty] = useState('medium')
-  const [generatingPack, setGeneratingPack] = useState(false)
-  const [packResult, setPackResult] = useState(null)
-  const [packError, setPackError] = useState(null)
-  const [packs, setPacks] = useState([])
-  const [packsLoading, setPacksLoading] = useState(true)
-  const packPollRef = useRef(null)
-
-  // Pack detail state
-  const [expandedPackId, setExpandedPackId] = useState(null)
-  const [packDetails, setPackDetails] = useState({}) // { packId: { questions, puzzle, lesson } }
-  const [loadingPackDetail, setLoadingPackDetail] = useState(null)
-  const [editingPuzzle, setEditingPuzzle] = useState(null)
-  const [editingLesson, setEditingLesson] = useState(null)
 
   // ── Restore from localStorage on mount (with 2-hour expiry) ──
   useEffect(() => {
@@ -188,13 +179,20 @@ export default function GeneratePage() {
     }
   }, [generated, summary, batchId, resumeInfo, batchHistory])
 
-  // Load custom prompt on mount (from localStorage, app_settings table removed)
+  // Load custom prompt on mount
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('akka_custom_prompt')
-      if (saved) setCustomPrompt(saved)
-    } catch {}
-    setPromptLoaded(true)
+    async function loadPrompt() {
+      try {
+        const { data } = await supabase
+          .from('app_settings')
+          .select('value')
+          .eq('key', 'custom_system_prompt')
+          .single()
+        if (data?.value) setCustomPrompt(data.value)
+      } catch {}
+      setPromptLoaded(true)
+    }
+    loadPrompt()
   }, [])
 
   // Export generating state for AdminLayout nav indicator
@@ -203,215 +201,6 @@ export default function GeneratePage() {
     window.dispatchEvent(new Event('akka-gen-state'))
     return () => { window.__akka_generating = false }
   }, [generating])
-
-  // Load packs on mount + restore pack generation state
-  useEffect(() => {
-    async function loadPacks() {
-      const { data } = await supabase
-        .from('daily_packs')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(20)
-      setPacks(data || [])
-      setPacksLoading(false)
-    }
-    loadPacks()
-
-    // Check if a pack generation was in progress (persisted in localStorage)
-    try {
-      const savedPack = localStorage.getItem('akka_pack_generating')
-      if (savedPack) {
-        const { startedAt, packCount } = JSON.parse(savedPack)
-        // If older than 5 min, consider it stale
-        if (Date.now() - startedAt > 5 * 60 * 1000) {
-          localStorage.removeItem('akka_pack_generating')
-          return
-        }
-        // Start polling for new packs
-        setGeneratingPack(true)
-        packPollRef.current = setInterval(async () => {
-          const { data: latest } = await supabase
-            .from('daily_packs')
-            .select('*')
-            .order('created_at', { ascending: false })
-            .limit(20)
-          const newPacks = latest || []
-          if (newPacks.length > (packCount || 0)) {
-            // Pack generation completed
-            clearInterval(packPollRef.current)
-            packPollRef.current = null
-            localStorage.removeItem('akka_pack_generating')
-            setPacks(newPacks)
-            setGeneratingPack(false)
-            setPackResult({ questions_count: 3, pack_id: newPacks[0]?.id })
-          }
-        }, 4000)
-      }
-    } catch {}
-
-    return () => {
-      if (packPollRef.current) clearInterval(packPollRef.current)
-    }
-  }, [])
-
-  async function handleGeneratePack() {
-    if (generatingPack) return
-    setGeneratingPack(true)
-    setPackResult(null)
-    setPackError(null)
-
-    // Persist generating state so it survives tab switches
-    try {
-      localStorage.setItem('akka_pack_generating', JSON.stringify({
-        startedAt: Date.now(),
-        packCount: packs.length,
-      }))
-    } catch {}
-
-    try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
-      const { data: { session } } = await supabase.auth.getSession()
-
-      const res = await fetch(`${supabaseUrl}/functions/v1/generate-daily-pack`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token || supabaseAnonKey}`,
-        },
-        body: JSON.stringify({
-          theme: packTheme || undefined,
-          difficulty: packDifficulty,
-        }),
-      })
-
-      const result = await res.json()
-
-      if (!res.ok) {
-        setPackError(result.error || 'Pack generation failed')
-      } else {
-        setPackResult(result)
-        // Reload packs
-        const { data } = await supabase
-          .from('daily_packs')
-          .select('*')
-          .order('created_at', { ascending: false })
-          .limit(20)
-        setPacks(data || [])
-      }
-    } catch (err) {
-      setPackError(err.message || 'Network error')
-    } finally {
-      setGeneratingPack(false)
-      localStorage.removeItem('akka_pack_generating')
-    }
-  }
-
-  // ── Pack detail: load questions, puzzle, lesson for a pack ──
-  async function loadPackDetail(pack) {
-    if (packDetails[pack.id]) return // already loaded
-    setLoadingPackDetail(pack.id)
-    try {
-      const results = {}
-      // Load questions
-      if (pack.question_ids?.length > 0) {
-        const { data: qs } = await supabase
-          .from('questions')
-          .select('*')
-          .in('id', pack.question_ids)
-        results.questions = qs || []
-      } else {
-        results.questions = []
-      }
-      // Load puzzle
-      if (pack.puzzle_id) {
-        const { data: pz } = await supabase
-          .from('puzzles')
-          .select('*')
-          .eq('id', pack.puzzle_id)
-          .single()
-        results.puzzle = pz || null
-      } else {
-        results.puzzle = null
-      }
-      // Load lesson
-      if (pack.lesson_id) {
-        const { data: ls } = await supabase
-          .from('lessons')
-          .select('*')
-          .eq('id', pack.lesson_id)
-          .single()
-        results.lesson = ls || null
-      } else {
-        results.lesson = null
-      }
-      setPackDetails(prev => ({ ...prev, [pack.id]: results }))
-    } catch (err) {
-      console.error('Load pack detail error:', err)
-    }
-    setLoadingPackDetail(null)
-  }
-
-  async function togglePackExpand(pack) {
-    if (expandedPackId === pack.id) {
-      setExpandedPackId(null)
-      return
-    }
-    setExpandedPackId(pack.id)
-    await loadPackDetail(pack)
-  }
-
-  async function togglePackStatus(pack) {
-    const newStatus = pack.status === 'active' ? 'draft' : 'active'
-    const { error: err } = await supabase
-      .from('daily_packs')
-      .update({ status: newStatus })
-      .eq('id', pack.id)
-    if (!err) {
-      setPacks(prev => prev.map(p => p.id === pack.id ? { ...p, status: newStatus } : p))
-    }
-  }
-
-  async function handleSavePuzzle(puzzle) {
-    const { id, ...updates } = puzzle
-    const { error: err } = await supabase
-      .from('puzzles')
-      .update(updates)
-      .eq('id', id)
-    if (!err) {
-      // Refresh in packDetails
-      setPackDetails(prev => {
-        const copy = { ...prev }
-        for (const pid of Object.keys(copy)) {
-          if (copy[pid].puzzle?.id === id) {
-            copy[pid] = { ...copy[pid], puzzle: { id, ...updates } }
-          }
-        }
-        return copy
-      })
-      setEditingPuzzle(null)
-    }
-  }
-
-  async function handleSaveLesson(lesson) {
-    const { id, ...updates } = lesson
-    const { error: err } = await supabase
-      .from('lessons')
-      .update(updates)
-      .eq('id', id)
-    if (!err) {
-      setPackDetails(prev => {
-        const copy = { ...prev }
-        for (const pid of Object.keys(copy)) {
-          if (copy[pid].lesson?.id === id) {
-            copy[pid] = { ...copy[pid], lesson: { id, ...updates } }
-          }
-        }
-        return copy
-      })
-      setEditingLesson(null)
-    }
-  }
 
   function toggleLang(code) {
     if (code === 'en') return
@@ -868,6 +657,92 @@ export default function GeneratePage() {
     setError(null)
   }
 
+  // ── Pack generation ──
+  async function handleGeneratePack() {
+    setPackGenerating(true)
+    setPackStep(0)
+    setPackResult(null)
+    setPackError(null)
+
+    // Simulate progress steps
+    let stepIdx = 0
+    const stepInterval = setInterval(() => {
+      stepIdx++
+      if (stepIdx < PACK_STEPS.length) setPackStep(stepIdx)
+    }, 8000)
+
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-daily-pack`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            theme: packTheme,
+            difficulty: packDifficulty,
+            count: 1,
+          }),
+        }
+      )
+      clearInterval(stepInterval)
+      setPackStep(PACK_STEPS.length - 1)
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.error || `HTTP ${res.status}`)
+      }
+
+      const data = await res.json()
+      const pack = data.results?.[0]
+      setPackResult({
+        questions: pack?.questions?.length || 0,
+        puzzle: pack?.puzzle ? 1 : 0,
+        lesson: pack?.lesson ? 1 : 0,
+        packId: pack?.pack_id || null,
+        stats: data.stats || {},
+      })
+    } catch (err) {
+      clearInterval(stepInterval)
+      setPackError(err.message)
+    }
+    setPackGenerating(false)
+  }
+
+  async function handleDeletePack(packId) {
+    if (!packId || !window.confirm('Delete this pack and all its questions, puzzle and lesson?')) return
+    try {
+      // Load pack details
+      const { data: pack } = await supabase
+        .from('daily_packs')
+        .select('question_ids, puzzle_id, lesson_id')
+        .eq('id', packId)
+        .single()
+
+      if (pack) {
+        // Delete questions
+        if (pack.question_ids?.length > 0) {
+          await supabase.from('questions').delete().in('id', pack.question_ids)
+        }
+        // Delete puzzle
+        if (pack.puzzle_id) {
+          await supabase.from('puzzles').delete().eq('id', pack.puzzle_id)
+        }
+        // Delete lesson
+        if (pack.lesson_id) {
+          await supabase.from('daily_lessons').delete().eq('id', pack.lesson_id)
+        }
+        // Delete pack
+        await supabase.from('daily_packs').delete().eq('id', packId)
+      }
+      setPackResult(null)
+    } catch (err) {
+      console.error('Delete pack error:', err)
+    }
+  }
+
   async function approveAll() {
     const ids = generated.filter((q) => q.status === 'pending_review').map((q) => q.id)
     if (ids.length === 0) return
@@ -1005,235 +880,124 @@ export default function GeneratePage() {
         </div>
       </div>
 
-      {/* ── Generate Daily Pack Section ── */}
+      {/* ── Pack Generator Section ── */}
       <Card className="mb-6">
         <div className="flex items-center gap-2 mb-4">
-          <Package size={18} className="text-purple-500" />
-          <h2 className="text-base font-bold text-[#1A1A1A]">Generate Daily Pack</h2>
-          <span className="text-xs text-[#6B7280]">(3 QCM + Puzzle + Lesson)</span>
+          <Package size={18} className="text-[#2ECC71]" />
+          <h2 className="text-lg font-bold text-[#1A1A1A]">Daily Pack Generator</h2>
+          <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-medium">3 QCM + Puzzle + Lesson</span>
         </div>
 
-        <div className="flex flex-wrap items-end gap-3 mb-4">
-          <div className="flex-1 min-w-[200px]">
-            <label className="block mb-1 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
-              Theme
-            </label>
+        <div className="flex flex-wrap items-end gap-4 mb-4">
+          <div>
+            <label className="block mb-1 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Theme</label>
             <select
               value={packTheme}
               onChange={(e) => setPackTheme(e.target.value)}
-              disabled={generatingPack}
-              className="w-full border border-[#D1D5DB] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2ECC71]"
+              disabled={packGenerating}
+              className="border border-[#D1D5DB] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2ECC71]"
             >
-              <option value="">Auto (random theme)</option>
-              <option value="Fundraising">Fundraising</option>
-              <option value="Cap Tables">Cap Tables</option>
-              <option value="Term Sheets & Legal">Term Sheets & Legal</option>
-              <option value="Unit Economics">Unit Economics</option>
-              <option value="Revenue & Growth">Revenue & Growth</option>
-              <option value="Burn Analysis">Burn Analysis</option>
-              <option value="Market & Comps">Market & Comps</option>
+              {['fundraising', 'cap_tables', 'term_sheets', 'unit_economics', 'revenue_growth', 'burn_analysis', 'market_comps', 'startup_valuation', 'due_diligence', 'exit_strategies'].map(t => (
+                <option key={t} value={t}>{t.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</option>
+              ))}
             </select>
           </div>
-          <div className="w-36">
-            <label className="block mb-1 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
-              Difficulty
-            </label>
+          <div>
+            <label className="block mb-1 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Difficulty</label>
             <select
               value={packDifficulty}
               onChange={(e) => setPackDifficulty(e.target.value)}
-              disabled={generatingPack}
-              className="w-full border border-[#D1D5DB] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2ECC71]"
+              disabled={packGenerating}
+              className="border border-[#D1D5DB] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2ECC71]"
             >
-              <option value="easy">Easy</option>
-              <option value="medium">Medium</option>
-              <option value="hard">Hard</option>
+              {['easy', 'medium', 'hard'].map(d => (
+                <option key={d} value={d}>{d.charAt(0).toUpperCase() + d.slice(1)}</option>
+              ))}
             </select>
           </div>
           <button
             onClick={handleGeneratePack}
-            disabled={generatingPack}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-purple-600 text-white text-sm font-bold hover:bg-purple-700 disabled:opacity-50 transition-colors"
+            disabled={packGenerating}
+            className="flex items-center gap-2 px-5 py-2.5 bg-[#1B3D2F] text-white font-semibold rounded-xl hover:opacity-90 disabled:opacity-50 transition-opacity"
           >
-            {generatingPack ? (
-              <>
-                <Loader2 size={16} className="animate-spin" />
-                Generating...
-              </>
-            ) : (
-              <>
-                <Sparkles size={16} />
-                Generate Pack
-              </>
-            )}
+            {packGenerating ? <Loader2 size={16} className="animate-spin" /> : <Package size={16} />}
+            {packGenerating ? 'Generating Pack...' : 'Generate Pack'}
           </button>
         </div>
 
-        {packError && (
-          <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700 mb-3">
-            {packError}
+        {/* C1: Animated progress bar */}
+        {packGenerating && (
+          <div className="mb-4">
+            <div className="flex items-center gap-3 mb-2">
+              <span className="text-xl animate-bounce">{PACK_STEPS[packStep]?.icon}</span>
+              <span className="text-sm font-medium text-[#1A1A1A]">{PACK_STEPS[packStep]?.label}</span>
+              <Loader2 size={14} className="text-[#2ECC71] animate-spin ml-auto" />
+            </div>
+            <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+              <div
+                className="bg-gradient-to-r from-[#2ECC71] to-[#27AE60] h-3 rounded-full transition-all duration-1000 ease-out"
+                style={{ width: `${Math.max(5, ((packStep + 1) / PACK_STEPS.length) * 100)}%` }}
+              />
+            </div>
+            <p className="text-xs text-[#6B7280] mt-1">Step {packStep + 1} of {PACK_STEPS.length}</p>
           </div>
         )}
 
+        {/* C3: Enriched feedback */}
         {packResult && (
-          <div className="p-3 rounded-xl bg-green-50 border border-green-200 text-sm text-green-700 mb-3">
-            Pack created! {packResult.questions_count} questions + 1 puzzle + 1 lesson
-            {packResult.pack_id && <span className="text-xs text-green-500 ml-2">(ID: {packResult.pack_id.slice(0, 8)}...)</span>}
+          <div className="border border-[#2ECC71]/30 bg-emerald-50/50 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <CheckCircle size={18} className="text-[#2ECC71]" />
+              <p className="font-semibold text-[#1A1A1A]">Pack Generated Successfully</p>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+              <div className="text-center">
+                <p className="text-xl font-bold text-[#1A1A1A]">{packResult.questions}</p>
+                <p className="text-xs text-[#6B7280]">Questions</p>
+              </div>
+              <div className="text-center">
+                <p className="text-xl font-bold text-[#1A1A1A]">{packResult.puzzle}</p>
+                <p className="text-xs text-[#6B7280]">Puzzle</p>
+              </div>
+              <div className="text-center">
+                <p className="text-xl font-bold text-[#1A1A1A]">{packResult.lesson}</p>
+                <p className="text-xs text-[#6B7280]">Lesson</p>
+              </div>
+              <div className="text-center">
+                <p className="text-xl font-bold text-[#1A1A1A]">{packResult.stats?.duration_s || '—'}s</p>
+                <p className="text-xs text-[#6B7280]">Duration</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-[#6B7280] mb-3">
+              <span>{packResult.stats?.api_calls || 4} API calls</span>
+              <span>·</span>
+              <span>~${packResult.stats?.estimated_cost_usd || '0.060'} est. cost</span>
+              {packResult.packId && (
+                <>
+                  <span>·</span>
+                  <span className="font-mono text-[10px]">Pack {packResult.packId.slice(0, 8)}</span>
+                </>
+              )}
+            </div>
+            {/* C4: Delete Pack */}
+            {packResult.packId && (
+              <button
+                onClick={() => handleDeletePack(packResult.packId)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-red-600 font-medium hover:bg-red-50 rounded-lg transition-colors"
+              >
+                <Trash2 size={12} />
+                Delete Pack
+              </button>
+            )}
           </div>
         )}
 
-        {/* Pack list — expandable */}
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280] mb-2">
-            Recent Packs ({packs.length})
-          </p>
-          {packsLoading ? (
-            <div className="flex items-center gap-2 py-3">
-              <Loader2 size={14} className="animate-spin text-[#6B7280]" />
-              <span className="text-sm text-[#6B7280]">Loading packs...</span>
-            </div>
-          ) : packs.length === 0 ? (
-            <p className="text-sm text-[#6B7280] py-2">No packs yet. Generate your first one above!</p>
-          ) : (
-            <div className="space-y-2">
-              {packs.map((p) => {
-                const isExpanded = expandedPackId === p.id
-                const detail = packDetails[p.id]
-                return (
-                  <div key={p.id} className="rounded-xl border border-gray-200 overflow-hidden">
-                    {/* Pack header — click to expand */}
-                    <button
-                      onClick={() => togglePackExpand(p)}
-                      className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
-                    >
-                      <div className="flex items-center gap-3">
-                        {isExpanded ? <ChevronDown size={14} className="text-[#6B7280]" /> : <ChevronRight size={14} className="text-[#6B7280]" />}
-                        <div className={`w-2 h-2 rounded-full ${p.status === 'active' ? 'bg-green-500' : 'bg-gray-300'}`} />
-                        <div>
-                          <p className="text-sm font-medium text-[#1A1A1A]">
-                            {p.theme || 'General'}
-                            <span className="text-xs text-[#6B7280] ml-2">{p.difficulty}</span>
-                          </p>
-                          <p className="text-[10px] text-[#6B7280]">
-                            {p.question_ids?.length || 0} Q · {p.puzzle_id ? '🧩' : '—'} · {p.lesson_id ? '📖' : '—'}
-                            {' · '}
-                            {new Date(p.created_at).toLocaleDateString()}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {/* Publish toggle */}
-                        <span
-                          onClick={(e) => { e.stopPropagation(); togglePackStatus(p) }}
-                          className={`flex items-center gap-1 text-xs px-2 py-1 rounded-full font-medium cursor-pointer transition-colors ${
-                            p.status === 'active'
-                              ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                          }`}
-                          title={p.status === 'active' ? 'Click to unpublish' : 'Click to publish'}
-                        >
-                          {p.status === 'active' ? <Eye size={12} /> : <EyeOff size={12} />}
-                          {p.status}
-                        </span>
-                      </div>
-                    </button>
-
-                    {/* Expanded detail */}
-                    {isExpanded && (
-                      <div className="px-4 py-3 border-t border-gray-200 bg-white">
-                        {loadingPackDetail === p.id ? (
-                          <div className="flex items-center gap-2 py-4 justify-center">
-                            <Loader2 size={14} className="animate-spin text-[#6B7280]" />
-                            <span className="text-sm text-[#6B7280]">Loading pack contents...</span>
-                          </div>
-                        ) : detail ? (
-                          <div className="space-y-3">
-                            {/* Questions */}
-                            <div>
-                              <p className="text-xs font-semibold uppercase text-[#6B7280] mb-1.5">Questions ({detail.questions.length})</p>
-                              {detail.questions.length === 0 ? (
-                                <p className="text-xs text-gray-400 italic">No questions</p>
-                              ) : (
-                                <div className="space-y-1.5">
-                                  {detail.questions.map((q, qi) => (
-                                    <div
-                                      key={q.id}
-                                      onClick={() => setEditQuestion(q)}
-                                      className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 hover:bg-gray-100 cursor-pointer transition-colors"
-                                    >
-                                      <span className="text-xs font-bold text-[#6B7280] w-5">{qi + 1}.</span>
-                                      <div className="flex-1 min-w-0">
-                                        <p className="text-sm text-[#1A1A1A] truncate">{q.question_en}</p>
-                                        <div className="flex items-center gap-1.5 mt-0.5">
-                                          <span className="text-[10px]">🇬🇧{q.question_fr ? ' 🇫🇷' : ''}{q.question_it ? ' 🇮🇹' : ''}{q.question_es ? ' 🇪🇸' : ''}</span>
-                                          <span className={`text-[10px] font-medium capitalize ${
-                                            q.difficulty === 'hard' ? 'text-red-500' : q.difficulty === 'medium' ? 'text-amber-500' : 'text-green-500'
-                                          }`}>{q.difficulty}</span>
-                                        </div>
-                                      </div>
-                                      <Pencil size={12} className="text-[#6B7280]" />
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Puzzle */}
-                            <div>
-                              <p className="text-xs font-semibold uppercase text-[#6B7280] mb-1.5">🧩 Puzzle</p>
-                              {detail.puzzle ? (
-                                <div
-                                  onClick={() => setEditingPuzzle({ ...detail.puzzle })}
-                                  className="flex items-center gap-2 p-2 rounded-lg bg-purple-50 hover:bg-purple-100 cursor-pointer transition-colors"
-                                >
-                                  <Puzzle size={14} className="text-purple-500" />
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-sm text-[#1A1A1A] truncate">
-                                      {detail.puzzle.title || detail.puzzle.title_en || detail.puzzle.interaction_type || 'Untitled'}
-                                    </p>
-                                    <p className="text-[10px] text-[#6B7280]">
-                                      Type: {detail.puzzle.interaction_type} · {detail.puzzle.puzzle_type}
-                                    </p>
-                                  </div>
-                                  <Pencil size={12} className="text-purple-400" />
-                                </div>
-                              ) : (
-                                <p className="text-xs text-gray-400 italic">No puzzle</p>
-                              )}
-                            </div>
-
-                            {/* Lesson */}
-                            <div>
-                              <p className="text-xs font-semibold uppercase text-[#6B7280] mb-1.5">📖 Lesson</p>
-                              {detail.lesson ? (
-                                <div
-                                  onClick={() => setEditingLesson({ ...detail.lesson })}
-                                  className="flex items-center gap-2 p-2 rounded-lg bg-blue-50 hover:bg-blue-100 cursor-pointer transition-colors"
-                                >
-                                  <BookOpen size={14} className="text-blue-500" />
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-sm text-[#1A1A1A] truncate">
-                                      {detail.lesson.title || detail.lesson.title_en || 'Untitled Lesson'}
-                                    </p>
-                                    <p className="text-[10px] text-[#6B7280]">
-                                      {detail.lesson.theme || '—'}
-                                    </p>
-                                  </div>
-                                  <Pencil size={12} className="text-blue-400" />
-                                </div>
-                              ) : (
-                                <p className="text-xs text-gray-400 italic">No lesson</p>
-                              )}
-                            </div>
-                          </div>
-                        ) : null}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
+        {/* Pack error */}
+        {packError && (
+          <div className="border border-red-200 bg-red-50 rounded-xl p-3">
+            <p className="text-sm text-red-700">{packError}</p>
+          </div>
+        )}
       </Card>
 
       <div className="grid lg:grid-cols-3 gap-6">
@@ -1711,319 +1475,6 @@ export default function GeneratePage() {
           onPromptChanged={(newPrompt) => setCustomPrompt(newPrompt)}
         />
       )}
-
-      {/* Puzzle Edit Modal */}
-      {editingPuzzle && (
-        <PuzzleEditModal
-          puzzle={editingPuzzle}
-          onClose={() => setEditingPuzzle(null)}
-          onSave={handleSavePuzzle}
-        />
-      )}
-
-      {/* Lesson Edit Modal */}
-      {editingLesson && (
-        <LessonEditModal
-          lesson={editingLesson}
-          onClose={() => setEditingLesson(null)}
-          onSave={handleSaveLesson}
-        />
-      )}
-    </div>
-  )
-}
-
-/* ════════════════════════════════════════════════════════════
-   PuzzleEditModal — edit puzzle metadata + context_data
-   ════════════════════════════════════════════════════════════ */
-function PuzzleEditModal({ puzzle, onClose, onSave }) {
-  const [form, setForm] = useState({ ...puzzle })
-  const [tab, setTab] = useState('en')
-  const [jsonMode, setJsonMode] = useState(false)
-  const [jsonText, setJsonText] = useState(JSON.stringify(puzzle.context_data || {}, null, 2))
-  const [saving, setSaving] = useState(false)
-
-  const LANGS = [
-    { code: 'en', flag: '🇬🇧' },
-    { code: 'fr', flag: '🇫🇷' },
-    { code: 'it', flag: '🇮🇹' },
-    { code: 'es', flag: '🇪🇸' },
-  ]
-
-  function updateField(key, val) {
-    setForm(prev => ({ ...prev, [key]: val }))
-  }
-
-  function updateContextData(key, val) {
-    setForm(prev => ({
-      ...prev,
-      context_data: { ...(prev.context_data || {}), [key]: val },
-    }))
-  }
-
-  async function handleSave() {
-    setSaving(true)
-    let finalForm = { ...form }
-    if (jsonMode) {
-      try {
-        finalForm.context_data = JSON.parse(jsonText)
-      } catch {
-        setSaving(false)
-        return
-      }
-    }
-    await onSave(finalForm)
-    setSaving(false)
-  }
-
-  // Get context_data keys for the current language
-  const cd = form.context_data || {}
-  const langKeys = Object.keys(cd).filter(k => k.endsWith(`_${tab}`))
-
-  return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
-          <div className="flex items-center gap-2">
-            <Puzzle size={18} className="text-purple-500" />
-            <h3 className="font-bold text-[#1A1A1A]">Edit Puzzle</h3>
-          </div>
-          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
-            <X size={18} className="text-[#6B7280]" />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-          {/* Metadata row */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-[#6B7280] mb-1">Interaction Type</label>
-              <input value={form.interaction_type || ''} onChange={e => updateField('interaction_type', e.target.value)}
-                className="w-full border rounded-lg px-3 py-2 text-sm" />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-[#6B7280] mb-1">Puzzle Type</label>
-              <input value={form.puzzle_type || ''} onChange={e => updateField('puzzle_type', e.target.value)}
-                className="w-full border rounded-lg px-3 py-2 text-sm" />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-[#6B7280] mb-1">Answer (index)</label>
-              <input value={form.answer || ''} onChange={e => updateField('answer', e.target.value)}
-                className="w-full border rounded-lg px-3 py-2 text-sm" />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-[#6B7280] mb-1">Theme</label>
-              <input value={form.theme || ''} onChange={e => updateField('theme', e.target.value)}
-                className="w-full border rounded-lg px-3 py-2 text-sm" />
-            </div>
-          </div>
-
-          {/* Direct columns per language */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold uppercase text-[#6B7280]">Direct Fields</p>
-            </div>
-            {/* Lang tabs */}
-            <div className="flex gap-1 mb-3">
-              {LANGS.map(l => (
-                <button key={l.code} onClick={() => setTab(l.code)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                    tab === l.code ? 'bg-[#1B3D2F] text-white' : 'bg-gray-100 text-[#6B7280] hover:bg-gray-200'
-                  }`}>
-                  {l.flag} {l.code.toUpperCase()}
-                </button>
-              ))}
-            </div>
-            <div className="space-y-2">
-              {['title', 'hint', 'explanation'].map(field => (
-                <div key={field}>
-                  <label className="block text-xs text-[#6B7280] mb-0.5 capitalize">{field}_{tab}</label>
-                  <input
-                    value={form[`${field}_${tab}`] || ''}
-                    onChange={e => updateField(`${field}_${tab}`, e.target.value)}
-                    className="w-full border rounded-lg px-3 py-2 text-sm"
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* context_data — visual or JSON */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold uppercase text-[#6B7280]">context_data</p>
-              <button onClick={() => {
-                if (!jsonMode) setJsonText(JSON.stringify(form.context_data || {}, null, 2))
-                setJsonMode(!jsonMode)
-              }} className="text-xs text-purple-600 hover:underline">
-                {jsonMode ? 'Visual Mode' : 'JSON Mode'}
-              </button>
-            </div>
-            {jsonMode ? (
-              <textarea
-                value={jsonText}
-                onChange={e => setJsonText(e.target.value)}
-                className="w-full border rounded-lg px-3 py-2 text-xs font-mono h-48 resize-y"
-              />
-            ) : (
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {langKeys.length > 0 ? langKeys.map(key => (
-                  <div key={key}>
-                    <label className="block text-xs text-[#6B7280] mb-0.5">{key}</label>
-                    {Array.isArray(cd[key]) ? (
-                      <textarea
-                        value={JSON.stringify(cd[key], null, 2)}
-                        onChange={e => {
-                          try { updateContextData(key, JSON.parse(e.target.value)) } catch {}
-                        }}
-                        className="w-full border rounded-lg px-3 py-2 text-xs font-mono h-20 resize-y"
-                      />
-                    ) : (
-                      <input
-                        value={cd[key] || ''}
-                        onChange={e => updateContextData(key, e.target.value)}
-                        className="w-full border rounded-lg px-3 py-2 text-sm"
-                      />
-                    )}
-                  </div>
-                )) : (
-                  <p className="text-xs text-gray-400 italic">No keys for {tab}. Switch to JSON mode to edit all.</p>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-gray-200">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-[#6B7280] hover:bg-gray-100 rounded-lg transition-colors">
-            Cancel
-          </button>
-          <button onClick={handleSave} disabled={saving}
-            className="flex items-center gap-1.5 px-4 py-2 bg-purple-600 text-white text-sm font-bold rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors">
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            Save Puzzle
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-/* ════════════════════════════════════════════════════════════
-   LessonEditModal — edit lesson content in 4 languages
-   ════════════════════════════════════════════════════════════ */
-function LessonEditModal({ lesson, onClose, onSave }) {
-  const [form, setForm] = useState({ ...lesson })
-  const [tab, setTab] = useState('en')
-  const [saving, setSaving] = useState(false)
-
-  const LANGS = [
-    { code: 'en', flag: '🇬🇧' },
-    { code: 'fr', flag: '🇫🇷' },
-    { code: 'it', flag: '🇮🇹' },
-    { code: 'es', flag: '🇪🇸' },
-  ]
-
-  function updateField(key, val) {
-    setForm(prev => ({ ...prev, [key]: val }))
-  }
-
-  async function handleSave() {
-    setSaving(true)
-    await onSave(form)
-    setSaving(false)
-  }
-
-  return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
-          <div className="flex items-center gap-2">
-            <BookOpen size={18} className="text-blue-500" />
-            <h3 className="font-bold text-[#1A1A1A]">Edit Lesson</h3>
-          </div>
-          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
-            <X size={18} className="text-[#6B7280]" />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-          {/* Metadata */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-[#6B7280] mb-1">Theme</label>
-              <input value={form.theme || ''} onChange={e => updateField('theme', e.target.value)}
-                className="w-full border rounded-lg px-3 py-2 text-sm" />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-[#6B7280] mb-1">Difficulty</label>
-              <select value={form.difficulty || 'medium'} onChange={e => updateField('difficulty', e.target.value)}
-                className="w-full border rounded-lg px-3 py-2 text-sm">
-                <option value="easy">Easy</option>
-                <option value="medium">Medium</option>
-                <option value="hard">Hard</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Lang tabs */}
-          <div className="flex gap-1">
-            {LANGS.map(l => (
-              <button key={l.code} onClick={() => setTab(l.code)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                  tab === l.code ? 'bg-[#1B3D2F] text-white' : 'bg-gray-100 text-[#6B7280] hover:bg-gray-200'
-                }`}>
-                {l.flag} {l.code.toUpperCase()}
-              </button>
-            ))}
-          </div>
-
-          {/* Title per lang */}
-          <div>
-            <label className="block text-xs font-semibold text-[#6B7280] mb-1">Title ({tab})</label>
-            <input
-              value={form[`title_${tab}`] || ''}
-              onChange={e => updateField(`title_${tab}`, e.target.value)}
-              className="w-full border rounded-lg px-3 py-2 text-sm"
-            />
-          </div>
-
-          {/* Content per lang */}
-          <div>
-            <label className="block text-xs font-semibold text-[#6B7280] mb-1">Content ({tab})</label>
-            <textarea
-              value={form[`content_${tab}`] || ''}
-              onChange={e => updateField(`content_${tab}`, e.target.value)}
-              className="w-full border rounded-lg px-3 py-2 text-sm h-32 resize-y"
-            />
-          </div>
-
-          {/* Key Takeaway per lang */}
-          <div>
-            <label className="block text-xs font-semibold text-[#6B7280] mb-1">Key Takeaway ({tab})</label>
-            <input
-              value={form[`key_takeaway_${tab}`] || ''}
-              onChange={e => updateField(`key_takeaway_${tab}`, e.target.value)}
-              className="w-full border rounded-lg px-3 py-2 text-sm"
-            />
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-gray-200">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-[#6B7280] hover:bg-gray-100 rounded-lg transition-colors">
-            Cancel
-          </button>
-          <button onClick={handleSave} disabled={saving}
-            className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            Save Lesson
-          </button>
-        </div>
-      </div>
     </div>
   )
 }
