@@ -26,9 +26,6 @@ export const STREAK_MULTIPLIER_DIVISOR = 50
 export const STREAK_FREEZES_PER_MONTH = 3
 export const STREAK_RESET_HOUR_CET = 4
 
-// Quiz
-export const QUESTIONS_PER_QUIZ = 5
-
 // Categories
 export const CATEGORIES = [
   'Ecosystem & Culture',

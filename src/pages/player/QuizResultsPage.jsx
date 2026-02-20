@@ -9,7 +9,6 @@ import {
   XP_QUIZ_STARTED,
   XP_CORRECT_ANSWER,
   XP_PERFECT_QUIZ,
-  QUESTIONS_PER_QUIZ,
 } from '../../config/constants'
 import Button from '../../components/ui/Button'
 import LevelUpModal from '../../components/LevelUpModal'
@@ -40,9 +39,9 @@ export default function QuizResultsPage() {
   }
 
   const { score, totalQuestions, answers, totalXP, avgTime, maxCombo = 0 } = results
-  const isPerfect = score === QUESTIONS_PER_QUIZ
+  const isPerfect = score === totalQuestions
   const percentage = Math.round((score / totalQuestions) * 100)
-  const percentile = Math.min(99, Math.round((score / 5) * 80 + Math.random() * 15))
+  const percentile = Math.min(99, Math.round((score / totalQuestions) * 80 + Math.random() * 15))
 
   // Play sounds + confetti + check level up
   useEffect(() => {

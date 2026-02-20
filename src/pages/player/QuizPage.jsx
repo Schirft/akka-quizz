@@ -15,7 +15,6 @@ import {
   XP_PERFECT_QUIZ,
   SPEED_FAST_THRESHOLD,
   SPEED_MEDIUM_THRESHOLD,
-  QUESTIONS_PER_QUIZ,
 } from '../../config/constants'
 import {
   playCorrect,
@@ -45,7 +44,7 @@ import {
  * QuizPage — the full quiz experience with timer, feedback, sounds, and transitions.
  *
  * Schema notes:
- * - daily_quizzes: question_1_id..question_5_id (individual FK columns)
+ * - daily_packs: question_ids (array), puzzle_id, lesson_id, assigned_date, theme
  * - questions.answers_en: jsonb array ["A","B","C","D"], correct_answer_index 1-4
  * - quiz_sessions: total_xp_earned, duration_seconds, speed_bonuses, is_perfect
  * - quiz_answers: question_order, response_time_ms, speed_bonus (no user_id)
@@ -184,45 +183,26 @@ export default function QuizPage() {
           packPuzzleId = dailyPack.puzzle_id
           packLessonId = dailyPack.lesson_id
         } else {
-          // Fallback: legacy daily_quizzes table
-          const { data: dailyQuiz, error: dqError } = await supabase
-            .from('daily_quizzes')
-            .select('id, question_1_id, question_2_id, question_3_id, question_4_id, question_5_id')
-            .eq('quiz_date', today)
-            .single()
+          // No pack assigned today — try practice mode with a random pack
+          const { data: randomPack } = await supabase
+            .from('daily_packs')
+            .select('id, question_ids, puzzle_id, lesson_id')
+            .in('status', ['ready', 'active', 'assigned'])
+            .not('question_ids', 'eq', '{}')
+            .limit(10)
 
           if (cancelled) return
-          if (!dqError && dailyQuiz) {
-            setQuizId(dailyQuiz.id)
-            questionIds = [
-              dailyQuiz.question_1_id,
-              dailyQuiz.question_2_id,
-              dailyQuiz.question_3_id,
-              dailyQuiz.question_4_id,
-              dailyQuiz.question_5_id,
-            ].filter(Boolean)
+          if (randomPack && randomPack.length > 0) {
+            const pick = randomPack[Math.floor(Math.random() * randomPack.length)]
+            setQuizId(pick.id)
+            questionIds = pick.question_ids || []
+            packPuzzleId = pick.puzzle_id
+            packLessonId = pick.lesson_id
+            setPracticeMode(true)
           } else {
-            // D1: Practice mode — load a random pack
-            const { data: randomPack } = await supabase
-              .from('daily_packs')
-              .select('id, question_ids, puzzle_id, lesson_id')
-              .in('status', ['ready', 'active'])
-              .not('question_ids', 'eq', '{}')
-              .limit(10)
-
-            if (cancelled) return
-            if (randomPack && randomPack.length > 0) {
-              const pick = randomPack[Math.floor(Math.random() * randomPack.length)]
-              setQuizId(pick.id)
-              questionIds = pick.question_ids || []
-              packPuzzleId = pick.puzzle_id
-              packLessonId = pick.lesson_id
-              setPracticeMode(true)
-            } else {
-              setErrorMsg('no_quiz')
-              setQuizState('error')
-              return
-            }
+            setErrorMsg('no_quiz')
+            setQuizState('error')
+            return
           }
         }
 
