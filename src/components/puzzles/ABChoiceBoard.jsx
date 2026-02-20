@@ -5,49 +5,56 @@ export default function ABChoiceBoard({ puzzle, onAnswer, lang = 'en' }) {
   const ctx = puzzle.context_data || {};
   const optA = ctx.option_a || { title: 'Deal A', metrics: {} };
   const optB = ctx.option_b || { title: 'Deal B', metrics: {} };
-  const question = ctx[`question_${lang}`] || ctx.question || 'Pick the better deal';
+  const question = ctx[`question_${lang}`] || ctx.question_en || ctx.question || 'Pick the better deal';
 
   const handlePick = (choice) => {
+    if (selected !== null) return; // Block double-click
     setSelected(choice);
     onAnswer(choice);
   };
 
+  const renderMetrics = (metrics) => {
+    if (!metrics || typeof metrics !== 'object') return null;
+    return Object.entries(metrics).map(([key, value]) => (
+      <div key={key} className="flex justify-between py-1.5 border-b border-gray-100 text-sm">
+        <span className="text-gray-500">{key.replace(/_/g, ' ')}</span>
+        <span className="font-semibold font-mono text-gray-900">
+          {typeof value === 'number' ? value.toLocaleString() : String(value)}
+        </span>
+      </div>
+    ));
+  };
+
+  const renderDescription = (opt) => {
+    const desc = opt[`description_${lang}`] || opt.description_en || opt.description;
+    if (!desc) return null;
+    return <p className="text-xs text-gray-500 mt-2 italic">{desc}</p>;
+  };
+
   const renderCard = (opt, choice) => {
     const isSelected = selected === choice;
-    const metrics = opt.metrics || {};
+    const isOther = selected !== null && !isSelected;
     return (
       <div
         onClick={() => handlePick(choice)}
-        style={{
-          flex: 1, border: isSelected ? '2px solid #16a34a' : '2px solid #e5e7eb',
-          borderRadius: 12, padding: 16, cursor: 'pointer',
-          background: isSelected ? '#f0fdf4' : 'white',
-          transition: 'all 0.2s',
-        }}
+        className={`flex-1 rounded-xl p-4 cursor-pointer transition-all border-2 ${
+          isSelected
+            ? 'border-green-600 bg-green-50 ring-2 ring-green-200'
+            : isOther
+              ? 'border-gray-200 bg-gray-50 opacity-60'
+              : 'border-gray-200 bg-white hover:border-gray-300'
+        }`}
       >
-        <div style={{
-          fontWeight: 700, fontSize: 16, marginBottom: 10, textAlign: 'center',
-          color: isSelected ? '#15803d' : '#1f2937',
-        }}>
+        <div className={`font-bold text-base mb-3 text-center ${
+          isSelected ? 'text-green-700' : 'text-gray-800'
+        }`}>
           {opt.title || `Option ${choice.toUpperCase()}`}
         </div>
-        {Object.entries(metrics).map(([key, value]) => (
-          <div key={key} style={{
-            display: 'flex', justifyContent: 'space-between', padding: '6px 0',
-            borderBottom: '1px solid #f3f4f6', fontSize: 13,
-          }}>
-            <span style={{ color: '#6b7280' }}>{key.replace(/_/g, ' ')}</span>
-            <span style={{ fontWeight: 600, fontFamily: 'monospace', color: '#111827' }}>
-              {typeof value === 'number' ? value.toLocaleString() : String(value)}
-            </span>
-          </div>
-        ))}
+        {renderMetrics(opt.metrics)}
+        {renderDescription(opt)}
         {isSelected && (
-          <div style={{
-            textAlign: 'center', marginTop: 10, color: '#16a34a',
-            fontWeight: 600, fontSize: 14,
-          }}>
-            &#10003; Selected
+          <div className="text-center mt-3 text-green-600 font-semibold text-sm">
+            ✓ Selected
           </div>
         )}
       </div>
@@ -55,9 +62,9 @@ export default function ABChoiceBoard({ puzzle, onAnswer, lang = 'en' }) {
   };
 
   return (
-    <div style={{ padding: 16 }}>
-      <p style={{ fontWeight: 600, marginBottom: 12, fontSize: 15, color: '#1a1a1a' }}>{question}</p>
-      <div style={{ display: 'flex', gap: 12 }}>
+    <div className="p-4">
+      <p className="font-semibold mb-3 text-[15px] text-gray-900">{question}</p>
+      <div className="flex gap-3">
         {renderCard(optA, 'a')}
         {renderCard(optB, 'b')}
       </div>

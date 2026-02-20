@@ -69,12 +69,14 @@ const STEP2_MESSAGES = [
 ]
 
 // ── Pack generation themes and difficulties (B3: pill arrays) ──
-const PACK_THEMES = [
+const ALL_THEMES = [
   'fundraising', 'cap_tables', 'term_sheets', 'unit_economics',
   'revenue_growth', 'burn_analysis', 'market_comps', 'startup_valuation',
   'due_diligence', 'exit_strategies',
 ]
-const PACK_DIFFICULTIES = ['easy', 'medium', 'hard']
+const PACK_THEMES = ['random', ...ALL_THEMES]
+const ALL_DIFFICULTIES = ['easy', 'medium', 'hard']
+const PACK_DIFFICULTIES = ['random', ...ALL_DIFFICULTIES]
 
 // B1: Pack step definitions for 4-function sequential flow
 const PACK_STEPS = [
@@ -623,13 +625,20 @@ export default function GeneratePage() {
 
     if (packAbortRef.current) return null
 
-    // Step 4: Translate
+    // Step 4: Translate (non-blocking — pack is still created if translation fails)
     setPackStep(3)
-    const tResult = await callEdgeFunction('translate-pack', {
-      question_ids: questionIds,
-      puzzle_id: puzzleId,
-      lesson_id: lessonId,
-    })
+    let tResult = { translated: {}, stats: { duration_s: 0, estimated_cost_usd: 0 } }
+    let translationNote = null
+    try {
+      tResult = await callEdgeFunction('translate-pack', {
+        question_ids: questionIds,
+        puzzle_id: puzzleId,
+        lesson_id: lessonId,
+      })
+    } catch (tErr) {
+      console.warn('[Pack] Translation failed (non-blocking):', tErr.message)
+      translationNote = `Translation skipped: ${tErr.message}`
+    }
 
     if (packAbortRef.current) return null
 
@@ -643,7 +652,7 @@ export default function GeneratePage() {
         question_ids: questionIds,
         puzzle_id: puzzleId,
         lesson_id: lessonId,
-        status: 'ready',
+        status: 'active',
       })
       .select('id')
       .single()
@@ -667,6 +676,7 @@ export default function GeneratePage() {
       packId: packRow?.id || null,
       stats: totalStats,
       translated: tResult.translated || {},
+      translationNote,
     }
   }
 
@@ -690,7 +700,10 @@ export default function GeneratePage() {
         setPackBatchProgress(prev => ({ ...prev, current: i + 1, step: 0 }))
 
         try {
-          const result = await generateOnePack(packTheme, packDifficulty)
+          // F4: Theme & difficulty rotation for batch mode
+          const effectiveTheme = packTheme === 'random' ? ALL_THEMES[i % ALL_THEMES.length] : packTheme
+          const effectiveDifficulty = packDifficulty === 'random' ? ALL_DIFFICULTIES[i % ALL_DIFFICULTIES.length] : packDifficulty
+          const result = await generateOnePack(effectiveTheme, effectiveDifficulty)
           if (result) {
             results.push(result)
             setPackBatchResults(prev => [...prev, result])
@@ -890,7 +903,7 @@ export default function GeneratePage() {
               onClick={setPackTheme}
               disabled={packGenerating}
             >
-              {t.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+              {t === 'random' ? '🔀 Random' : t.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
             </Pill>
           ))}
         </div>
@@ -906,7 +919,7 @@ export default function GeneratePage() {
               onClick={setPackDifficulty}
               disabled={packGenerating}
             >
-              {d.charAt(0).toUpperCase() + d.slice(1)}
+              {d === 'random' ? '🔀 Random' : d.charAt(0).toUpperCase() + d.slice(1)}
             </Pill>
           ))}
         </div>

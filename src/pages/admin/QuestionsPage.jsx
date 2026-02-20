@@ -402,7 +402,7 @@ export default function QuestionsPage() {
     }
   }
 
-  // C5: Load packs
+  // C5: Load packs on mount
   async function loadPacks() {
     setPacksLoading(true)
     try {
@@ -420,6 +420,9 @@ export default function QuestionsPage() {
     }
   }
 
+  // Load packs on mount
+  useEffect(() => { loadPacks() }, [])
+
   // C5: Load pack details (questions + puzzle + lesson) when expanding
   async function loadPackDetails(pack) {
     if (packDetails[pack.id]) return // already loaded
@@ -430,7 +433,7 @@ export default function QuestionsPage() {
       if (pack.question_ids?.length > 0) {
         const { data: qs } = await supabase
           .from('questions')
-          .select('id, question_en, macro_category, difficulty, status')
+          .select('id, question_en, answers_en, correct_answer_index, macro_category, difficulty, status')
           .in('id', pack.question_ids)
         details.questions = qs || []
       }
@@ -439,7 +442,7 @@ export default function QuestionsPage() {
       if (pack.puzzle_id) {
         const { data: pz } = await supabase
           .from('puzzles')
-          .select('id, interaction_type, title, answer')
+          .select('id, interaction_type, title, subtitle, answer, explanation, context_data, hint')
           .eq('id', pack.puzzle_id)
           .maybeSingle()
         details.puzzle = pz
@@ -448,8 +451,8 @@ export default function QuestionsPage() {
       // Load lesson
       if (pack.lesson_id) {
         const { data: ls } = await supabase
-          .from('lessons')
-          .select('id, title_en, summary_en')
+          .from('daily_lessons')
+          .select('id, title, content, key_takeaway')
           .eq('id', pack.lesson_id)
           .maybeSingle()
         details.lesson = ls
@@ -620,133 +623,203 @@ export default function QuestionsPage() {
         </Card>
       )}
 
-      {/* C5: Packs section */}
-      <Card className="mb-4">
-        <button
-          onClick={() => { setShowPacks(!showPacks); if (!showPacks && packs.length === 0) loadPacks() }}
-          className="flex items-center justify-between w-full"
-        >
-          <div className="flex items-center gap-2">
-            <Package size={18} className="text-[#1B3D2F]" />
-            <span className="text-sm font-semibold text-[#1A1A1A]">Daily Packs</span>
-            {packs.length > 0 && (
-              <span className="text-xs text-[#6B7280]">({packs.length})</span>
-            )}
-          </div>
-          {showPacks ? <ChevronUp size={16} className="text-[#6B7280]" /> : <ChevronDown size={16} className="text-[#6B7280]" />}
-        </button>
+      {/* I1-I3: Packs flat list — separated into Today + Past */}
+      {(() => {
+        const today = new Date().toISOString().split('T')[0]
+        const todayPacks = packs.filter(p => p.assigned_date === today)
+        const pastPacks = packs.filter(p => p.assigned_date !== today)
 
-        {showPacks && (
-          <div className="mt-4 space-y-2">
-            {packsLoading ? (
-              <div className="flex items-center justify-center py-6">
-                <Loader2 size={20} className="animate-spin text-[#6B7280]" />
-              </div>
-            ) : packs.length === 0 ? (
-              <p className="text-sm text-[#6B7280] text-center py-4">No packs generated yet</p>
-            ) : packs.map(pack => {
-              const isExpanded = expandedPack === pack.id
-              const details = packDetails[pack.id]
-              return (
-                <div key={pack.id} className="border border-gray-200 rounded-xl overflow-hidden">
-                  <div
-                    onClick={() => togglePackExpand(pack)}
-                    className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <Package size={14} className="text-[#2ECC71] shrink-0" />
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-[#1A1A1A] truncate">
-                          {pack.theme} — <span className="capitalize text-[#6B7280]">{pack.difficulty}</span>
-                        </p>
-                        <p className="text-xs text-[#6B7280]">
-                          {pack.question_ids?.length || 0} questions
-                          {pack.puzzle_id && ' + puzzle'}
-                          {pack.lesson_id && ' + lesson'}
-                          {pack.assigned_date && ` — ${pack.assigned_date}`}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                        pack.status === 'ready' ? 'bg-green-100 text-green-700' :
-                        pack.status === 'assigned' ? 'bg-blue-100 text-blue-700' :
-                        'bg-gray-100 text-gray-600'
-                      }`}>
-                        {pack.status}
-                      </span>
-                      {isExpanded ? <ChevronUp size={14} className="text-[#6B7280]" /> : <ChevronDown size={14} className="text-[#6B7280]" />}
-                    </div>
+        function renderPackRow(pack) {
+          const isExpanded = expandedPack === pack.id
+          const details = packDetails[pack.id]
+          return (
+            <div key={pack.id} className="border border-gray-200 rounded-xl overflow-hidden">
+              <div
+                onClick={() => togglePackExpand(pack)}
+                className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <Package size={14} className="text-[#2ECC71] shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-[#1A1A1A] truncate">
+                      {pack.theme} — <span className="capitalize text-[#6B7280]">{pack.difficulty}</span>
+                    </p>
+                    <p className="text-xs text-[#6B7280]">
+                      {pack.question_ids?.length || 0} Q
+                      {pack.puzzle_id ? ' + puzzle' : ''}
+                      {pack.lesson_id ? ' + lesson' : ''}
+                      {pack.assigned_date ? ` — ${pack.assigned_date}` : ''}
+                    </p>
                   </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                    pack.status === 'active' ? 'bg-green-100 text-green-700' :
+                    pack.status === 'ready' ? 'bg-green-100 text-green-700' :
+                    pack.status === 'assigned' ? 'bg-blue-100 text-blue-700' :
+                    'bg-gray-100 text-gray-600'
+                  }`}>
+                    {pack.status}
+                  </span>
+                  {isExpanded ? <ChevronUp size={14} className="text-[#6B7280]" /> : <ChevronDown size={14} className="text-[#6B7280]" />}
+                </div>
+              </div>
 
-                  {isExpanded && (
-                    <div className="px-4 pb-4 border-t border-gray-100 space-y-3">
-                      {/* Questions */}
-                      {details ? (
-                        <>
-                          <div className="mt-3">
-                            <p className="text-xs font-semibold text-[#6B7280] uppercase tracking-wide mb-2">Questions ({details.questions.length})</p>
-                            {details.questions.length > 0 ? (
-                              <div className="space-y-1">
-                                {details.questions.map((q, i) => (
-                                  <div key={q.id} className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg">
-                                    <span className="w-5 h-5 rounded-full bg-[#1B3D2F] text-white text-[10px] font-bold flex items-center justify-center shrink-0">{i + 1}</span>
-                                    <p className="text-xs text-[#1A1A1A] truncate flex-1">{q.question_en}</p>
-                                    <span className={`text-[10px] font-medium capitalize ${
-                                      q.difficulty === 'hard' ? 'text-red-600' : q.difficulty === 'medium' ? 'text-amber-600' : 'text-green-600'
-                                    }`}>{q.difficulty}</span>
+              {isExpanded && (
+                <div className="px-4 pb-4 border-t border-gray-100 space-y-3">
+                  {details ? (
+                    <>
+                      {/* Questions — full preview */}
+                      <div className="mt-3">
+                        <p className="text-xs font-semibold text-[#6B7280] uppercase tracking-wide mb-2">Questions ({details.questions.length})</p>
+                        {details.questions.length > 0 ? (
+                          <div className="space-y-2">
+                            {details.questions.map((q, i) => (
+                              <div key={q.id} className="px-3 py-2.5 bg-gray-50 rounded-lg">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="w-5 h-5 rounded-full bg-[#1B3D2F] text-white text-[10px] font-bold flex items-center justify-center shrink-0">{i + 1}</span>
+                                  <span className={`text-[10px] font-medium capitalize ${
+                                    q.difficulty === 'hard' ? 'text-red-600' : q.difficulty === 'medium' ? 'text-amber-600' : 'text-green-600'
+                                  }`}>{q.difficulty}</span>
+                                  <span className={`ml-auto px-1.5 py-0.5 rounded text-[9px] font-medium ${STATUS_BADGE[q.status] || 'bg-gray-100 text-gray-700'}`}>
+                                    {q.status}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-[#1A1A1A] mb-1.5">{q.question_en}</p>
+                                {q.answers_en && (
+                                  <div className="grid grid-cols-2 gap-1">
+                                    {q.answers_en.map((a, j) => (
+                                      <div key={j} className={`text-[10px] px-2 py-1 rounded ${
+                                        j === (q.correct_answer_index - 1) ? 'bg-green-100 text-green-800 font-medium' : 'bg-white text-gray-600 border border-gray-100'
+                                      }`}>
+                                        {String.fromCharCode(65 + j)}. {a}
+                                      </div>
+                                    ))}
                                   </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <p className="text-xs text-[#6B7280]">No questions found</p>
-                            )}
-                          </div>
-
-                          {/* Puzzle */}
-                          {details.puzzle && (
-                            <div>
-                              <p className="text-xs font-semibold text-[#6B7280] uppercase tracking-wide mb-2 flex items-center gap-1">
-                                <Puzzle size={12} /> Puzzle
-                              </p>
-                              <div className="px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
-                                <p className="text-xs font-medium text-[#1A1A1A]">{details.puzzle.title || 'Untitled'}</p>
-                                <p className="text-[10px] text-[#6B7280] mt-0.5">
-                                  Type: <span className="font-medium">{details.puzzle.interaction_type}</span>
-                                  {details.puzzle.answer && <> — Answer: <span className="font-medium">{details.puzzle.answer}</span></>}
-                                </p>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Lesson */}
-                          {details.lesson && (
-                            <div>
-                              <p className="text-xs font-semibold text-[#6B7280] uppercase tracking-wide mb-2 flex items-center gap-1">
-                                <BookOpen size={12} /> Lesson
-                              </p>
-                              <div className="px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg">
-                                <p className="text-xs font-medium text-[#1A1A1A]">{details.lesson.title_en || 'Untitled'}</p>
-                                {details.lesson.summary_en && (
-                                  <p className="text-[10px] text-[#6B7280] mt-0.5 line-clamp-2">{details.lesson.summary_en}</p>
                                 )}
                               </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-red-500">No questions found (IDs missing?)</p>
+                        )}
+                      </div>
+
+                      {/* Puzzle — full preview */}
+                      {details.puzzle && (
+                        <div>
+                          <p className="text-xs font-semibold text-[#6B7280] uppercase tracking-wide mb-2 flex items-center gap-1">
+                            <Puzzle size={12} /> Puzzle — {details.puzzle.interaction_type}
+                          </p>
+                          <div className="px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg space-y-1.5">
+                            <p className="text-xs font-medium text-[#1A1A1A]">{details.puzzle.title || 'Untitled'}</p>
+                            {details.puzzle.subtitle && <p className="text-[10px] text-amber-700">{details.puzzle.subtitle}</p>}
+                            <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[10px] text-[#6B7280]">
+                              <span>Type: <b>{details.puzzle.interaction_type}</b></span>
+                              <span>Answer: <b>{details.puzzle.answer}</b></span>
+                              {details.puzzle.hint && <span>Hint: {details.puzzle.hint}</span>}
                             </div>
-                          )}
-                        </>
-                      ) : (
-                        <div className="flex items-center justify-center py-4">
-                          <Loader2 size={16} className="animate-spin text-[#6B7280]" />
+                            {details.puzzle.explanation && (
+                              <p className="text-[10px] text-gray-600 mt-1 line-clamp-3">{details.puzzle.explanation}</p>
+                            )}
+                            {details.puzzle.context_data && (
+                              <details className="mt-1">
+                                <summary className="text-[10px] text-amber-700 cursor-pointer font-medium">Show context_data</summary>
+                                <pre className="text-[9px] text-gray-600 mt-1 bg-white rounded p-2 overflow-auto max-h-[200px] border border-amber-100">
+                                  {JSON.stringify(details.puzzle.context_data, null, 2)}
+                                </pre>
+                              </details>
+                            )}
+                          </div>
                         </div>
                       )}
+
+                      {/* Lesson — full preview */}
+                      {details.lesson && (
+                        <div>
+                          <p className="text-xs font-semibold text-[#6B7280] uppercase tracking-wide mb-2 flex items-center gap-1">
+                            <BookOpen size={12} /> Lesson
+                          </p>
+                          <div className="px-3 py-2.5 bg-blue-50 border border-blue-200 rounded-lg space-y-1.5">
+                            <p className="text-xs font-medium text-[#1A1A1A]">{details.lesson.title || 'Untitled'}</p>
+                            {details.lesson.content && (
+                              <p className="text-[10px] text-gray-600 line-clamp-4">{details.lesson.content}</p>
+                            )}
+                            {details.lesson.key_takeaway && (
+                              <p className="text-[10px] text-blue-700 font-medium mt-1">Key takeaway: {details.lesson.key_takeaway}</p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Missing content warnings */}
+                      {!details.puzzle && !pack.puzzle_id && (
+                        <p className="text-[10px] text-amber-600">⚠ No puzzle in this pack</p>
+                      )}
+                      {!details.lesson && !pack.lesson_id && (
+                        <p className="text-[10px] text-amber-600">⚠ No lesson in this pack</p>
+                      )}
+                    </>
+                  ) : (
+                    <div className="flex items-center justify-center py-4">
+                      <Loader2 size={16} className="animate-spin text-[#6B7280]" />
                     </div>
                   )}
                 </div>
-              )
-            })}
-          </div>
-        )}
-      </Card>
+              )}
+            </div>
+          )
+        }
+
+        return (
+          <>
+            {/* Today's Packs */}
+            {todayPacks.length > 0 && (
+              <Card className="mb-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Package size={18} className="text-[#2ECC71]" />
+                  <span className="text-sm font-semibold text-[#1A1A1A]">Today's Packs</span>
+                  <span className="text-xs text-[#6B7280]">({todayPacks.length})</span>
+                </div>
+                <div className="space-y-2">
+                  {todayPacks.map(renderPackRow)}
+                </div>
+              </Card>
+            )}
+
+            {/* All Packs */}
+            <Card className="mb-4">
+              <button
+                onClick={() => setShowPacks(!showPacks)}
+                className="flex items-center justify-between w-full"
+              >
+                <div className="flex items-center gap-2">
+                  <Package size={18} className="text-[#1B3D2F]" />
+                  <span className="text-sm font-semibold text-[#1A1A1A]">
+                    {todayPacks.length > 0 ? 'Past Packs' : 'All Packs'}
+                  </span>
+                  <span className="text-xs text-[#6B7280]">
+                    ({(todayPacks.length > 0 ? pastPacks : packs).length})
+                  </span>
+                </div>
+                {showPacks ? <ChevronUp size={16} className="text-[#6B7280]" /> : <ChevronDown size={16} className="text-[#6B7280]" />}
+              </button>
+
+              {showPacks && (
+                <div className="mt-4 space-y-2">
+                  {packsLoading ? (
+                    <div className="flex items-center justify-center py-6">
+                      <Loader2 size={20} className="animate-spin text-[#6B7280]" />
+                    </div>
+                  ) : (todayPacks.length > 0 ? pastPacks : packs).length === 0 ? (
+                    <p className="text-sm text-[#6B7280] text-center py-4">No packs generated yet</p>
+                  ) : (todayPacks.length > 0 ? pastPacks : packs).map(renderPackRow)}
+                </div>
+              )}
+            </Card>
+          </>
+        )
+      })()}
 
       {/* Filters */}
       <Card className="mb-4">

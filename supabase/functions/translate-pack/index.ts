@@ -52,6 +52,25 @@ async function callClaude(prompt: string, maxTokens = 8192): Promise<string> {
   return data.content?.[0]?.text || "";
 }
 
+async function callClaudeWithRetry(prompt: string, maxTokens = 8192, retries = 3): Promise<string> {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      return await callClaude(prompt, maxTokens);
+    } catch (err: any) {
+      const msg = err.message || "";
+      const isRetryable = msg.includes("529") || msg.includes("500") || msg.includes("overloaded") || msg.includes("rate");
+      if (isRetryable && attempt < retries) {
+        const delay = attempt * 5000;
+        console.log(`[Retry] Attempt ${attempt}/${retries} failed, waiting ${delay}ms...`);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error("All retry attempts failed");
+}
+
 function extractJSON(text: string): any {
   const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (jsonMatch) return JSON.parse(jsonMatch[1].trim());
@@ -230,7 +249,7 @@ Deno.serve(async (req: Request) => {
 
     let translations: any = { fr: {}, it: {}, es: {} };
     try {
-      const transResp = await callClaude(buildTranslationPrompt(transFields), 8192);
+      const transResp = await callClaudeWithRetry(buildTranslationPrompt(transFields), 8192);
       translations = extractJSON(transResp);
     } catch (err) {
       console.error("[TranslatePack] Translation failed:", err);

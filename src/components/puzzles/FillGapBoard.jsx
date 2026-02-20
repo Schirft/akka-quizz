@@ -3,36 +3,34 @@ import React, { useState } from 'react';
 export default function FillGapBoard({ puzzle, onAnswer, lang = 'en' }) {
   const [selected, setSelected] = useState(null);
   const ctx = puzzle.context_data || {};
-  const rows = ctx.rows || [];
+  const rows = ctx.rows || ctx.table || [];
   const missingField = ctx.missing_field || {};
   const options = ctx.options || [];
-  const question = ctx[`question_${lang}`] || ctx.question || 'Fill in the missing value';
+  const question = ctx[`question_${lang}`] || ctx.question_en || ctx.question || 'Fill in the missing value';
 
   const handlePick = (val) => {
+    if (selected !== null) return; // Block double-click
     setSelected(val);
     onAnswer(String(val));
   };
 
   return (
-    <div style={{ padding: 16 }}>
-      <p style={{ fontWeight: 600, marginBottom: 12, fontSize: 15, color: '#1a1a1a' }}>{question}</p>
+    <div className="p-4">
+      <p className="font-semibold mb-3 text-[15px] text-gray-900">{question}</p>
 
       {/* Data table */}
-      <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden', marginBottom: 16 }}>
+      <div className="border border-gray-200 rounded-xl overflow-hidden mb-4">
         {rows.map((row, i) => {
           const isMissing = row.id === missingField.row_id;
           return (
-            <div key={row.id || i} style={{
-              display: 'flex', justifyContent: 'space-between', padding: '10px 14px',
-              borderBottom: i < rows.length - 1 ? '1px solid #f3f4f6' : 'none',
-              background: isMissing ? '#fef9c3' : 'white',
-            }}>
-              <span style={{ fontSize: 14, color: '#374151' }}>{row.label || row.name}</span>
-              <span style={{
-                fontWeight: 600, fontFamily: 'monospace', fontSize: 14,
-                color: isMissing ? '#d97706' : '#111827',
-              }}>
-                {isMissing ? '?' : (row[missingField.field] !== undefined ? row[missingField.field] : row.value)}
+            <div key={row.id || i} className={`flex justify-between px-3.5 py-2.5 text-sm ${
+              i < rows.length - 1 ? 'border-b border-gray-100' : ''
+            } ${isMissing ? 'bg-yellow-50' : 'bg-white'}`}>
+              <span className="text-gray-700">{row.label || row.name}</span>
+              <span className={`font-semibold font-mono ${
+                isMissing ? 'text-amber-600' : 'text-gray-900'
+              }`}>
+                {isMissing ? '❓' : (row[missingField.field] !== undefined ? row[missingField.field] : row.value)}
               </span>
             </div>
           );
@@ -40,23 +38,24 @@ export default function FillGapBoard({ puzzle, onAnswer, lang = 'en' }) {
       </div>
 
       {/* Options */}
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
+      <div className="flex gap-2.5 flex-wrap justify-center">
         {options.map((opt) => {
           const isSelected = selected === opt;
+          const isOther = selected !== null && !isSelected;
           return (
             <button
               key={opt}
               onClick={() => handlePick(opt)}
-              style={{
-                padding: '12px 24px', borderRadius: 10, fontSize: 16, fontWeight: 700,
-                fontFamily: 'monospace', cursor: 'pointer',
-                border: isSelected ? '2px solid #16a34a' : '2px solid #e5e7eb',
-                background: isSelected ? '#dcfce7' : 'white',
-                color: isSelected ? '#15803d' : '#1f2937',
-                transition: 'all 0.2s', minWidth: 60, textAlign: 'center',
-              }}
+              className={`px-5 py-3 rounded-xl text-base font-bold font-mono transition-all min-w-[60px] text-center border-2 ${
+                isSelected
+                  ? 'border-green-600 bg-green-100 text-green-700 ring-2 ring-green-200'
+                  : isOther
+                    ? 'border-gray-200 bg-gray-50 text-gray-400 opacity-60'
+                    : 'border-gray-200 bg-white text-gray-800 hover:border-gray-300'
+              }`}
             >
               {typeof opt === 'number' ? opt.toLocaleString() : opt}
+              {isSelected && <span className="ml-1">✓</span>}
             </button>
           );
         })}

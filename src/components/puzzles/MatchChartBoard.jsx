@@ -4,9 +4,11 @@ export default function MatchChartBoard({ puzzle, onAnswer, lang = 'en' }) {
   const [selected, setSelected] = useState(null);
   const ctx = puzzle.context_data || {};
   const charts = ctx.charts || [];
-  const description = ctx[`description_${lang}`] || ctx.description || '';
+  const description = ctx[`description_${lang}`] || ctx.description_en || ctx.description || '';
+  const question = ctx[`question_${lang}`] || ctx.question_en || ctx.question || 'Match the description to the chart';
 
   const handlePick = (id) => {
+    if (selected !== null) return; // Block double-click
     setSelected(id);
     onAnswer(id);
   };
@@ -16,42 +18,42 @@ export default function MatchChartBoard({ puzzle, onAnswer, lang = 'en' }) {
     if (data.length === 0) return null;
     const maxVal = Math.max(...data.map(d => typeof d === 'number' ? d : d.y || d.value || 0), 1);
     const isSelected = selected === chart.id;
+    const isOther = selected !== null && !isSelected;
 
     return (
       <div
         key={chart.id}
         onClick={() => handlePick(chart.id)}
-        style={{
-          flex: 1, minWidth: 100, border: isSelected ? '2px solid #16a34a' : '2px solid #e5e7eb',
-          borderRadius: 12, padding: 12, cursor: 'pointer',
-          background: isSelected ? '#f0fdf4' : 'white',
-          transition: 'all 0.2s',
-        }}
+        className={`flex-1 min-w-[100px] rounded-xl p-3 cursor-pointer transition-all border-2 ${
+          isSelected
+            ? 'border-green-600 bg-green-50 ring-2 ring-green-200'
+            : isOther
+              ? 'border-gray-200 bg-gray-50 opacity-50'
+              : 'border-gray-200 bg-white hover:border-gray-300'
+        }`}
       >
-        <div style={{
-          fontWeight: 600, fontSize: 13, textAlign: 'center', marginBottom: 8,
-          color: isSelected ? '#15803d' : '#374151',
-        }}>
-          {chart.label || `Chart ${chart.id.toUpperCase()}`}
+        <div className={`font-semibold text-[13px] text-center mb-2 ${
+          isSelected ? 'text-green-700' : 'text-gray-700'
+        }`}>
+          {chart.label || `Chart ${chart.id?.toString().toUpperCase()}`}
         </div>
 
         {/* Simple bar chart */}
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 60 }}>
+        <div className="flex items-end gap-0.5 h-[60px]">
           {data.map((d, i) => {
             const val = typeof d === 'number' ? d : d.y || d.value || 0;
             const h = Math.max((val / maxVal) * 50, 2);
             return (
-              <div key={i} style={{
-                flex: 1, height: h, borderRadius: '3px 3px 0 0',
-                background: isSelected ? '#16a34a' : '#9ca3af',
-              }} />
+              <div key={i} className={`flex-1 rounded-t-sm ${
+                isSelected ? 'bg-green-600' : 'bg-gray-400'
+              }`} style={{ height: h }} />
             );
           })}
         </div>
 
         {isSelected && (
-          <div style={{ textAlign: 'center', marginTop: 6, color: '#16a34a', fontSize: 12, fontWeight: 600 }}>
-            &#10003; Selected
+          <div className="text-center mt-1.5 text-green-600 text-xs font-semibold">
+            ✓ Selected
           </div>
         )}
       </div>
@@ -59,20 +61,16 @@ export default function MatchChartBoard({ puzzle, onAnswer, lang = 'en' }) {
   };
 
   return (
-    <div style={{ padding: 16 }}>
-      <p style={{ fontWeight: 600, marginBottom: 8, fontSize: 15, color: '#1a1a1a' }}>Match the description to the chart</p>
+    <div className="p-4">
+      <p className="font-semibold mb-2 text-[15px] text-gray-900">{question}</p>
 
       {/* Description box */}
-      <div style={{
-        background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10,
-        padding: 14, marginBottom: 16, fontSize: 14, color: '#334155',
-        lineHeight: 1.5, fontStyle: 'italic',
-      }}>
+      <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 mb-4 text-sm text-slate-700 leading-relaxed italic">
         "{description}"
       </div>
 
       {/* Charts */}
-      <div style={{ display: 'flex', gap: 10 }}>
+      <div className="flex gap-2.5">
         {charts.map(c => renderMiniChart(c))}
       </div>
     </div>

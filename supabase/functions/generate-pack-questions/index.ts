@@ -52,6 +52,25 @@ async function callClaude(prompt: string, maxTokens = 4096): Promise<string> {
   return data.content?.[0]?.text || "";
 }
 
+async function callClaudeWithRetry(prompt: string, maxTokens = 4096, retries = 3): Promise<string> {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      return await callClaude(prompt, maxTokens);
+    } catch (err: any) {
+      const msg = err.message || "";
+      const isRetryable = msg.includes("529") || msg.includes("500") || msg.includes("overloaded") || msg.includes("rate");
+      if (isRetryable && attempt < retries) {
+        const delay = attempt * 5000;
+        console.log(`[Retry] Attempt ${attempt}/${retries} failed, waiting ${delay}ms...`);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error("All retry attempts failed");
+}
+
 function extractJSON(text: string): any {
   const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (jsonMatch) return JSON.parse(jsonMatch[1].trim());
@@ -113,7 +132,7 @@ Deno.serve(async (req: Request) => {
 
     // Generate 3 QCM
     console.log(`[PackQ] Generating 3 QCM for ${theme}...`);
-    const qcmResp = await callClaude(buildQCMPrompt(theme, difficulty), 4096);
+    const qcmResp = await callClaudeWithRetry(buildQCMPrompt(theme, difficulty), 4096);
     const qcmData = extractJSON(qcmResp);
     const questions = qcmData.questions || [];
 

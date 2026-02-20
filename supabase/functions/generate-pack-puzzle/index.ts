@@ -52,6 +52,25 @@ async function callClaude(prompt: string, maxTokens = 4096): Promise<string> {
   return data.content?.[0]?.text || "";
 }
 
+async function callClaudeWithRetry(prompt: string, maxTokens = 4096, retries = 3): Promise<string> {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      return await callClaude(prompt, maxTokens);
+    } catch (err: any) {
+      const msg = err.message || "";
+      const isRetryable = msg.includes("529") || msg.includes("500") || msg.includes("overloaded") || msg.includes("rate");
+      if (isRetryable && attempt < retries) {
+        const delay = attempt * 5000;
+        console.log(`[Retry] Attempt ${attempt}/${retries} failed, waiting ${delay}ms...`);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error("All retry attempts failed");
+}
+
 function extractJSON(text: string): any {
   const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (jsonMatch) return JSON.parse(jsonMatch[1].trim());
@@ -130,12 +149,33 @@ Create a puzzle and return ONLY valid JSON:
   "timer_seconds": 90
 }
 
-IMPORTANT:
+CRITICAL RULES FOR context_data:
 - context_data MUST be valid JSON that a React frontend can render directly
 - Every clickable/interactive element MUST have a unique "id" field
 - The puzzle must be solvable — there is exactly ONE correct answer
 - The explanation should teach a real investment concept
-- Vary the mechanics — don't always use tap_to_spot`;
+- Vary the mechanics — don't always use tap_to_spot
+- ALWAYS include a "question" or "question_en" field inside context_data
+
+CONCRETE EXAMPLES OF CORRECT context_data per interaction_type:
+
+tap_to_spot:
+{ "question_en": "Which clause is unusual for a seed round?", "rows": [{"id":"row1","label":"Pre-money","value":"€4M"},{"id":"row2","label":"Liquidation Pref","value":"3x"},{"id":"row3","label":"Pro-rata","value":"Yes"}] }
+
+ab_choice:
+{ "question_en": "Which deal gives better terms for the investor?", "option_a": {"title":"Deal A","metrics":{"valuation":"€5M","dilution":"20%"},"description":"Early-stage SaaS"}, "option_b": {"title":"Deal B","metrics":{"valuation":"€8M","dilution":"12%"},"description":"Growth-stage fintech"} }
+
+fill_gap:
+{ "question_en": "What is the missing pre-money valuation?", "rows": [{"id":"r1","label":"Investment","value":"€1M"},{"id":"r2","label":"Pre-money","value":null},{"id":"r3","label":"Post-money","value":"€6M"}], "missing_field": {"row_id":"r2","field":"value"}, "options": [3,4,5,6], "correct_option": 5 }
+
+match_chart:
+{ "question_en": "Which chart shows a SaaS company with strong net retention?", "charts": [{"id":"a","label":"Chart A","type":"line","data":[100,110,125,140]},{"id":"b","label":"Chart B","type":"line","data":[100,95,88,80]}], "description": "Revenue grows even without new customers" }
+
+before_after:
+{ "question_en": "Which row changed incorrectly after the Series A?", "before": {"title":"Pre-Series A","rows":[{"id":"b1","label":"Founders","value":"80%"},{"id":"b2","label":"ESOP","value":"10%"},{"id":"b3","label":"Angels","value":"10%"}]}, "after": {"title":"Post-Series A","rows":[{"id":"a1","label":"Founders","value":"60%"},{"id":"a2","label":"ESOP","value":"15%"},{"id":"a3","label":"Angels","value":"10%"},{"id":"a4","label":"Series A","value":"20%"}]} }
+
+crash_point:
+{ "question_en": "In which month does runway drop below 3 months?", "chart_type": "cash_balance", "data": [{"month":"Jan","cash":2400000},{"month":"Feb","cash":2200000},{"month":"Mar","cash":2000000}] }`;
 }
 
 // ─── Main Handler ───────────────────────────────────────────────────────────
@@ -154,7 +194,7 @@ Deno.serve(async (req: Request) => {
 
     // Generate 1 Puzzle
     console.log(`[PackPuzzle] Generating puzzle for ${theme}...`);
-    const puzzleResp = await callClaude(buildPuzzlePrompt(theme, difficulty), 4096);
+    const puzzleResp = await callClaudeWithRetry(buildPuzzlePrompt(theme, difficulty), 4096);
     const puzzleData = extractJSON(puzzleResp);
 
     // Normalize answer to string (DB column is text, not jsonb)

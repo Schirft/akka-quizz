@@ -3,64 +3,75 @@ import React, { useState } from 'react';
 export default function CrashPointBoard({ puzzle, onAnswer, lang = 'en' }) {
   const [selected, setSelected] = useState(null);
   const ctx = puzzle.context_data || {};
-  const dataPoints = ctx.data || [];
+  const dataPoints = ctx.data || ctx.monthly_data || [];
   const burnData = ctx.monthly_burn || [];
-  const question = ctx[`question_${lang}`] || ctx.question || 'Tap the danger month';
+  const question = ctx[`question_${lang}`] || ctx.question_en || ctx.question || 'Tap the danger month';
 
-  const maxCash = Math.max(...dataPoints.map(d => d.cash || 0), 1);
+  const maxCash = Math.max(...dataPoints.map(d => d.cash || d.value || 0), 1);
 
   const handleTap = (month) => {
+    if (selected !== null) return; // Block double-click
     setSelected(month);
     onAnswer(month);
   };
 
   return (
-    <div style={{ padding: 16 }}>
-      <p style={{ fontWeight: 600, marginBottom: 12, fontSize: 15, color: '#1a1a1a' }}>{question}</p>
+    <div className="p-4">
+      <p className="font-semibold mb-3 text-[15px] text-gray-900">{question}</p>
 
       {/* Chart */}
-      <div style={{
-        display: 'flex', alignItems: 'flex-end', gap: 2, height: 160,
-        borderBottom: '2px solid #e5e7eb', marginBottom: 8, position: 'relative'
-      }}>
+      <div className="flex items-end gap-0.5 h-40 border-b-2 border-gray-200 mb-2 relative">
         {dataPoints.map((d, i) => {
-          const h = Math.max((d.cash / maxCash) * 140, 4);
-          const isSelected = selected === d.month;
-          const isDanger = d.cash < (burnData[i]?.burn || 0) * 3;
+          const cash = d.cash || d.value || 0;
+          const h = Math.max((cash / maxCash) * 140, 4);
+          const month = d.month || d.label || `M${i + 1}`;
+          const isSelected = selected === month;
+          const isOther = selected !== null && !isSelected;
+          const isDanger = cash < (burnData[i]?.burn || 0) * 3;
           return (
             <div
-              key={d.month}
-              onClick={() => handleTap(d.month)}
-              style={{
-                flex: 1, height: h, cursor: 'pointer', borderRadius: '4px 4px 0 0',
-                background: isSelected ? '#16a34a' : isDanger ? '#fbbf24' : '#d1d5db',
-                border: isSelected ? '2px solid #15803d' : '1px solid transparent',
-                transition: 'all 0.2s',
-                position: 'relative',
-              }}
-              title={`${d.month}: €${(d.cash / 1000).toFixed(0)}k`}
+              key={month}
+              onClick={() => handleTap(month)}
+              className={`flex-1 rounded-t cursor-pointer transition-all ${
+                isSelected
+                  ? 'bg-green-600 ring-2 ring-green-400'
+                  : isOther
+                    ? 'opacity-40'
+                    : isDanger
+                      ? 'bg-amber-400 hover:bg-amber-500'
+                      : 'bg-gray-300 hover:bg-gray-400'
+              }`}
+              style={{ height: h }}
+              title={`${month}: €${(cash / 1000).toFixed(0)}k`}
             />
           );
         })}
       </div>
 
       {/* Labels */}
-      <div style={{ display: 'flex', gap: 2 }}>
-        {dataPoints.map(d => (
-          <div key={d.month} style={{
-            flex: 1, fontSize: 9, textAlign: 'center', color: '#6b7280',
-            transform: 'rotate(-45deg)', transformOrigin: 'center',
-          }}>
-            {d.month?.replace(/\s*20\d\d/, '').slice(0, 3)}
-          </div>
-        ))}
+      <div className="flex gap-0.5">
+        {dataPoints.map((d, i) => {
+          const month = d.month || d.label || `M${i + 1}`;
+          return (
+            <div key={month} className="flex-1 text-[9px] text-center text-gray-500"
+              style={{ transform: 'rotate(-45deg)', transformOrigin: 'center' }}>
+              {month.replace?.(/\s*20\d\d/, '').slice(0, 3) || month}
+            </div>
+          );
+        })}
       </div>
 
       {/* Legend */}
-      <div style={{ display: 'flex', gap: 16, marginTop: 12, fontSize: 11, color: '#6b7280' }}>
-        <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#d1d5db', borderRadius: 2, marginRight: 4 }} />Safe</span>
-        <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#fbbf24', borderRadius: 2, marginRight: 4 }} />Warning</span>
-        <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#16a34a', borderRadius: 2, marginRight: 4 }} />Selected</span>
+      <div className="flex gap-4 mt-3 text-[11px] text-gray-500">
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-2.5 h-2.5 bg-gray-300 rounded-sm" />Safe
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-2.5 h-2.5 bg-amber-400 rounded-sm" />Warning
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-2.5 h-2.5 bg-green-600 rounded-sm" />Selected
+        </span>
       </div>
     </div>
   );

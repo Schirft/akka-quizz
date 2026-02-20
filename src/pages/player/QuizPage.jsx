@@ -60,7 +60,7 @@ export default function QuizPage() {
   const navigate = useNavigate()
 
   // Quiz state
-  const [quizState, setQuizState] = useState('loading') // loading | ready | question | feedback | puzzle | puzzle_feedback | error
+  const [quizState, setQuizState] = useState('loading') // loading | ready | question | feedback | puzzle | puzzle_feedback | lesson | error
   const [questions, setQuestions] = useState([])
   const [currentIndex, setCurrentIndex] = useState(0)
   const [selectedAnswer, setSelectedAnswer] = useState(null)
@@ -80,6 +80,12 @@ export default function QuizPage() {
   const [puzzleData, setPuzzleData] = useState(null)
   const [puzzleAnswer, setPuzzleAnswer] = useState(null)
   const [puzzleCorrect, setPuzzleCorrect] = useState(null)
+
+  // Lesson state
+  const [lessonData, setLessonData] = useState(null)
+
+  // Practice mode
+  const [practiceMode, setPracticeMode] = useState(false)
 
   // Gamification states
   const [combo, setCombo] = useState(0)
@@ -124,11 +130,13 @@ export default function QuizPage() {
         let questionIds = []
         let packPuzzleId = null
 
+        let packLessonId = null
+
         const { data: dailyPack } = await supabase
           .from('daily_packs')
           .select('id, question_ids, puzzle_id, lesson_id')
           .eq('assigned_date', today)
-          .eq('status', 'ready')
+          .in('status', ['ready', 'active'])
           .limit(1)
           .maybeSingle()
 
@@ -136,6 +144,7 @@ export default function QuizPage() {
           setQuizId(dailyPack.id)
           questionIds = dailyPack.question_ids
           packPuzzleId = dailyPack.puzzle_id
+          packLessonId = dailyPack.lesson_id
         } else {
           // Fallback: legacy daily_quizzes table
           const { data: dailyQuiz, error: dqError } = await supabase
@@ -145,20 +154,38 @@ export default function QuizPage() {
             .single()
 
           if (cancelled) return
-          if (dqError || !dailyQuiz) {
-            setErrorMsg('no_quiz')
-            setQuizState('error')
-            return
-          }
+          if (!dqError && dailyQuiz) {
+            setQuizId(dailyQuiz.id)
+            questionIds = [
+              dailyQuiz.question_1_id,
+              dailyQuiz.question_2_id,
+              dailyQuiz.question_3_id,
+              dailyQuiz.question_4_id,
+              dailyQuiz.question_5_id,
+            ].filter(Boolean)
+          } else {
+            // D1: Practice mode — load a random pack
+            const { data: randomPack } = await supabase
+              .from('daily_packs')
+              .select('id, question_ids, puzzle_id, lesson_id')
+              .in('status', ['ready', 'active'])
+              .not('question_ids', 'eq', '{}')
+              .limit(10)
 
-          setQuizId(dailyQuiz.id)
-          questionIds = [
-            dailyQuiz.question_1_id,
-            dailyQuiz.question_2_id,
-            dailyQuiz.question_3_id,
-            dailyQuiz.question_4_id,
-            dailyQuiz.question_5_id,
-          ].filter(Boolean)
+            if (cancelled) return
+            if (randomPack && randomPack.length > 0) {
+              const pick = randomPack[Math.floor(Math.random() * randomPack.length)]
+              setQuizId(pick.id)
+              questionIds = pick.question_ids || []
+              packPuzzleId = pick.puzzle_id
+              packLessonId = pick.lesson_id
+              setPracticeMode(true)
+            } else {
+              setErrorMsg('no_quiz')
+              setQuizState('error')
+              return
+            }
+          }
         }
 
         if (cancelled) return
@@ -220,6 +247,16 @@ export default function QuizPage() {
             .eq('id', packPuzzleId)
             .single()
           if (pzl) setPuzzleData(pzl)
+        }
+
+        // Load lesson if pack has one
+        if (packLessonId) {
+          const { data: lsn } = await supabase
+            .from('daily_lessons')
+            .select('*')
+            .eq('id', packLessonId)
+            .single()
+          if (lsn) setLessonData(lsn)
         }
 
         if (cancelled) return
@@ -430,6 +467,9 @@ export default function QuizPage() {
     } else if (puzzleData && !puzzleAnswer) {
       // Show puzzle phase before results
       setQuizState('puzzle')
+    } else if (lessonData && quizState !== 'lesson') {
+      // Show lesson if no puzzle but lesson exists
+      setQuizState('lesson')
     } else {
       finishQuiz()
     }
@@ -647,7 +687,13 @@ export default function QuizPage() {
               <span className="text-5xl drop-shadow-lg">🧠</span>
             </div>
           </div>
-          <h2 className="text-2xl font-bold text-white mb-2">{t('quiz_of_the_day')}</h2>
+          {practiceMode && (
+            <div className="flex items-center gap-2 mb-3 px-4 py-2 rounded-full bg-amber-400/20 border border-amber-400/30">
+              <span className="text-lg">🎯</span>
+              <span className="text-sm font-bold text-amber-300">Practice Mode</span>
+            </div>
+          )}
+          <h2 className="text-2xl font-bold text-white mb-2">{practiceMode ? 'Practice Quiz' : t('quiz_of_the_day')}</h2>
           <p className="text-[#A7C4B8] text-center mb-1">
             {tp('questions_per_question', { count: questions.length, timer: QUESTION_TIMER_SECONDS })}
           </p>
@@ -715,11 +761,43 @@ export default function QuizPage() {
                   {puzzleExplanation}
                 </p>
               </div>
-              <Button variant="primary" className="w-full" onClick={() => finishQuiz()}>
-                {t('see_results')}
+              <Button variant="primary" className="w-full" onClick={() => lessonData ? setQuizState('lesson') : finishQuiz()}>
+                {lessonData ? (t('continue') || 'Continue') : t('see_results')}
               </Button>
             </div>
           )}
+        </div>
+        <TabBar />
+      </div>
+    )
+  }
+
+  // Lesson phase (B3-B4: between puzzle_feedback and results)
+  if (quizState === 'lesson' && lessonData) {
+    const lessonTitle = lessonData[`title_${lang}`] || lessonData.title_en || lessonData.title || 'Lesson'
+    const lessonContent = lessonData[`content_${lang}`] || lessonData.content_en || lessonData.content || ''
+    const lessonTakeaway = lessonData[`key_takeaway_${lang}`] || lessonData.key_takeaway_en || lessonData.key_takeaway || ''
+    return (
+      <div className="min-h-screen bg-akka-bg flex flex-col pb-24">
+        <QuizHeader onBack={() => navigate('/')} muted={muted} onToggleMute={handleToggleMute} title="📚 Lesson" />
+        <div className="flex-1 px-4 pt-6">
+          <div className="bg-white rounded-2xl border border-akka-border p-5 mb-4">
+            <h2 className="text-lg font-bold text-akka-text mb-3">{lessonTitle}</h2>
+            <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">
+              {lessonContent}
+            </div>
+          </div>
+
+          {lessonTakeaway && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 mb-6">
+              <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wide mb-1">💡 Key Takeaway</p>
+              <p className="text-sm font-medium text-emerald-900 leading-relaxed">{lessonTakeaway}</p>
+            </div>
+          )}
+
+          <Button variant="primary" className="w-full" onClick={() => finishQuiz()}>
+            {t('see_results')}
+          </Button>
         </div>
         <TabBar />
       </div>
