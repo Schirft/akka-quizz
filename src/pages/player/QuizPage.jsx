@@ -515,7 +515,7 @@ export default function QuizPage() {
 
   async function finishQuiz() {
     const score = answers.filter((a) => a.correct).length
-    const isPerfect = score === QUESTIONS_PER_QUIZ
+    const isPerfect = score === questions.length
     const totalSpeedBonuses = answers.filter((a) => a.speedBonus > 0).length
     const totalXP =
       XP_QUIZ_STARTED +
@@ -833,7 +833,7 @@ export default function QuizPage() {
 
     // Build resultsState identical to finishQuiz navigate
     const score = answers.filter((a) => a.correct).length
-    const isPerfect = score === QUESTIONS_PER_QUIZ
+    const isPerfect = score === questions.length
     const totalSpeedBonuses = answers.filter((a) => a.speedBonus > 0).length
     const totalXP =
       XP_QUIZ_STARTED +

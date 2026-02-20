@@ -739,9 +739,10 @@ export default function DailyQuizPage() {
                     </div>
                   )}
 
-                  {/* Actions */}
+                  {/* Actions — only show legacy question buttons when NO pack is assigned */}
+                  {!pack && (
                   <div className="flex gap-2 mt-3 mb-3">
-                    {!pack && unassignedPacks.length > 0 && (
+                    {unassignedPacks.length > 0 && (
                       <button
                         onClick={() => setShowPackPicker(date)}
                         className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:opacity-90 transition-opacity"
@@ -808,8 +809,11 @@ export default function DailyQuizPage() {
                       )
                     )}
                   </div>
+                  )}
 
-                  {/* Questions */}
+                  {/* Legacy 5-question list — only show when NO pack is assigned */}
+                  {!pack && (
+                  <>
                   {quiz?.questions?.length > 0 ? (
                     <div className="space-y-2">
                       {quiz.questions.map((q, idx) => (
@@ -856,6 +860,8 @@ export default function DailyQuizPage() {
                     <p className="text-sm text-[#6B7280] text-center py-4">
                       No questions selected for this day
                     </p>
+                  )}
+                  </>
                   )}
                 </div>
               )}
