@@ -388,13 +388,14 @@ Return ONLY the JSON object, no markdown, no code blocks.`;
     // --- MODE 3: Auto-generate from existing unsummarized articles ---
 
     // Step 1: Get unsummarized articles for target language from last 48h
+    // Include both NULL and empty string summaries (empty = previously failed)
     const summaryCol = `summary_${targetLang}`;
     const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
     const { data: articles, error: fetchErr } = await supabase
       .from("news_articles")
       .select("id, title, description, content, source_url, source_name, category, language")
       .eq("language", targetLang)
-      .is(summaryCol, null)
+      .or(`${summaryCol}.is.null,${summaryCol}.eq.`)
       .gte("published_at", twoDaysAgo)
       .order("published_at", { ascending: false })
       .limit(30);
@@ -507,23 +508,37 @@ Return ONLY the JSON object, no markdown, no code blocks.`;
         // Determine the main summary text
         const mainSummary = isLocalLang ? (parsed[`summary_${targetLang}`] || parsed.summary_en) : parsed.summary_en;
 
-        // Update article with summary
+        // Update article with summary — use null (not "") for empty summaries so articles can be retried
+        const enSummary = isValidSummary(parsed.summary_en || "") ? parsed.summary_en : null;
+        const frSummary = isLocalLang && targetLang === "fr"
+          ? (parsed.summary_fr || parsed.summary_en || null)
+          : (parsed.summary_fr || null);
+        const itSummary = isLocalLang && targetLang === "it"
+          ? (parsed.summary_it || parsed.summary_en || null)
+          : (parsed.summary_it || null);
+        const esSummary = isLocalLang && targetLang === "es"
+          ? (parsed.summary_es || parsed.summary_en || null)
+          : (parsed.summary_es || null);
+
+        const updateData: Record<string, any> = {
+          full_content: fullContent.slice(0, 50000),
+          image_url: scrapedImageUrl3 || "",
+          title_en: article.title,
+          title_fr: parsed.title_fr || "",
+          title_it: parsed.title_it || "",
+          title_es: parsed.title_es || "",
+          is_published: isValidSummary(mainSummary || ""),
+          is_featured: summarized === 0, // First article is featured
+        };
+        // Only write summary fields if they have real content (keep null for retry)
+        if (enSummary) updateData.summary_en = enSummary;
+        if (frSummary) updateData.summary_fr = frSummary;
+        if (itSummary) updateData.summary_it = itSummary;
+        if (esSummary) updateData.summary_es = esSummary;
+
         const { error: updateErr } = await supabase
           .from("news_articles")
-          .update({
-            full_content: fullContent.slice(0, 50000),
-            image_url: scrapedImageUrl3 || "",
-            title_en: article.title,
-            title_fr: parsed.title_fr || "",
-            title_it: parsed.title_it || "",
-            title_es: parsed.title_es || "",
-            summary_en: parsed.summary_en || "",
-            summary_fr: isLocalLang && targetLang === "fr" ? (parsed.summary_fr || parsed.summary_en || "") : (parsed.summary_fr || ""),
-            summary_it: isLocalLang && targetLang === "it" ? (parsed.summary_it || parsed.summary_en || "") : (parsed.summary_it || ""),
-            summary_es: isLocalLang && targetLang === "es" ? (parsed.summary_es || parsed.summary_en || "") : (parsed.summary_es || ""),
-            is_published: isValidSummary(mainSummary || ""),
-            is_featured: summarized === 0, // First article is featured
-          })
+          .update(updateData)
           .eq("id", article.id);
 
         if (!updateErr) {
