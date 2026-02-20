@@ -164,18 +164,30 @@ export default function AdminNewsPage() {
     setGenResult(null)
     setGenError(null)
     setGenCancelled(false)
-    setGenStep('Starting...')
+    setGenStep('Step 1: Fetching fresh articles from news sources...')
 
     // B4: Persist generating state
     sessionStorage.setItem('akka_news_generating', JSON.stringify({ generating: true, startedAt: Date.now() }))
 
     try {
+      // Step 1: Fetch fresh articles from GNews via fetch-news Edge Function
+      const { data: fetchData, error: fetchError } = await supabase.functions.invoke('fetch-news', {
+        body: {},
+      })
+      if (fetchError) throw fetchError
+      const fetched = fetchData?.inserted || 0
+      const skipped = fetchData?.skipped || 0
+
+      if (genCancelled) return
+
+      // Step 2+: Generate summaries per language
       const results = []
       const langNames = { en: 'English', fr: 'French', it: 'Italian', es: 'Spanish' }
+      const totalSteps = batchLanguages.length + 1 // +1 for fetch step
       for (let i = 0; i < batchLanguages.length; i++) {
         if (genCancelled) break
         const lang = batchLanguages[i]
-        setGenStep(`Step ${i + 1}/${batchLanguages.length}: Generating ${langNames[lang] || lang.toUpperCase()} summaries...`)
+        setGenStep(`Step ${i + 2}/${totalSteps}: Selecting & summarizing ${langNames[lang] || lang.toUpperCase()} articles...`)
         const { data, error } = await supabase.functions.invoke('generate-summaries', {
           body: { selectionPrompt, summaryPrompt, language: lang, max_articles: batchArticleCount },
         })
@@ -187,6 +199,8 @@ export default function AdminNewsPage() {
       const totalSelected = results.reduce((sum, r) => sum + (r.selected || 0), 0)
       const totalSummarized = results.reduce((sum, r) => sum + (r.summarized || 0), 0)
       setGenResult({
+        fetched,
+        skipped,
         analyzed: totalAnalyzed,
         selected: totalSelected,
         summarized: totalSummarized,
@@ -594,6 +608,11 @@ export default function AdminNewsPage() {
           {genResult && (
             <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-xl">
               <p className="text-sm text-green-800 font-medium">Generation complete!</p>
+              {genResult.fetched != null && (
+                <p className="text-xs text-green-700 mt-1">
+                  {genResult.fetched} new articles fetched · {genResult.skipped} duplicates skipped
+                </p>
+              )}
               {genResult.analyzed != null && (
                 <p className="text-xs text-green-700 mt-1">
                   {genResult.analyzed} articles analyzed · {genResult.selected} selected · {genResult.summarized} summarized
