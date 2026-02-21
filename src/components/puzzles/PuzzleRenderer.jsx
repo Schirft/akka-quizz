@@ -32,6 +32,11 @@ export default function PuzzleRenderer({ puzzle, onAnswer, lang = 'en' }) {
   const langTitle = puzzle[`title_${lang}`] || puzzle.title || 'The Catch';
   const langHint = puzzle[`hint_${lang}`] || puzzle.hint || '';
 
+  // Use translated context_data if available for the current language
+  const localizedPuzzle = (lang !== 'en' && puzzle[`context_data_${lang}`])
+    ? { ...puzzle, context_data: puzzle[`context_data_${lang}`] }
+    : puzzle;
+
   return (
     <div style={{ width: '100%' }}>
       {/* Header */}
@@ -42,8 +47,8 @@ export default function PuzzleRenderer({ puzzle, onAnswer, lang = 'en' }) {
         )}
       </div>
 
-      {/* Board */}
-      <Board puzzle={puzzle} onAnswer={onAnswer} lang={lang} />
+      {/* Board — uses localized context_data */}
+      <Board puzzle={localizedPuzzle} onAnswer={onAnswer} lang={lang} />
 
       {/* Hint */}
       {langHint && (

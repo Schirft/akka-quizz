@@ -447,7 +447,7 @@ export default function QuestionsPage() {
       if (pack.puzzle_id) {
         const { data: pz } = await supabase
           .from('puzzles')
-          .select('id, interaction_type, title, subtitle, answer, explanation, context_data, hint')
+          .select('id, interaction_type, title, title_fr, title_it, title_es, subtitle, answer, explanation, explanation_fr, explanation_it, explanation_es, context_data, context_data_fr, context_data_it, context_data_es, hint, hint_fr, hint_it, hint_es')
           .eq('id', pack.puzzle_id)
           .maybeSingle()
         details.puzzle = pz
@@ -457,7 +457,7 @@ export default function QuestionsPage() {
       if (pack.lesson_id) {
         const { data: ls } = await supabase
           .from('daily_lessons')
-          .select('id, title, content, key_takeaway')
+          .select('id, title, title_fr, title_it, title_es, content, content_fr, content_it, content_es, key_takeaway, key_takeaway_fr, key_takeaway_it, key_takeaway_es')
           .eq('id', pack.lesson_id)
           .maybeSingle()
         details.lesson = ls
@@ -827,6 +827,25 @@ export default function QuestionsPage() {
                                 </pre>
                               </details>
                             )}
+                            {/* Puzzle translations */}
+                            <details className="mt-1.5">
+                              <summary className="text-[10px] text-amber-700 cursor-pointer font-medium">🌍 Translations</summary>
+                              <div className="mt-1 space-y-1">
+                                {['fr', 'it', 'es'].map(lng => (
+                                  <div key={lng} className="text-[10px] bg-white rounded p-1.5 border border-amber-100">
+                                    <span className="font-bold uppercase text-amber-700">{lng}</span>
+                                    {details.puzzle[`title_${lng}`] ? (
+                                      <span className="ml-1 text-gray-700">{details.puzzle[`title_${lng}`]}</span>
+                                    ) : (
+                                      <span className="ml-1 text-red-400 italic">missing</span>
+                                    )}
+                                    {details.puzzle[`hint_${lng}`] && <span className="ml-2 text-gray-500">| Hint: {details.puzzle[`hint_${lng}`]}</span>}
+                                    {details.puzzle[`context_data_${lng}`] && <span className="ml-1 text-green-600">✓ context_data</span>}
+                                    {!details.puzzle[`context_data_${lng}`] && <span className="ml-1 text-red-400">✗ context_data</span>}
+                                  </div>
+                                ))}
+                              </div>
+                            </details>
                           </div>
                         </div>
                       )}
@@ -850,6 +869,24 @@ export default function QuestionsPage() {
                             {details.lesson.key_takeaway && (
                               <p className="text-[10px] text-blue-700 font-medium mt-1">Key takeaway: {details.lesson.key_takeaway}</p>
                             )}
+                            {/* Lesson translations */}
+                            <details className="mt-1.5">
+                              <summary className="text-[10px] text-blue-700 cursor-pointer font-medium">🌍 Translations</summary>
+                              <div className="mt-1 space-y-1">
+                                {['fr', 'it', 'es'].map(lng => (
+                                  <div key={lng} className="text-[10px] bg-white rounded p-1.5 border border-blue-100">
+                                    <span className="font-bold uppercase text-blue-700">{lng}</span>
+                                    {details.lesson[`title_${lng}`] ? (
+                                      <span className="ml-1 text-gray-700">{details.lesson[`title_${lng}`]}</span>
+                                    ) : (
+                                      <span className="ml-1 text-red-400 italic">missing</span>
+                                    )}
+                                    {details.lesson[`content_${lng}`] ? <span className="ml-1 text-green-600">✓ content</span> : <span className="ml-1 text-red-400">✗ content</span>}
+                                    {details.lesson[`key_takeaway_${lng}`] ? <span className="ml-1 text-green-600">✓ takeaway</span> : <span className="ml-1 text-red-400">✗ takeaway</span>}
+                                  </div>
+                                ))}
+                              </div>
+                            </details>
                           </div>
                         </div>
                       )}

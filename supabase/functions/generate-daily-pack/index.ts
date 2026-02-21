@@ -195,6 +195,63 @@ Return ONLY valid JSON:
 { "title": "...", "content": "...", "key_takeaway": "..." }`;
 }
 
+/**
+ * Extract translatable string values from puzzle context_data.
+ * Recursively finds string fields that look like user-facing text.
+ */
+function extractContextDataStrings(contextData: any, prefix = "ctx"): Record<string, string> {
+  const result: Record<string, string> = {};
+  if (!contextData || typeof contextData !== "object") return result;
+
+  function walk(obj: any, path: string) {
+    if (typeof obj === "string" && obj.trim().length > 2) {
+      // Skip IDs, types, and short codes
+      if (!path.endsWith("_id") && !path.endsWith("_type") && !path.endsWith("type") && obj.length > 3) {
+        result[path] = obj;
+      }
+    } else if (Array.isArray(obj)) {
+      obj.forEach((item, i) => walk(item, `${path}_${i}`));
+    } else if (typeof obj === "object" && obj !== null) {
+      for (const [key, val] of Object.entries(obj)) {
+        // Skip numeric and id fields
+        if (key === "id" || key === "type" || key === "chart_type") continue;
+        walk(val, `${path}_${key}`);
+      }
+    }
+  }
+
+  walk(contextData, prefix);
+  return result;
+}
+
+/**
+ * Rebuild context_data with translated strings for a given language.
+ */
+function rebuildContextData(contextData: any, translations: Record<string, string>, prefix = "ctx"): any {
+  if (!contextData || typeof contextData !== "object") return contextData;
+
+  function walk(obj: any, path: string): any {
+    if (typeof obj === "string") {
+      return translations[path] || obj;
+    } else if (Array.isArray(obj)) {
+      return obj.map((item, i) => walk(item, `${path}_${i}`));
+    } else if (typeof obj === "object" && obj !== null) {
+      const rebuilt: any = {};
+      for (const [key, val] of Object.entries(obj)) {
+        if (key === "id" || key === "type" || key === "chart_type") {
+          rebuilt[key] = val;
+        } else {
+          rebuilt[key] = walk(val, `${path}_${key}`);
+        }
+      }
+      return rebuilt;
+    }
+    return obj;
+  }
+
+  return walk(contextData, prefix);
+}
+
 function buildTranslationPrompt(fields: Record<string, string>): string {
   const entries = Object.entries(fields)
     .filter(([_, v]) => v && v.trim())
@@ -279,6 +336,30 @@ async function generateOnePack(theme: string, difficulty: string) {
     console.error("[Pack] Translation failed, using EN fallback:", err);
   }
 
+  // CALL 5: Translate puzzle context_data (separate call — nested JSON needs its own pass)
+  let contextDataFr: any = null;
+  let contextDataIt: any = null;
+  let contextDataEs: any = null;
+  if (puzzleData.context_data) {
+    try {
+      console.log(`[Pack] Translating puzzle context_data for ${theme}...`);
+      const ctxStrings = extractContextDataStrings(puzzleData.context_data);
+      const ctxFieldCount = Object.keys(ctxStrings).length;
+      if (ctxFieldCount > 0) {
+        const ctxTransResp = await callClaude(buildTranslationPrompt(ctxStrings), 8192);
+        const ctxTranslations = extractJSON(ctxTransResp);
+        contextDataFr = rebuildContextData(puzzleData.context_data, ctxTranslations.fr || {});
+        contextDataIt = rebuildContextData(puzzleData.context_data, ctxTranslations.it || {});
+        contextDataEs = rebuildContextData(puzzleData.context_data, ctxTranslations.es || {});
+        console.log(`[Pack] context_data translated (${ctxFieldCount} strings extracted)`);
+      } else {
+        console.log("[Pack] No translatable strings found in context_data");
+      }
+    } catch (err) {
+      console.error("[Pack] context_data translation failed (non-blocking):", err);
+    }
+  }
+
   // ─── Insert Questions ─────────────────────────────────────────────────
   const difficultyLevels = ["easy", "medium", "hard"];
 
@@ -351,6 +432,9 @@ async function generateOnePack(theme: string, difficulty: string) {
       title_es: es["puzzle_title"] || "",
       subtitle: puzzleData.subtitle || "",
       context_data: puzzleData.context_data || {},
+      context_data_fr: contextDataFr || puzzleData.context_data || {},
+      context_data_it: contextDataIt || puzzleData.context_data || {},
+      context_data_es: contextDataEs || puzzleData.context_data || {},
       hint: puzzleData.hint || "",
       hint_fr: fr["puzzle_hint"] || "",
       hint_it: it["puzzle_hint"] || "",
@@ -458,7 +542,7 @@ Deno.serve(async (req: Request) => {
       console.log(`[Pack] Generating pack ${i + 1}/${count} for theme: ${theme}`);
       const result = await generateOnePack(theme, difficulty);
       allResults.push(result);
-      totalApiCalls += 4; // 4 Claude calls per pack (QCM, puzzle, lesson, translations)
+      totalApiCalls += 5; // 5 Claude calls per pack (QCM, puzzle, lesson, translations, context_data translations)
     }
     const durationMs = Date.now() - startTime;
 
