@@ -788,13 +788,10 @@ export default function QuizPage() {
                 <p className="text-sm text-[#1A1A1A] leading-relaxed font-medium mb-4">
                   {puzzleExplanation}
                 </p>
-                <Button variant="primary" className="w-full" onClick={() => finishQuiz()}>
-                  {t('see_results')}
+                <Button variant="primary" className="w-full" onClick={() => lessonData ? setQuizState('lesson') : finishQuiz()}>
+                  {lessonData ? (t('continue') || 'Continue') : t('see_results')}
                 </Button>
               </div>
-              <Button variant="primary" className="w-full" onClick={() => lessonData ? setQuizState('lesson') : finishQuiz()}>
-                {lessonData ? (t('continue') || 'Continue') : t('see_results')}
-              </Button>
             </div>
           </>
         )}
