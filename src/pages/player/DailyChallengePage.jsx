@@ -7,24 +7,14 @@ import { ArrowLeft, Loader2, CheckCircle, Puzzle, BookOpen } from 'lucide-react'
 
 /**
  * DailyChallengePage — orchestrates the daily flow:
- *   1. 3 QCM quiz questions (themed)
+ *   1. 3 QCM quiz questions (themed pack)
  *   2. Puzzle ("The Catch")
  *   3. Celebration screen
  *   4. Lesson of the Day
  *
- * Loads today's daily_quizzes row to get question IDs, puzzle_id, lesson_id.
+ * Loads today's daily_packs row to get question_ids, puzzle_id, lesson_id.
  * If none exists, shows a message.
  */
-
-const WEEKLY_THEMES = {
-  1: 'Fundraising & Dilution',
-  2: 'Cap Tables & Valuation',
-  3: 'Due Diligence',
-  4: 'Term Sheets & Legal',
-  5: 'Portfolio Strategy',
-  6: 'Startup Metrics & KPIs',
-  0: 'Ecosystem & Trends',
-}
 
 export default function DailyChallengePage() {
   const navigate = useNavigate()
@@ -41,8 +31,6 @@ export default function DailyChallengePage() {
   const [selectedIdx, setSelectedIdx] = useState(null)
 
   const today = new Date().toISOString().split('T')[0]
-  const dow = new Date().getDay()
-  const theme = WEEKLY_THEMES[dow] || 'General'
 
   useEffect(() => {
     loadDailyChallenge()
@@ -50,21 +38,21 @@ export default function DailyChallengePage() {
 
   async function loadDailyChallenge() {
     setLoading(true)
-    const { data: quiz } = await supabase
-      .from('daily_quizzes')
+    const { data: pack } = await supabase
+      .from('daily_packs')
       .select('*')
-      .eq('quiz_date', today)
+      .eq('assigned_date', today)
       .single()
 
-    if (!quiz) {
+    if (!pack) {
       setLoading(false)
       return
     }
 
-    setDailyQuiz(quiz)
+    setDailyQuiz(pack)
 
-    // Load the 3 questions
-    const qIds = [quiz.question_1_id, quiz.question_2_id, quiz.question_3_id].filter(Boolean)
+    // Load the pack's questions
+    const qIds = pack.question_ids || []
     if (qIds.length > 0) {
       const { data: qs } = await supabase
         .from('questions')
@@ -160,7 +148,7 @@ export default function DailyChallengePage() {
           </button>
           <div className="text-center">
             <p className="text-[10px] uppercase tracking-wider text-[#6B7280] font-semibold">
-              {theme}
+              {dailyQuiz?.theme || 'Daily Challenge'}
             </p>
             <p className="text-xs text-[#6B7280]">
               Question {currentQ + 1}/{questions.length}

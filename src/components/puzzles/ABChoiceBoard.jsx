@@ -16,9 +16,9 @@ export default function ABChoiceBoard({ puzzle, onAnswer, lang = 'en' }) {
   const renderMetrics = (metrics) => {
     if (!metrics || typeof metrics !== 'object') return null;
     return Object.entries(metrics).map(([key, value]) => (
-      <div key={key} className="flex justify-between py-1.5 border-b border-gray-100 text-sm">
-        <span className="text-gray-500">{key.replace(/_/g, ' ')}</span>
-        <span className="font-semibold font-mono text-gray-900">
+      <div key={key} className="flex justify-between items-baseline gap-1 py-1.5 border-b border-gray-100 text-xs">
+        <span className="text-gray-500 shrink-0">{key.replace(/_/g, ' ')}</span>
+        <span className="font-semibold font-mono text-gray-900 text-right">
           {typeof value === 'number' ? value.toLocaleString() : String(value)}
         </span>
       </div>
@@ -37,7 +37,7 @@ export default function ABChoiceBoard({ puzzle, onAnswer, lang = 'en' }) {
     return (
       <div
         onClick={() => handlePick(choice)}
-        className={`flex-1 rounded-xl p-4 cursor-pointer transition-all border-2 ${
+        className={`flex-1 min-w-0 rounded-xl p-3 cursor-pointer transition-all border-2 ${
           isSelected
             ? 'border-green-600 bg-green-50 ring-2 ring-green-200'
             : isOther
@@ -45,7 +45,7 @@ export default function ABChoiceBoard({ puzzle, onAnswer, lang = 'en' }) {
               : 'border-gray-200 bg-white hover:border-gray-300'
         }`}
       >
-        <div className={`font-bold text-base mb-3 text-center ${
+        <div className={`font-bold text-sm mb-2 text-center ${
           isSelected ? 'text-green-700' : 'text-gray-800'
         }`}>
           {opt.title || `Option ${choice.toUpperCase()}`}

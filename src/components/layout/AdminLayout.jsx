@@ -42,11 +42,11 @@ export default function AdminLayout() {
       d.setDate(d.getDate() + i)
       dates.push(d.toISOString().split('T')[0])
     }
-    const { data: quizzes } = await supabase
-      .from('daily_quizzes')
-      .select('quiz_date')
-      .in('quiz_date', dates)
-    const planned = new Set((quizzes || []).map((q) => q.quiz_date))
+    const { data: packs } = await supabase
+      .from('daily_packs')
+      .select('assigned_date')
+      .in('assigned_date', dates)
+    const planned = new Set((packs || []).map((p) => p.assigned_date))
     setUnplannedDays(dates.filter((d) => !planned.has(d)).length)
   }, [])
 

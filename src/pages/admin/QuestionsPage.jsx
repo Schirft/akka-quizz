@@ -117,24 +117,24 @@ export default function QuestionsPage() {
     loadStats()
   }, [questions]) // refresh when questions change
 
-  // FIX 8a: Load scheduled question IDs (next 7 days)
+  // Load scheduled question IDs from daily_packs (next 7 days)
   useEffect(() => {
     async function loadScheduled() {
       const now = new Date()
       const in7 = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
       const { data } = await supabase
-        .from('daily_quizzes')
-        .select('question_1_id, question_2_id, question_3_id, question_4_id, question_5_id, quiz_date')
-        .gte('quiz_date', now.toISOString().split('T')[0])
-        .lte('quiz_date', in7.toISOString().split('T')[0])
+        .from('daily_packs')
+        .select('question_ids, assigned_date')
+        .gte('assigned_date', now.toISOString().split('T')[0])
+        .lte('assigned_date', in7.toISOString().split('T')[0])
       if (data) {
         const ids = new Set()
         const dateMap = {}
-        for (const dq of data) {
-          const qIds = [dq.question_1_id, dq.question_2_id, dq.question_3_id, dq.question_4_id, dq.question_5_id].filter(Boolean)
+        for (const pack of data) {
+          const qIds = pack.question_ids || []
           for (const qid of qIds) {
             ids.add(qid)
-            dateMap[qid] = dq.quiz_date
+            dateMap[qid] = pack.assigned_date
           }
         }
         setScheduledIds(ids)
