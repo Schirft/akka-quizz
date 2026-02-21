@@ -1089,12 +1089,12 @@ export default function QuizPage() {
       {quizState === 'feedback' && (
         <>
           {/* Backdrop */}
-          <div className="fixed inset-0 bg-black/20 z-40" />
+          <div className="fixed inset-0 bg-black/20 z-[55]" />
           {/* Bottom sheet */}
-          <div className={`fixed bottom-0 left-0 right-0 z-50 animate-slide-up rounded-t-3xl shadow-2xl pb-safe ${
+          <div className={`fixed bottom-0 left-0 right-0 z-[60] animate-slide-up rounded-t-3xl shadow-2xl ${
             isCorrect ? 'bg-[#F0FDF4]' : 'bg-[#FEF2F2]'
           }`}>
-            <div className="px-5 pt-5 pb-6 max-w-lg mx-auto">
+            <div className="px-5 pt-5 pb-24 max-w-lg mx-auto max-h-[75vh] overflow-y-auto">
               {/* XP Float */}
               {xpFloat && (
                 <div key={xpFloat.key} className="flex justify-center mb-2 animate-float-up">
