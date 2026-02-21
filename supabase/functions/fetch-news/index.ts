@@ -36,6 +36,12 @@ const GNEWS_API_KEY = Deno.env.get("GNEWS_API_KEY") || "53798e3ace1583384a27a73c
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+};
+
 const CATEGORIES = ["startup", "vc", "fintech", "ai", "crypto", "deeptech"];
 const LANGUAGES = [
   { code: "en", gnewsLang: "en" },
@@ -89,6 +95,11 @@ function sleep(ms: number) {
 }
 
 Deno.serve(async (_req: Request) => {
+  // Handle CORS preflight
+  if (_req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
   let totalInserted = 0;
   let totalSkipped = 0;
@@ -187,7 +198,7 @@ Deno.serve(async (_req: Request) => {
       errors,
     }),
     {
-      headers: { "Content-Type": "application/json" },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     }
   );
 });
