@@ -841,19 +841,27 @@ export default function QuestionsPage() {
                             <details className="mt-1.5">
                               <summary className="text-[10px] text-amber-700 cursor-pointer font-medium">🌍 Translations</summary>
                               <div className="mt-1 space-y-1">
-                                {['fr', 'it', 'es'].map(lng => (
-                                  <div key={lng} className="text-[10px] bg-white rounded p-1.5 border border-amber-100">
-                                    <span className="font-bold uppercase text-amber-700">{lng}</span>
-                                    {details.puzzle[`title_${lng}`] ? (
-                                      <span className="ml-1 text-gray-700">{details.puzzle[`title_${lng}`]}</span>
-                                    ) : (
-                                      <span className="ml-1 text-red-400 italic">missing</span>
-                                    )}
-                                    {details.puzzle[`hint_${lng}`] && <span className="ml-2 text-gray-500">| Hint: {details.puzzle[`hint_${lng}`]}</span>}
-                                    {details.puzzle[`context_data_${lng}`] && <span className="ml-1 text-green-600">✓ context_data</span>}
-                                    {!details.puzzle[`context_data_${lng}`] && <span className="ml-1 text-red-400">✗ context_data</span>}
-                                  </div>
-                                ))}
+                                {['fr', 'it', 'es'].map(lng => {
+                                  const hasTitle = !!details.puzzle[`title_${lng}`];
+                                  const hasHint = !!details.puzzle[`hint_${lng}`];
+                                  const hasExpl = !!details.puzzle[`explanation_${lng}`];
+                                  const ctxVal = details.puzzle[`context_data_${lng}`];
+                                  const hasCtx = ctxVal && typeof ctxVal === 'object' && Object.keys(ctxVal).length > 0;
+                                  const allOk = hasTitle && hasCtx && hasExpl;
+                                  return (
+                                    <div key={lng} className={`text-[10px] rounded p-1.5 border ${allOk ? 'bg-green-50 border-green-200' : 'bg-white border-amber-100'}`}>
+                                      <span className="font-bold uppercase text-amber-700">{lng}</span>
+                                      {hasTitle ? (
+                                        <span className="ml-1 text-gray-700">{details.puzzle[`title_${lng}`]}</span>
+                                      ) : (
+                                        <span className="ml-1 text-red-400 italic">title missing</span>
+                                      )}
+                                      <span className={`ml-2 ${hasExpl ? 'text-green-600' : 'text-red-400'}`}>{hasExpl ? '✓' : '✗'} expl</span>
+                                      <span className={`ml-1 ${hasCtx ? 'text-green-600' : 'text-red-400'}`}>{hasCtx ? '✓' : '✗'} ctx</span>
+                                      <span className={`ml-1 ${hasHint ? 'text-green-600' : 'text-gray-400'}`}>{hasHint ? '✓' : '–'} hint</span>
+                                    </div>
+                                  );
+                                })}
                               </div>
                             </details>
                           </div>
