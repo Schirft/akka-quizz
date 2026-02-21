@@ -7,7 +7,7 @@ export const translations = {
   en: {
     welcome_back: 'Welcome back,',
     quiz_of_the_day: 'Quiz of the day',
-    questions_duration: '5 questions \u00b7 2 min',
+    questions_duration: '3 questions \u00b7 1 min',
     current_streak: 'Current Streak',
     days: 'days',
     level: 'Level',
@@ -85,7 +85,7 @@ export const translations = {
   fr: {
     welcome_back: 'Bienvenue,',
     quiz_of_the_day: 'Quiz du jour',
-    questions_duration: '5 questions \u00b7 2 min',
+    questions_duration: '3 questions \u00b7 1 min',
     current_streak: 'S\u00e9rie en cours',
     days: 'jours',
     level: 'Niveau',
@@ -163,7 +163,7 @@ export const translations = {
   it: {
     welcome_back: 'Bentornato,',
     quiz_of_the_day: 'Quiz del giorno',
-    questions_duration: '5 domande \u00b7 2 min',
+    questions_duration: '3 domande \u00b7 1 min',
     current_streak: 'Serie attuale',
     days: 'giorni',
     level: 'Livello',
@@ -241,7 +241,7 @@ export const translations = {
   es: {
     welcome_back: 'Bienvenido,',
     quiz_of_the_day: 'Quiz del d\u00eda',
-    questions_duration: '5 preguntas \u00b7 2 min',
+    questions_duration: '3 preguntas \u00b7 1 min',
     current_streak: 'Racha actual',
     days: 'd\u00edas',
     level: 'Nivel',
