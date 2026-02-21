@@ -1,5 +1,20 @@
 import React, { useState } from 'react';
 
+// Extract the best display value from a row object (handles Claude's variable field names)
+function getDisplayValue(row) {
+  if (row.value !== undefined) return row.value;
+  if (row.percentage !== undefined) return row.percentage;
+  if (row.amount !== undefined) return row.amount;
+  if (row.shares !== undefined) return typeof row.shares === 'number' ? row.shares.toLocaleString() : row.shares;
+  // Fallback: find first non-metadata string/number
+  const skip = new Set(['id', 'label', 'text', 'clause', 'name', 'detail', 'description', 'description_en', 'description_fr', 'description_it', 'description_es']);
+  for (const [key, val] of Object.entries(row)) {
+    if (skip.has(key)) continue;
+    if (typeof val === 'string' || typeof val === 'number') return val;
+  }
+  return undefined;
+}
+
 export default function TapToSpotBoard({ puzzle, onAnswer, lang = 'en' }) {
   const [selected, setSelected] = useState(null);
   const ctx = puzzle.context_data || {};
@@ -7,7 +22,7 @@ export default function TapToSpotBoard({ puzzle, onAnswer, lang = 'en' }) {
   const question = ctx[`question_${lang}`] || ctx.question_en || ctx.question || 'Spot the flaw';
 
   const handleTap = (id) => {
-    if (selected !== null) return; // Block double-click
+    if (selected !== null) return;
     setSelected(id);
     onAnswer(id);
   };
@@ -19,6 +34,7 @@ export default function TapToSpotBoard({ puzzle, onAnswer, lang = 'en' }) {
         {rows.map((row, i) => {
           const isSelected = selected === row.id;
           const isOther = selected !== null && !isSelected;
+          const displayValue = getDisplayValue(row);
           return (
             <div
               key={row.id || i}
@@ -36,11 +52,11 @@ export default function TapToSpotBoard({ puzzle, onAnswer, lang = 'en' }) {
               <span className={`text-sm flex-1 ${isSelected ? 'text-green-800 font-medium' : 'text-gray-700'}`}>
                 {row.label || row.text || row.clause || row.name}
               </span>
-              {row.value !== undefined && (
+              {displayValue !== undefined && (
                 <span className={`font-semibold font-mono text-sm ml-3 ${
                   isSelected ? 'text-green-700' : 'text-gray-900'
                 }`}>
-                  {row.value}
+                  {typeof displayValue === 'number' ? displayValue.toLocaleString() : displayValue}
                 </span>
               )}
               {isSelected && (

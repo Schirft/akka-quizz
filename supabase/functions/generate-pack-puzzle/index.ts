@@ -205,20 +205,20 @@ Difficulty: ${difficulty}
 MECHANIC 1: "SPOT THE FLAW" (tap to identify)
 User sees a data document (cap table, chart, term sheet). One element is wrong/suspicious. User taps the problematic element.
 interaction_type: "tap_to_spot"
-context_data format: { "rows": [...] } or { "clauses": [...] } — each item has an "id" field
+context_data format: { "rows": [...] } — each item has "id", "label", and "value" fields
 answer: the "id" of the wrong element
 
 MECHANIC 2: "A/B COMPARISON" (pick the better deal)
 User sees two deals/charts/scenarios side by side. User picks A or B. Then sees detailed breakdown of why.
 interaction_type: "ab_choice"
-context_data format: { "option_a": { "title": "Deal A", "metrics": {...} }, "option_b": { "title": "Deal B", "metrics": {...} }, "question": "Which deal gives you ≥3x return?" }
+context_data format: { "option_a": { "title": "...", "metrics": {...} }, "option_b": { "title": "...", "metrics": {...} } }
 answer: "a" or "b"
 
 MECHANIC 3: "FILL THE GAP" (choose the missing number)
 A cap table, P&L, or financial table with ONE number replaced by "?". User picks from 3-4 options.
 interaction_type: "fill_gap"
-context_data format: { "rows": [...], "missing_field": {"row_id": "...", "field": "..."}, "options": [12, 15, 18, 22], "correct_option": 15 }
-answer: the correct number
+context_data format: { "rows": [...], "missing_field": {"row_id": "...", "field": "value"}, "options": [12, 15, 18, 22], "correct_option": 15 }
+answer: the correct number (MUST match correct_option exactly)
 
 MECHANIC 4: "MATCH THE CHART" (match description to visual)
 2-3 mini charts + 1 text description. User matches the description to the right chart.
@@ -229,14 +229,14 @@ answer: "a" (the id of the matching chart)
 MECHANIC 5: "BEFORE/AFTER" (find the inconsistency)
 Two versions of the same document (before/after a round). One number changed incorrectly.
 interaction_type: "before_after"
-context_data format: { "before": { "title": "Pre-Series A", "rows": [...] }, "after": { "title": "Post-Series A", "rows": [...] }, "question": "Which number doesn't match the round terms?" }
+context_data format: { "before": { "title": "Pre-Series A", "rows": [...] }, "after": { "title": "Post-Series A", "rows": [...] } }
 answer: the "id" of the inconsistent element in "after"
 
 MECHANIC 6: "CRASH POINT" (tap the danger moment on a timeline)
 A cash balance curve or runway chart over 18-24 months. User taps the month where danger occurs.
 interaction_type: "crash_point"
-context_data format: { "chart_type": "cash_balance", "data": [{"month": "Jan 2025", "cash": 2400000}, ...], "monthly_burn": [{"month": "Jan 2025", "burn": 180000}, ...], "question": "In which month does the startup have less than 3 months of runway?" }
-answer: "Sep 2025" (a specific month)
+context_data format: { "chart_type": "cash_balance", "data": [{"month": "Jan 2025", "cash": 2400000}, ...] }
+answer: "Sep 2025" (a specific month string matching one of the data entries)
 
 THEMES → BEST MECHANIC COMBINATIONS:
 - Fundraising: ab_choice, fill_gap, before_after
@@ -260,13 +260,30 @@ Create a puzzle and return ONLY valid JSON:
   "timer_seconds": 90
 }
 
-CRITICAL RULES FOR context_data:
-- context_data MUST be valid JSON that a React frontend can render directly
-- Every clickable/interactive element MUST have a unique "id" field
-- The puzzle must be solvable — there is exactly ONE correct answer
-- The explanation should teach a real investment concept
-- Vary the mechanics — don't always use tap_to_spot
-- ALWAYS include a "question" or "question_en" field inside context_data
+═══════════════════════════════════════════════════════
+MANDATORY FIELD NAMING RULES — FOLLOW EXACTLY:
+═══════════════════════════════════════════════════════
+
+1. EVERY row in "rows" arrays MUST have these EXACT fields: "id" (string), "label" (string), "value" (string or number).
+   Do NOT use "percentage", "shares", "amount", "terms" etc. ALWAYS use "value".
+
+2. For ab_choice: You MUST provide BOTH "option_a" AND "option_b". Missing either one is a critical error.
+   Each option MUST have: "title" (string), "metrics" (object with key-value pairs).
+   Do NOT use "terms" or "data" instead of "metrics". ALWAYS use "metrics".
+
+3. For fill_gap: "missing_field.field" MUST be "value". The missing row's "value" should be null.
+   "options" must be an array of 3-4 numbers. "correct_option" must be one of those numbers.
+
+4. For before_after: Both "before" and "after" MUST exist. Each MUST have "title" and "rows" array.
+   Each row MUST use "value" for the display field.
+
+5. For crash_point: "data" MUST be an array of objects with "month" and "cash" fields.
+
+6. ALWAYS include "question_en" at the top level of context_data.
+
+7. The "answer" field MUST match an actual "id" from the rows (for tap_to_spot, before_after)
+   or "a"/"b" (for ab_choice) or a number in options (for fill_gap) or a month string (for crash_point)
+   or a chart id (for match_chart).
 
 CONCRETE EXAMPLES OF CORRECT context_data per interaction_type:
 
@@ -274,19 +291,171 @@ tap_to_spot:
 { "question_en": "Which clause is unusual for a seed round?", "rows": [{"id":"row1","label":"Pre-money","value":"€4M"},{"id":"row2","label":"Liquidation Pref","value":"3x"},{"id":"row3","label":"Pro-rata","value":"Yes"}] }
 
 ab_choice:
-{ "question_en": "Which deal gives better terms for the investor?", "option_a": {"title":"Deal A","metrics":{"valuation":"€5M","dilution":"20%"},"description":"Early-stage SaaS"}, "option_b": {"title":"Deal B","metrics":{"valuation":"€8M","dilution":"12%"},"description":"Growth-stage fintech"} }
+{ "question_en": "Which deal gives better terms?", "option_a": {"title":"Deal A","metrics":{"valuation":"€5M","dilution":"20%"},"description":"Early-stage SaaS"}, "option_b": {"title":"Deal B","metrics":{"valuation":"€8M","dilution":"12%"},"description":"Growth-stage fintech"} }
 
 fill_gap:
 { "question_en": "What is the missing pre-money valuation?", "rows": [{"id":"r1","label":"Investment","value":"€1M"},{"id":"r2","label":"Pre-money","value":null},{"id":"r3","label":"Post-money","value":"€6M"}], "missing_field": {"row_id":"r2","field":"value"}, "options": [3,4,5,6], "correct_option": 5 }
 
 match_chart:
-{ "question_en": "Which chart shows a SaaS company with strong net retention?", "charts": [{"id":"a","label":"Chart A","type":"line","data":[100,110,125,140]},{"id":"b","label":"Chart B","type":"line","data":[100,95,88,80]}], "description": "Revenue grows even without new customers" }
+{ "question_en": "Which chart shows strong net retention?", "charts": [{"id":"a","label":"Chart A","type":"line","data":[100,110,125,140]},{"id":"b","label":"Chart B","type":"line","data":[100,95,88,80]}], "description": "Revenue grows even without new customers" }
 
 before_after:
-{ "question_en": "Which row changed incorrectly after the Series A?", "before": {"title":"Pre-Series A","rows":[{"id":"b1","label":"Founders","value":"80%"},{"id":"b2","label":"ESOP","value":"10%"},{"id":"b3","label":"Angels","value":"10%"}]}, "after": {"title":"Post-Series A","rows":[{"id":"a1","label":"Founders","value":"60%"},{"id":"a2","label":"ESOP","value":"15%"},{"id":"a3","label":"Angels","value":"10%"},{"id":"a4","label":"Series A","value":"20%"}]} }
+{ "question_en": "Which row changed incorrectly?", "before": {"title":"Pre-Series A","rows":[{"id":"b1","label":"Founders","value":"80%"},{"id":"b2","label":"ESOP","value":"10%"},{"id":"b3","label":"Angels","value":"10%"}]}, "after": {"title":"Post-Series A","rows":[{"id":"a1","label":"Founders","value":"60%"},{"id":"a2","label":"ESOP","value":"15%"},{"id":"a3","label":"Angels","value":"10%"},{"id":"a4","label":"Series A","value":"20%"}]} }
 
 crash_point:
 { "question_en": "In which month does runway drop below 3 months?", "chart_type": "cash_balance", "data": [{"month":"Jan","cash":2400000},{"month":"Feb","cash":2200000},{"month":"Mar","cash":2000000}] }`;
+}
+
+// ─── Post-generation validation ─────────────────────────────────────────────
+
+interface ValidationError {
+  field: string;
+  message: string;
+}
+
+function validatePuzzleData(data: any): ValidationError[] {
+  const errors: ValidationError[] = [];
+
+  if (!data || typeof data !== "object") {
+    errors.push({ field: "root", message: "Puzzle data is not an object" });
+    return errors;
+  }
+
+  // Basic required fields
+  if (!data.interaction_type) errors.push({ field: "interaction_type", message: "Missing interaction_type" });
+  if (!data.title) errors.push({ field: "title", message: "Missing title" });
+  if (data.answer === undefined || data.answer === null || data.answer === "") errors.push({ field: "answer", message: "Missing answer" });
+  if (!data.explanation) errors.push({ field: "explanation", message: "Missing explanation" });
+  if (!data.context_data || typeof data.context_data !== "object") {
+    errors.push({ field: "context_data", message: "Missing or invalid context_data" });
+    return errors;
+  }
+
+  const ctx = data.context_data;
+  const type = data.interaction_type;
+
+  // Must have question
+  if (!ctx.question_en && !ctx.question) {
+    errors.push({ field: "context_data.question_en", message: "Missing question_en in context_data" });
+  }
+
+  // Type-specific validation
+  switch (type) {
+    case "tap_to_spot": {
+      const rows = ctx.rows || ctx.clauses || ctx.items;
+      if (!rows || !Array.isArray(rows) || rows.length < 2) {
+        errors.push({ field: "context_data.rows", message: "tap_to_spot needs rows/clauses/items array with ≥2 items" });
+      } else {
+        const ids = rows.map((r: any) => r.id).filter(Boolean);
+        if (ids.length !== rows.length) errors.push({ field: "context_data.rows[].id", message: "Every row must have a unique 'id'" });
+        if (!rows.every((r: any) => r.label || r.text || r.clause || r.name)) {
+          errors.push({ field: "context_data.rows[].label", message: "Every row needs a label/text/clause/name" });
+        }
+        if (!ids.includes(String(data.answer))) {
+          errors.push({ field: "answer", message: `Answer "${data.answer}" does not match any row id. Valid ids: ${ids.join(", ")}` });
+        }
+      }
+      break;
+    }
+    case "ab_choice": {
+      if (!ctx.option_a || typeof ctx.option_a !== "object") {
+        errors.push({ field: "context_data.option_a", message: "MISSING option_a — this is REQUIRED" });
+      } else if (!ctx.option_a.title) {
+        errors.push({ field: "context_data.option_a.title", message: "option_a needs a title" });
+      }
+      if (!ctx.option_b || typeof ctx.option_b !== "object") {
+        errors.push({ field: "context_data.option_b", message: "MISSING option_b — this is REQUIRED" });
+      } else if (!ctx.option_b.title) {
+        errors.push({ field: "context_data.option_b.title", message: "option_b needs a title" });
+      }
+      if (data.answer !== "a" && data.answer !== "b") {
+        errors.push({ field: "answer", message: `Answer must be "a" or "b", got "${data.answer}"` });
+      }
+      break;
+    }
+    case "fill_gap": {
+      if (!ctx.rows || !Array.isArray(ctx.rows) || ctx.rows.length < 2) {
+        errors.push({ field: "context_data.rows", message: "fill_gap needs rows array with ≥2 items" });
+      }
+      if (!ctx.missing_field || !ctx.missing_field.row_id) {
+        errors.push({ field: "context_data.missing_field", message: "fill_gap needs missing_field with row_id" });
+      }
+      if (!ctx.options || !Array.isArray(ctx.options) || ctx.options.length < 2) {
+        errors.push({ field: "context_data.options", message: "fill_gap needs options array with ≥2 choices" });
+      }
+      if (ctx.correct_option === undefined) {
+        errors.push({ field: "context_data.correct_option", message: "fill_gap needs correct_option" });
+      }
+      break;
+    }
+    case "match_chart": {
+      if (!ctx.charts || !Array.isArray(ctx.charts) || ctx.charts.length < 2) {
+        errors.push({ field: "context_data.charts", message: "match_chart needs charts array with ≥2 items" });
+      } else {
+        const chartIds = ctx.charts.map((c: any) => c.id).filter(Boolean);
+        if (!chartIds.includes(String(data.answer))) {
+          errors.push({ field: "answer", message: `Answer "${data.answer}" not in chart ids: ${chartIds.join(", ")}` });
+        }
+      }
+      if (!ctx.description) {
+        errors.push({ field: "context_data.description", message: "match_chart needs a description" });
+      }
+      break;
+    }
+    case "before_after": {
+      if (!ctx.before || typeof ctx.before !== "object") {
+        errors.push({ field: "context_data.before", message: "before_after needs 'before' section" });
+      } else if (!ctx.before.rows || !Array.isArray(ctx.before.rows) || ctx.before.rows.length < 2) {
+        errors.push({ field: "context_data.before.rows", message: "before section needs rows array" });
+      }
+      if (!ctx.after || typeof ctx.after !== "object") {
+        errors.push({ field: "context_data.after", message: "before_after needs 'after' section" });
+      } else if (!ctx.after.rows || !Array.isArray(ctx.after.rows) || ctx.after.rows.length < 2) {
+        errors.push({ field: "context_data.after.rows", message: "after section needs rows array" });
+      } else {
+        const afterIds = ctx.after.rows.map((r: any) => r.id).filter(Boolean);
+        if (!afterIds.includes(String(data.answer))) {
+          errors.push({ field: "answer", message: `Answer "${data.answer}" not in after row ids: ${afterIds.join(", ")}` });
+        }
+      }
+      break;
+    }
+    case "crash_point": {
+      if (!ctx.data || !Array.isArray(ctx.data) || ctx.data.length < 3) {
+        errors.push({ field: "context_data.data", message: "crash_point needs data array with ≥3 months" });
+      } else {
+        const months = ctx.data.map((d: any) => d.month).filter(Boolean);
+        if (!months.includes(String(data.answer))) {
+          errors.push({ field: "answer", message: `Answer "${data.answer}" not in month data: ${months.join(", ")}` });
+        }
+      }
+      break;
+    }
+    default:
+      errors.push({ field: "interaction_type", message: `Unknown interaction_type: ${type}` });
+  }
+
+  return errors;
+}
+
+function buildFixPrompt(originalData: any, validationErrors: ValidationError[]): string {
+  const errorList = validationErrors.map((e) => `- ${e.field}: ${e.message}`).join("\n");
+  return `The following puzzle JSON has validation errors. Fix ALL of them and return the corrected COMPLETE puzzle JSON.
+
+VALIDATION ERRORS:
+${errorList}
+
+ORIGINAL PUZZLE (fix this):
+${JSON.stringify(originalData, null, 2)}
+
+RULES:
+- Return the COMPLETE fixed puzzle JSON (not just the changed fields)
+- Fix ALL validation errors listed above
+- Keep the same theme and concept, just fix the structural issues
+- MANDATORY: For ab_choice, BOTH option_a AND option_b must exist with "title" and "metrics"
+- MANDATORY: All rows must use "value" as the display field name
+- MANDATORY: "answer" must match an actual id/option in the context_data
+- Return ONLY valid JSON, no markdown or explanation`;
 }
 
 // ─── Main Handler ───────────────────────────────────────────────────────────
@@ -304,11 +473,42 @@ Deno.serve(async (req: Request) => {
     const startTime = Date.now();
     let apiCalls = 0;
 
-    // ─── STEP 1: Generate puzzle ────────────────────────────────────────
+    // ─── STEP 1: Generate puzzle with validation ───────────────────────
     console.log(`[PackPuzzle] Generating puzzle for ${theme}...`);
+    let puzzleData: any;
+    let validationAttempts = 0;
+    const MAX_VALIDATION_ATTEMPTS = 2;
+
+    // Initial generation
     const puzzleResp = await callClaudeWithRetry(buildPuzzlePrompt(theme, difficulty), 4096);
-    const puzzleData = extractJSON(puzzleResp);
+    puzzleData = extractJSON(puzzleResp);
     apiCalls++;
+
+    // Validate and retry if needed
+    let validationErrors = validatePuzzleData(puzzleData);
+    while (validationErrors.length > 0 && validationAttempts < MAX_VALIDATION_ATTEMPTS) {
+      validationAttempts++;
+      console.log(`[PackPuzzle] Validation failed (${validationErrors.length} errors), attempt ${validationAttempts}/${MAX_VALIDATION_ATTEMPTS} to fix...`);
+      validationErrors.forEach((e) => console.log(`  - ${e.field}: ${e.message}`));
+
+      try {
+        const fixResp = await callClaudeWithRetry(buildFixPrompt(puzzleData, validationErrors), 4096);
+        puzzleData = extractJSON(fixResp);
+        apiCalls++;
+        validationErrors = validatePuzzleData(puzzleData);
+      } catch (fixErr) {
+        console.error(`[PackPuzzle] Fix attempt ${validationAttempts} failed:`, (fixErr as Error).message);
+        break;
+      }
+    }
+
+    if (validationErrors.length > 0) {
+      console.warn(`[PackPuzzle] WARNING: ${validationErrors.length} validation errors remain after ${validationAttempts} fix attempts:`);
+      validationErrors.forEach((e) => console.warn(`  - ${e.field}: ${e.message}`));
+      // Continue anyway — the board components have fallback rendering
+    } else {
+      console.log(`[PackPuzzle] Puzzle validated successfully${validationAttempts > 0 ? ` (after ${validationAttempts} fix(es))` : ""}`);
+    }
 
     // Normalize answer to string (DB column is text, not jsonb)
     const rawAnswer = puzzleData.answer;
@@ -415,6 +615,11 @@ Deno.serve(async (req: Request) => {
           context_data: puzzleData.context_data || {},
         },
         translated: translationSuccess,
+        validation: {
+          passed: validationErrors.length === 0,
+          fix_attempts: validationAttempts,
+          remaining_errors: validationErrors.length,
+        },
         stats: {
           duration_ms: durationMs,
           duration_s: Math.round(durationMs / 1000),

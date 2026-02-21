@@ -3,18 +3,38 @@ import React, { useState } from 'react';
 export default function ABChoiceBoard({ puzzle, onAnswer, lang = 'en' }) {
   const [selected, setSelected] = useState(null);
   const ctx = puzzle.context_data || {};
-  const optA = ctx.option_a || { title: 'Deal A', metrics: {} };
-  const optB = ctx.option_b || { title: 'Deal B', metrics: {} };
+  const optA = ctx.option_a || { title: 'Deal A' };
+  const optB = ctx.option_b || { title: 'Deal B' };
   const question = ctx[`question_${lang}`] || ctx.question_en || ctx.question || 'Pick the better deal';
 
   const handlePick = (choice) => {
-    if (selected !== null) return; // Block double-click
+    if (selected !== null) return;
     setSelected(choice);
     onAnswer(choice);
   };
 
-  const renderMetrics = (metrics) => {
-    if (!metrics || typeof metrics !== 'object') return null;
+  // Accept metrics OR terms OR data — Claude sometimes uses different key names
+  const getMetrics = (opt) => {
+    if (opt.metrics && typeof opt.metrics === 'object') return opt.metrics;
+    if (opt.terms && typeof opt.terms === 'object') return opt.terms;
+    if (opt.data && typeof opt.data === 'object' && !Array.isArray(opt.data)) return opt.data;
+    // Fallback: collect all non-metadata fields as metrics
+    const skip = new Set(['title', 'description', 'description_en', 'description_fr', 'description_it', 'description_es', 'metrics', 'terms', 'data', 'ownership']);
+    const fallback = {};
+    for (const [key, val] of Object.entries(opt)) {
+      if (skip.has(key)) continue;
+      if (typeof val === 'string' || typeof val === 'number') fallback[key] = val;
+    }
+    // Also merge ownership if present (Claude sometimes generates this separately)
+    if (opt.ownership && typeof opt.ownership === 'object') {
+      Object.assign(fallback, opt.ownership);
+    }
+    return Object.keys(fallback).length > 0 ? fallback : {};
+  };
+
+  const renderMetrics = (opt) => {
+    const metrics = getMetrics(opt);
+    if (!metrics || typeof metrics !== 'object' || Object.keys(metrics).length === 0) return null;
     return Object.entries(metrics).map(([key, value]) => (
       <div key={key} className="flex justify-between items-baseline gap-1 py-1.5 border-b border-gray-100 text-xs">
         <span className="text-gray-500 shrink-0">{key.replace(/_/g, ' ')}</span>
@@ -50,7 +70,7 @@ export default function ABChoiceBoard({ puzzle, onAnswer, lang = 'en' }) {
         }`}>
           {opt.title || `Option ${choice.toUpperCase()}`}
         </div>
-        {renderMetrics(opt.metrics)}
+        {renderMetrics(opt)}
         {renderDescription(opt)}
         {isSelected && (
           <div className="text-center mt-3 text-green-600 font-semibold text-sm">

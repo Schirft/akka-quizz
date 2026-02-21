@@ -1,5 +1,20 @@
 import React, { useState } from 'react';
 
+// Extract the best display value from a row object (handles Claude's variable field names)
+function getDisplayValue(row) {
+  if (row.value !== undefined) return row.value;
+  if (row.percentage !== undefined) return row.percentage;
+  if (row.amount !== undefined) return row.amount;
+  if (row.shares !== undefined) return typeof row.shares === 'number' ? row.shares.toLocaleString() : row.shares;
+  // Fallback: find first non-metadata string/number
+  const skip = new Set(['id', 'label', 'text', 'name', 'detail', 'description']);
+  for (const [key, val] of Object.entries(row)) {
+    if (skip.has(key)) continue;
+    if (typeof val === 'string' || typeof val === 'number') return val;
+  }
+  return '';
+}
+
 export default function BeforeAfterBoard({ puzzle, onAnswer, lang = 'en' }) {
   const [selected, setSelected] = useState(null);
   const ctx = puzzle.context_data || {};
@@ -8,7 +23,7 @@ export default function BeforeAfterBoard({ puzzle, onAnswer, lang = 'en' }) {
   const question = ctx[`question_${lang}`] || ctx.question_en || ctx.question || 'Find the inconsistency';
 
   const handleTap = (id) => {
-    if (selected !== null) return; // Block double-click
+    if (selected !== null) return;
     setSelected(id);
     onAnswer(id);
   };
@@ -24,6 +39,7 @@ export default function BeforeAfterBoard({ puzzle, onAnswer, lang = 'en' }) {
         {(section.rows || []).map((row) => {
           const isSelected = isAfter && selected === row.id;
           const isOther = isAfter && selected !== null && !isSelected;
+          const displayValue = getDisplayValue(row);
           return (
             <div
               key={row.id}
@@ -42,7 +58,7 @@ export default function BeforeAfterBoard({ puzzle, onAnswer, lang = 'en' }) {
               <span className={`font-semibold font-mono ${
                 isSelected ? 'text-green-700' : 'text-gray-900'
               }`}>
-                {row.value}
+                {typeof displayValue === 'number' ? displayValue.toLocaleString() : displayValue}
                 {isSelected && <span className="ml-1">✓</span>}
               </span>
             </div>
@@ -55,7 +71,7 @@ export default function BeforeAfterBoard({ puzzle, onAnswer, lang = 'en' }) {
   return (
     <div className="p-4">
       <p className="font-semibold mb-3 text-[15px] text-gray-900">{question}</p>
-      <p className="text-xs text-gray-500 mb-3">Tap the incorrect value in the "After" table</p>
+      <p className="text-xs text-gray-500 mb-3">Tap the incorrect value in the "{after.title}" table</p>
       <div className="flex gap-3">
         {renderTable(before, false)}
         {renderTable(after, true)}
