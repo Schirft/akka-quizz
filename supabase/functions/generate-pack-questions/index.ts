@@ -1,7 +1,8 @@
 /**
  * Edge Function: generate-pack-questions
  *
- * Generates 3 QCM questions (easy/medium/hard) for a pack.
+ * Generates 3 QCM questions (easy/medium/hard) for a pack,
+ * then auto-translates to FR/IT/ES.
  * Inserts them into the "questions" table and returns their IDs.
  *
  * Body: { theme, difficulty }
@@ -72,16 +73,69 @@ async function callClaudeWithRetry(prompt: string, maxTokens = 4096, retries = 5
 }
 
 function extractJSON(text: string): any {
+  // Try code block first
   const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (jsonMatch) return JSON.parse(jsonMatch[1].trim());
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start >= 0 && end > start) return JSON.parse(text.slice(start, end + 1));
-  // Try array
-  const arrStart = text.indexOf("[");
-  const arrEnd = text.lastIndexOf("]");
-  if (arrStart >= 0 && arrEnd > arrStart) return JSON.parse(text.slice(arrStart, arrEnd + 1));
-  throw new Error("No valid JSON found in response");
+  const raw = jsonMatch ? jsonMatch[1].trim() : (() => {
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start >= 0 && end > start) return text.slice(start, end + 1);
+    const arrStart = text.indexOf("[");
+    const arrEnd = text.lastIndexOf("]");
+    if (arrStart >= 0 && arrEnd > arrStart) return text.slice(arrStart, arrEnd + 1);
+    throw new Error("No valid JSON found in response");
+  })();
+
+  // Try parsing as-is first
+  try { return JSON.parse(raw); } catch (_) { /* try fixes */ }
+
+  // Fix common JSON issues from LLM output
+  let cleaned = raw;
+  cleaned = cleaned.replace(/:\s*"((?:[^"\\]|\\.)*)"/g, (_match: string, content: string) => {
+    const fixed = content
+      .replace(/\n/g, "\\n")
+      .replace(/\r/g, "\\r")
+      .replace(/\t/g, "\\t");
+    return `: "${fixed}"`;
+  });
+  try { return JSON.parse(cleaned); } catch (_) { /* try more aggressive fix */ }
+
+  // More aggressive: remove all control characters
+  cleaned = raw.replace(/[\x00-\x1f\x7f]/g, (ch: string) => {
+    if (ch === "\n" || ch === "\r" || ch === "\t") return " ";
+    return "";
+  });
+  try { return JSON.parse(cleaned); } catch (e) {
+    throw new Error(`JSON parse failed after cleanup: ${(e as Error).message}`);
+  }
+}
+
+// ─── Translation helper ──────────────────────────────────────────────────────
+
+function buildTranslationPrompt(fields: Record<string, string>): string {
+  const entries = Object.entries(fields)
+    .filter(([_, v]) => v && v.trim())
+    .map(([k, v]) => `"${k}": ${JSON.stringify(v)}`)
+    .join(",\n  ");
+
+  const keys = Object.keys(fields);
+
+  return `Translate ALL the following fields into French (fr), Italian (it), and Spanish (es).
+Keep the same JSON keys. Maintain formatting (paragraphs, bullet points).
+CRITICAL: Return ONLY valid JSON. Escape all special characters properly.
+Do NOT use literal newlines inside JSON string values — use \\n instead.
+Do NOT use unescaped quotes inside string values — use \\" instead.
+
+Return ONLY valid JSON (no markdown, no explanation):
+{
+  "fr": { ${keys.map((k) => `"${k}": "..."`).join(", ")} },
+  "it": { ${keys.map((k) => `"${k}": "..."`).join(", ")} },
+  "es": { ${keys.map((k) => `"${k}": "..."`).join(", ")} }
+}
+
+Fields to translate:
+{
+  ${entries}
+}`;
 }
 
 function buildQCMPrompt(theme: string, difficulty: string): string {
@@ -129,16 +183,19 @@ Deno.serve(async (req: Request) => {
     const difficulty = body.difficulty || "medium";
 
     const startTime = Date.now();
+    let apiCalls = 0;
 
-    // Generate 3 QCM
+    // ─── STEP 1: Generate 3 QCM ─────────────────────────────────────────
     console.log(`[PackQ] Generating 3 QCM for ${theme}...`);
     const qcmResp = await callClaudeWithRetry(buildQCMPrompt(theme, difficulty), 4096);
     const qcmData = extractJSON(qcmResp);
     const questions = qcmData.questions || [];
+    apiCalls++;
 
-    // Insert Questions
+    // Insert Questions (English only first)
     const difficultyLevels = ["easy", "medium", "hard"];
     const questionIds: string[] = [];
+    const insertedQuestions: Array<{ id: string; question: string; answers: string[]; explanation: string }> = [];
 
     for (let i = 0; i < questions.length; i++) {
       const q = questions[i];
@@ -165,8 +222,64 @@ Deno.serve(async (req: Request) => {
         console.error(`[PackQ] Question insert error:`, qErr);
       } else {
         questionIds.push(insertedQ.id);
+        insertedQuestions.push({
+          id: insertedQ.id,
+          question: q.question,
+          answers: q.answers || [],
+          explanation: q.explanation || "",
+        });
       }
     }
+
+    // ─── STEP 2: Translate all questions to FR/IT/ES ────────────────────
+    let questionsTranslated = 0;
+    for (let i = 0; i < insertedQuestions.length; i++) {
+      const q = insertedQuestions[i];
+      try {
+        console.log(`[PackQ] Translating question ${i + 1}/${insertedQuestions.length}...`);
+
+        const qFields: Record<string, string> = {
+          question: q.question,
+          explanation: q.explanation,
+        };
+        q.answers.forEach((a: string, j: number) => {
+          qFields[`answer_${j}`] = a;
+        });
+
+        const prompt = buildTranslationPrompt(qFields);
+        const resp = await callClaudeWithRetry(prompt, 8192);
+        const parsed = extractJSON(resp);
+        apiCalls++;
+
+        const t = { fr: parsed.fr || {}, it: parsed.it || {}, es: parsed.es || {} };
+
+        const { error: uErr } = await supabase
+          .from("questions")
+          .update({
+            question_fr: t.fr["question"] || "",
+            question_it: t.it["question"] || "",
+            question_es: t.es["question"] || "",
+            answers_fr: q.answers.map((_: string, j: number) => t.fr[`answer_${j}`] || q.answers[j]),
+            answers_it: q.answers.map((_: string, j: number) => t.it[`answer_${j}`] || q.answers[j]),
+            answers_es: q.answers.map((_: string, j: number) => t.es[`answer_${j}`] || q.answers[j]),
+            explanation_fr: t.fr["explanation"] || "",
+            explanation_it: t.it["explanation"] || "",
+            explanation_es: t.es["explanation"] || "",
+          })
+          .eq("id", q.id);
+
+        if (uErr) {
+          console.error(`[PackQ] Question ${q.id} translation update error:`, uErr);
+        } else {
+          questionsTranslated++;
+        }
+      } catch (tErr) {
+        // Translation failure is non-fatal — question still exists in English
+        console.error(`[PackQ] Question ${i + 1} translation failed (non-fatal):`, (tErr as Error).message);
+      }
+    }
+
+    console.log(`[PackQ] Translated ${questionsTranslated}/${insertedQuestions.length} questions`);
 
     const durationMs = Date.now() - startTime;
 
@@ -174,11 +287,12 @@ Deno.serve(async (req: Request) => {
       JSON.stringify({
         success: true,
         question_ids: questionIds,
+        translated: questionsTranslated,
         stats: {
           duration_ms: durationMs,
           duration_s: Math.round(durationMs / 1000),
-          api_calls: 1,
-          estimated_cost_usd: +(1 * 0.015).toFixed(3),
+          api_calls: apiCalls,
+          estimated_cost_usd: +(apiCalls * 0.015).toFixed(3),
         },
       }),
       { headers: corsHeaders() }

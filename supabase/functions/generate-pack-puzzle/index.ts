@@ -1,7 +1,7 @@
 /**
  * Edge Function: generate-pack-puzzle
  *
- * Generates 1 puzzle "The Catch" for a pack.
+ * Generates 1 puzzle "The Catch" for a pack, then auto-translates to FR/IT/ES.
  * Inserts it into the "puzzles" table and returns its ID.
  *
  * Body: { theme, difficulty }
@@ -72,15 +72,126 @@ async function callClaudeWithRetry(prompt: string, maxTokens = 4096, retries = 5
 }
 
 function extractJSON(text: string): any {
+  // Try code block first
   const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (jsonMatch) return JSON.parse(jsonMatch[1].trim());
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start >= 0 && end > start) return JSON.parse(text.slice(start, end + 1));
-  const arrStart = text.indexOf("[");
-  const arrEnd = text.lastIndexOf("]");
-  if (arrStart >= 0 && arrEnd > arrStart) return JSON.parse(text.slice(arrStart, arrEnd + 1));
-  throw new Error("No valid JSON found in response");
+  const raw = jsonMatch ? jsonMatch[1].trim() : (() => {
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start >= 0 && end > start) return text.slice(start, end + 1);
+    const arrStart = text.indexOf("[");
+    const arrEnd = text.lastIndexOf("]");
+    if (arrStart >= 0 && arrEnd > arrStart) return text.slice(arrStart, arrEnd + 1);
+    throw new Error("No valid JSON found in response");
+  })();
+
+  // Try parsing as-is first
+  try { return JSON.parse(raw); } catch (_) { /* try fixes */ }
+
+  // Fix common JSON issues from LLM output
+  let cleaned = raw;
+  cleaned = cleaned.replace(/:\s*"((?:[^"\\]|\\.)*)"/g, (_match: string, content: string) => {
+    const fixed = content
+      .replace(/\n/g, "\\n")
+      .replace(/\r/g, "\\r")
+      .replace(/\t/g, "\\t");
+    return `: "${fixed}"`;
+  });
+  try { return JSON.parse(cleaned); } catch (_) { /* try more aggressive fix */ }
+
+  // More aggressive: remove all control characters
+  cleaned = raw.replace(/[\x00-\x1f\x7f]/g, (ch: string) => {
+    if (ch === "\n" || ch === "\r" || ch === "\t") return " ";
+    return "";
+  });
+  try { return JSON.parse(cleaned); } catch (e) {
+    throw new Error(`JSON parse failed after cleanup: ${(e as Error).message}`);
+  }
+}
+
+// ─── Translation helpers (from translate-pack) ────────────────────────────────
+
+function buildTranslationPrompt(fields: Record<string, string>): string {
+  const entries = Object.entries(fields)
+    .filter(([_, v]) => v && v.trim())
+    .map(([k, v]) => `"${k}": ${JSON.stringify(v)}`)
+    .join(",\n  ");
+
+  const keys = Object.keys(fields);
+
+  return `Translate ALL the following fields into French (fr), Italian (it), and Spanish (es).
+Keep the same JSON keys. Maintain formatting (paragraphs, bullet points).
+CRITICAL: Return ONLY valid JSON. Escape all special characters properly.
+Do NOT use literal newlines inside JSON string values — use \\n instead.
+Do NOT use unescaped quotes inside string values — use \\" instead.
+
+Return ONLY valid JSON (no markdown, no explanation):
+{
+  "fr": { ${keys.map((k) => `"${k}": "..."`).join(", ")} },
+  "it": { ${keys.map((k) => `"${k}": "..."`).join(", ")} },
+  "es": { ${keys.map((k) => `"${k}": "..."`).join(", ")} }
+}
+
+Fields to translate:
+{
+  ${entries}
+}`;
+}
+
+/**
+ * Extract translatable string values from puzzle context_data.
+ * Recursively finds string fields that look like user-facing text.
+ */
+function extractContextDataStrings(contextData: any, prefix = "ctx"): Record<string, string> {
+  const result: Record<string, string> = {};
+  if (!contextData || typeof contextData !== "object") return result;
+
+  function walk(obj: any, path: string) {
+    if (typeof obj === "string" && obj.trim().length > 2) {
+      // Skip IDs, types, and short codes
+      if (!path.endsWith("_id") && !path.endsWith("_type") && !path.endsWith("type") && obj.length > 3) {
+        result[path] = obj;
+      }
+    } else if (Array.isArray(obj)) {
+      obj.forEach((item, i) => walk(item, `${path}_${i}`));
+    } else if (typeof obj === "object" && obj !== null) {
+      for (const [key, val] of Object.entries(obj)) {
+        // Skip numeric and id fields
+        if (key === "id" || key === "type" || key === "chart_type") continue;
+        walk(val, `${path}_${key}`);
+      }
+    }
+  }
+
+  walk(contextData, prefix);
+  return result;
+}
+
+/**
+ * Rebuild context_data with translated strings for a given language.
+ */
+function rebuildContextData(contextData: any, translations: Record<string, string>, prefix = "ctx"): any {
+  if (!contextData || typeof contextData !== "object") return contextData;
+
+  function walk(obj: any, path: string): any {
+    if (typeof obj === "string") {
+      return translations[path] || obj;
+    } else if (Array.isArray(obj)) {
+      return obj.map((item, i) => walk(item, `${path}_${i}`));
+    } else if (typeof obj === "object" && obj !== null) {
+      const rebuilt: any = {};
+      for (const [key, val] of Object.entries(obj)) {
+        if (key === "id" || key === "type" || key === "chart_type") {
+          rebuilt[key] = val;
+        } else {
+          rebuilt[key] = walk(val, `${path}_${key}`);
+        }
+      }
+      return rebuilt;
+    }
+    return obj;
+  }
+
+  return walk(contextData, prefix);
 }
 
 function buildPuzzlePrompt(theme: string, difficulty: string): string {
@@ -191,11 +302,13 @@ Deno.serve(async (req: Request) => {
     const difficulty = body.difficulty || "medium";
 
     const startTime = Date.now();
+    let apiCalls = 0;
 
-    // Generate 1 Puzzle
+    // ─── STEP 1: Generate puzzle ────────────────────────────────────────
     console.log(`[PackPuzzle] Generating puzzle for ${theme}...`);
     const puzzleResp = await callClaudeWithRetry(buildPuzzlePrompt(theme, difficulty), 4096);
     const puzzleData = extractJSON(puzzleResp);
+    apiCalls++;
 
     // Normalize answer to string (DB column is text, not jsonb)
     const rawAnswer = puzzleData.answer;
@@ -203,7 +316,7 @@ Deno.serve(async (req: Request) => {
       ? JSON.stringify(rawAnswer)
       : String(rawAnswer ?? "");
 
-    // Insert Puzzle
+    // Insert Puzzle (English only first)
     const { data: insertedPuzzle, error: pErr } = await supabase
       .from("puzzles")
       .insert({
@@ -228,6 +341,67 @@ Deno.serve(async (req: Request) => {
       throw new Error(`Puzzle insert failed: ${pErr.message}`);
     }
 
+    // ─── STEP 2: Translate to FR/IT/ES ──────────────────────────────────
+    let translationSuccess = false;
+    try {
+      console.log(`[PackPuzzle] Translating puzzle to FR/IT/ES...`);
+
+      // Collect all translatable fields
+      const pFields: Record<string, string> = {
+        title: puzzleData.title || "",
+        hint: puzzleData.hint || "",
+        explanation: puzzleData.explanation || "",
+      };
+
+      // Extract context_data translatable strings
+      const ctxStrings = extractContextDataStrings(puzzleData.context_data || {});
+      for (const [key, val] of Object.entries(ctxStrings)) {
+        pFields[key] = val;
+      }
+
+      console.log(`[PackPuzzle] Translating ${Object.keys(pFields).length} fields...`);
+      const prompt = buildTranslationPrompt(pFields);
+      const resp = await callClaudeWithRetry(prompt, 8192);
+      const parsed = extractJSON(resp);
+      apiCalls++;
+
+      const t = { fr: parsed.fr || {}, it: parsed.it || {}, es: parsed.es || {} };
+
+      // Rebuild translated context_data
+      const contextDataFr = rebuildContextData(puzzleData.context_data || {}, t.fr);
+      const contextDataIt = rebuildContextData(puzzleData.context_data || {}, t.it);
+      const contextDataEs = rebuildContextData(puzzleData.context_data || {}, t.es);
+
+      // Update puzzle with translations
+      const { error: uErr } = await supabase
+        .from("puzzles")
+        .update({
+          title_fr: t.fr["title"] || "",
+          title_it: t.it["title"] || "",
+          title_es: t.es["title"] || "",
+          hint_fr: t.fr["hint"] || "",
+          hint_it: t.it["hint"] || "",
+          hint_es: t.es["hint"] || "",
+          explanation_fr: t.fr["explanation"] || "",
+          explanation_it: t.it["explanation"] || "",
+          explanation_es: t.es["explanation"] || "",
+          context_data_fr: contextDataFr,
+          context_data_it: contextDataIt,
+          context_data_es: contextDataEs,
+        })
+        .eq("id", insertedPuzzle.id);
+
+      if (uErr) {
+        console.error("[PackPuzzle] Translation update error:", uErr);
+      } else {
+        translationSuccess = true;
+        console.log("[PackPuzzle] Translations saved successfully");
+      }
+    } catch (tErr) {
+      // Translation failure is non-fatal — puzzle still exists in English
+      console.error("[PackPuzzle] Translation failed (non-fatal):", (tErr as Error).message);
+    }
+
     const durationMs = Date.now() - startTime;
 
     return new Response(
@@ -240,11 +414,12 @@ Deno.serve(async (req: Request) => {
           explanation: puzzleData.explanation || "",
           context_data: puzzleData.context_data || {},
         },
+        translated: translationSuccess,
         stats: {
           duration_ms: durationMs,
           duration_s: Math.round(durationMs / 1000),
-          api_calls: 1,
-          estimated_cost_usd: +(1 * 0.015).toFixed(3),
+          api_calls: apiCalls,
+          estimated_cost_usd: +(apiCalls * 0.015).toFixed(3),
         },
       }),
       { headers: corsHeaders() }
