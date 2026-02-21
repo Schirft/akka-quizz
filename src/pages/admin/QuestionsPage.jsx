@@ -773,6 +773,16 @@ export default function QuestionsPage() {
                                   <button onClick={(e) => { e.stopPropagation(); setModalQuestion(q) }} className="ml-auto p-1 rounded hover:bg-gray-200 transition-colors" title="Edit question">
                                     <Pencil size={11} className="text-[#6B7280]" />
                                   </button>
+                                  {q.status !== 'approved' && (
+                                    <button onClick={(e) => { e.stopPropagation(); quickStatusChange(q.id, 'approved'); details.questions = details.questions.map(dq => dq.id === q.id ? {...dq, status:'approved'} : dq); setPackDetails({...packDetails}) }} className="p-1 rounded hover:bg-green-100 transition-colors" title="Approve">
+                                      <CheckCircle size={12} className="text-green-600" />
+                                    </button>
+                                  )}
+                                  {q.status !== 'rejected' && (
+                                    <button onClick={(e) => { e.stopPropagation(); quickStatusChange(q.id, 'rejected'); details.questions = details.questions.map(dq => dq.id === q.id ? {...dq, status:'rejected'} : dq); setPackDetails({...packDetails}) }} className="p-1 rounded hover:bg-red-100 transition-colors" title="Reject">
+                                      <XCircle size={12} className="text-red-500" />
+                                    </button>
+                                  )}
                                   <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${STATUS_BADGE[q.status] || 'bg-gray-100 text-gray-700'}`}>
                                     {q.status}
                                   </span>

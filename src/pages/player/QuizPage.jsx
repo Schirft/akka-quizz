@@ -173,7 +173,7 @@ export default function QuizPage() {
           .from('daily_packs')
           .select('id, question_ids, puzzle_id, lesson_id')
           .eq('assigned_date', today)
-          .in('status', ['ready', 'active'])
+          .in('status', ['ready', 'active', 'assigned'])
           .limit(1)
           .maybeSingle()
 
