@@ -82,10 +82,10 @@ const CATEGORY_QUERIES: Record<string, Record<string, string>> = {
     es: "criptomoneda OR blockchain OR bitcoin OR crypto",
   },
   deeptech: {
-    en: "deeptech OR quantum computing OR biotech startup",
-    fr: "deeptech OR quantique OR biotech OR technologie de rupture",
-    it: "deeptech OR quantistico OR biotech OR tecnologia avanzata",
-    es: "deeptech OR cuántica OR biotech OR tecnología profunda",
+    en: "quantum computing OR biotech OR climate tech OR space tech OR nuclear fusion OR robotics startup",
+    fr: "biotech OR quantique OR technologie spatiale OR fusion nucléaire OR robotique startup OR deeptech",
+    it: "biotech OR quantistico OR tecnologia spaziale OR fusione nucleare OR robotica startup OR deeptech",
+    es: "biotech OR cuántica OR tecnología espacial OR fusión nuclear OR robótica startup OR deeptech",
   },
 };
 
