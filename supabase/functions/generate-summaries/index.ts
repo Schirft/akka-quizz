@@ -171,6 +171,32 @@ function robustParseJSON(raw: string): Record<string, string> {
   };
 }
 
+/** Normalize category to one of the 6 valid values */
+const VALID_CATEGORIES = ["startup", "vc", "fintech", "ai", "crypto", "deeptech"];
+const CATEGORY_MAP: Record<string, string> = {
+  // Exact matches (lowercase)
+  "startup": "startup", "startups": "startup",
+  "vc": "vc", "venture capital": "vc", "funding": "vc", "vc & investors": "vc",
+  "fintech": "fintech", "finance": "fintech", "market moves": "fintech", "regulation": "fintech",
+  "ai": "ai", "ai & tech": "ai", "artificial intelligence": "ai", "tech": "ai",
+  "crypto": "crypto", "cryptocurrency": "crypto", "blockchain": "crypto", "web3": "crypto",
+  "deeptech": "deeptech", "deep tech": "deeptech", "biotech": "deeptech", "climate tech": "deeptech",
+  "m&a & exits": "startup", "m&a": "startup", "european tech": "startup",
+  "general": "startup",
+};
+
+function normalizeCategory(raw: string): string {
+  if (!raw) return "startup";
+  const lower = raw.toLowerCase().trim();
+  if (VALID_CATEGORIES.includes(lower)) return lower;
+  if (CATEGORY_MAP[lower]) return CATEGORY_MAP[lower];
+  // Fuzzy match: check if any valid category is a substring
+  for (const cat of VALID_CATEGORIES) {
+    if (lower.includes(cat)) return cat;
+  }
+  return "startup"; // Default fallback
+}
+
 // ---------- MAIN ----------
 
 Deno.serve(async (req: Request) => {
@@ -236,9 +262,17 @@ Return ONLY valid JSON:
   "image_url": "URL of the main image if found, or empty string",
   "summary_en": "English summary (300-400 words, analytical, with why-it-matters and a question at the end)",
   ${urlLangSummaryFields.join(",\n  ")}${urlLangSummaryFields.length > 0 ? "," : ""}
-  "category": "one of: Funding, AI & Tech, M&A & Exits, Market Moves, European Tech, VC & Investors, Regulation"
+  "category": "one of: startup, vc, fintech, ai, crypto, deeptech"
 }
-Return ONLY the JSON object, no markdown, no code blocks.`;
+Return ONLY the JSON object, no markdown, no code blocks.
+
+CATEGORY DEFINITIONS:
+- startup: General startup ecosystem news, new companies, founders, accelerators, European tech ecosystem, M&A, exits, IPOs
+- vc: Venture capital, funding rounds, seed/series funding, VC fund raises, investor news
+- fintech: Financial technology, neobanks, digital payments, market moves, regulation, banking innovation
+- ai: Artificial intelligence, machine learning, LLMs, OpenAI, Anthropic, AI startups
+- crypto: Cryptocurrency, blockchain, web3, bitcoin, DeFi, NFTs
+- deeptech: Deep technology, quantum computing, biotech, climate tech, hardware, space tech`;
       const summaryResult = await callClaudeWithRetry(manualPrompt, `ARTICLE URL: ${manualUrl}\n\nARTICLE CONTENT:\n${fullContent}`);
 
       let parsed = robustParseJSON(summaryResult);
@@ -269,7 +303,7 @@ Return ONLY the JSON object, no markdown, no code blocks.`;
         source_url: manualUrl,
         source_name: new URL(manualUrl).hostname.replace("www.", ""),
         language: "en",
-        category: parsed.category || "general",
+        category: normalizeCategory(parsed.category || ""),
         published_at: new Date().toISOString(),
         is_active: true,
         is_featured: false,
@@ -302,9 +336,17 @@ Return ONLY valid JSON:
   "title": "Generated title in English",
   "detected_language": "en or fr or it or es",
   "summary_en": "English summary (250-350 words, analytical, with why-it-matters and a question at the end)",
-  "category": "one of: Funding, AI & Tech, M&A & Exits, Market Moves, European Tech, VC & Investors, Regulation"
+  "category": "one of: startup, vc, fintech, ai, crypto, deeptech"
 }
-Return ONLY the JSON object, no markdown, no code blocks.`;
+Return ONLY the JSON object, no markdown, no code blocks.
+
+CATEGORY DEFINITIONS:
+- startup: General startup ecosystem news, new companies, founders, accelerators, European tech ecosystem, M&A, exits, IPOs
+- vc: Venture capital, funding rounds, seed/series funding, VC fund raises, investor news
+- fintech: Financial technology, neobanks, digital payments, market moves, regulation, banking innovation
+- ai: Artificial intelligence, machine learning, LLMs, OpenAI, Anthropic, AI startups
+- crypto: Cryptocurrency, blockchain, web3, bitcoin, DeFi, NFTs
+- deeptech: Deep technology, quantum computing, biotech, climate tech, hardware, space tech`;
 
       const summaryResult = await callClaudeWithRetry(manualTextPrompt, `RAW TEXT CONTENT:\n\n${manualText.slice(0, 4000)}`, 2048);
       let parsed = robustParseJSON(summaryResult);
@@ -368,7 +410,7 @@ Return ONLY the JSON object, no markdown, no code blocks.`;
         source_url: `text-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         source_name: "Akka Editorial",
         language: "en",
-        category: parsed.category || "general",
+        category: normalizeCategory(parsed.category || ""),
         published_at: new Date().toISOString(),
         image_url: manualImageUrl || "",
         is_active: true,
@@ -469,8 +511,8 @@ Return ONLY the JSON object, no markdown, no code blocks.`;
         let parsed = robustParseJSON(summaryResult);
         // Clean parsed fields
         parsed.summary_en = cleanSummary(parsed.summary_en || parsed.summary || "");
-        parsed.category = parsed.category || "general";
-        console.log("PARSED KEYS:", Object.keys(parsed), "EN length:", parsed.summary_en.length);
+        parsed.category = normalizeCategory(parsed.category || article.category || "");
+        console.log("PARSED KEYS:", Object.keys(parsed), "EN length:", parsed.summary_en.length, "CAT:", parsed.category);
 
         // --- CALL 2: Translate to requested languages (only for EN articles with real summary) ---
         if (!isLocalLang && translateLangs.length > 0 && isValidSummary(parsed.summary_en)) {
@@ -523,6 +565,7 @@ Return ONLY the JSON object, no markdown, no code blocks.`;
         const updateData: Record<string, any> = {
           full_content: fullContent.slice(0, 50000),
           image_url: scrapedImageUrl3 || "",
+          category: parsed.category, // Ensure normalized category is saved
           title_en: article.title,
           title_fr: parsed.title_fr || "",
           title_it: parsed.title_it || "",
@@ -601,8 +644,16 @@ const DEFAULT_SUMMARY_PROMPT = `You are a senior analyst writing for a premium s
 Generate a newsletter-style summary in ENGLISH ONLY. Return ONLY valid JSON:
 {
   "summary_en": "Your English summary here",
-  "category": "one of: Funding, AI & Tech, M&A & Exits, Market Moves, European Tech, VC & Investors, Regulation"
+  "category": "one of: startup, vc, fintech, ai, crypto, deeptech"
 }
+
+CATEGORY DEFINITIONS (choose the BEST match):
+- startup: General startup ecosystem news, new companies, founders, accelerators, European tech, M&A, exits, IPOs
+- vc: Venture capital, funding rounds, seed/series funding, VC fund raises, investor news
+- fintech: Financial technology, neobanks, digital payments, market moves, regulation, banking innovation
+- ai: Artificial intelligence, machine learning, LLMs, OpenAI, Anthropic, AI startups
+- crypto: Cryptocurrency, blockchain, web3, bitcoin, DeFi, NFTs
+- deeptech: Deep technology, quantum computing, biotech, climate tech, hardware, space tech
 
 WRITING STYLE:
 - Professional but engaging, like talking to a smart investor friend
