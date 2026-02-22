@@ -436,7 +436,7 @@ CATEGORY DEFINITIONS:
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const { data: articles, error: fetchErr } = await supabase
       .from("news_articles")
-      .select("id, title, description, content, source_url, source_name, category, language")
+      .select("id, title, description, content, source_url, source_name, category, language, image_url")
       .eq("language", targetLang)
       .or(`${summaryCol}.is.null,${summaryCol}.eq.`)
       .gte("published_at", sevenDaysAgo)
@@ -640,7 +640,7 @@ CATEGORY DEFINITIONS:
 
         const updateData: Record<string, any> = {
           full_content: fullContent.slice(0, 50000),
-          image_url: scrapedImageUrl3 || "",
+          image_url: scrapedImageUrl3 || article.image_url || "",
           category: parsed.category, // Ensure normalized category is saved
           title_en: article.title,
           title_fr: parsed.title_fr || "",
