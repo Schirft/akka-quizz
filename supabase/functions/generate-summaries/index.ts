@@ -172,7 +172,7 @@ function robustParseJSON(raw: string): Record<string, string> {
 }
 
 /** Normalize category to one of the 6 valid values */
-const VALID_CATEGORIES = ["startup", "vc", "fintech", "ai", "crypto", "deeptech"];
+const VALID_CATEGORIES = ["startup", "vc", "fintech", "ai", "crypto", "markets"];
 const CATEGORY_MAP: Record<string, string> = {
   // Exact matches (lowercase)
   "startup": "startup", "startups": "startup",
@@ -180,7 +180,8 @@ const CATEGORY_MAP: Record<string, string> = {
   "fintech": "fintech", "finance": "fintech", "market moves": "fintech", "regulation": "fintech",
   "ai": "ai", "ai & tech": "ai", "artificial intelligence": "ai", "tech": "ai",
   "crypto": "crypto", "cryptocurrency": "crypto", "blockchain": "crypto", "web3": "crypto",
-  "deeptech": "deeptech", "deep tech": "deeptech", "biotech": "deeptech", "climate tech": "deeptech",
+  "markets": "markets", "market": "markets", "economy": "markets", "macro": "markets", "ipo": "markets", "stock market": "markets", "bourse": "markets",
+  "deeptech": "ai", "deep tech": "ai", "biotech": "startup", "climate tech": "startup",
   "m&a & exits": "startup", "m&a": "startup", "european tech": "startup",
   "general": "startup",
 };
@@ -262,7 +263,7 @@ Return ONLY valid JSON:
   "image_url": "URL of the main image if found, or empty string",
   "summary_en": "English summary (300-400 words, analytical, with why-it-matters and a question at the end)",
   ${urlLangSummaryFields.join(",\n  ")}${urlLangSummaryFields.length > 0 ? "," : ""}
-  "category": "one of: startup, vc, fintech, ai, crypto, deeptech"
+  "category": "one of: startup, vc, fintech, ai, crypto, markets"
 }
 Return ONLY the JSON object, no markdown, no code blocks.
 
@@ -272,7 +273,7 @@ CATEGORY DEFINITIONS:
 - fintech: Financial technology, neobanks, digital payments, market moves, regulation, banking innovation
 - ai: Artificial intelligence, machine learning, LLMs, OpenAI, Anthropic, AI startups
 - crypto: Cryptocurrency, blockchain, web3, bitcoin, DeFi, NFTs
-- deeptech: Deep technology, quantum computing, biotech, climate tech, hardware, space tech`;
+- markets: Macro-economics, stock markets, IPOs, interest rates, central banks (Fed, ECB), indices (S&P, NASDAQ, CAC40), recessions, M&A of large public companies`;
       const summaryResult = await callClaudeWithRetry(manualPrompt, `ARTICLE URL: ${manualUrl}\n\nARTICLE CONTENT:\n${fullContent}`);
 
       let parsed = robustParseJSON(summaryResult);
@@ -336,7 +337,7 @@ Return ONLY valid JSON:
   "title": "Generated title in English",
   "detected_language": "en or fr or it or es",
   "summary_en": "English summary (250-350 words, analytical, with why-it-matters and a question at the end)",
-  "category": "one of: startup, vc, fintech, ai, crypto, deeptech"
+  "category": "one of: startup, vc, fintech, ai, crypto, markets"
 }
 Return ONLY the JSON object, no markdown, no code blocks.
 
@@ -346,7 +347,7 @@ CATEGORY DEFINITIONS:
 - fintech: Financial technology, neobanks, digital payments, market moves, regulation, banking innovation
 - ai: Artificial intelligence, machine learning, LLMs, OpenAI, Anthropic, AI startups
 - crypto: Cryptocurrency, blockchain, web3, bitcoin, DeFi, NFTs
-- deeptech: Deep technology, quantum computing, biotech, climate tech, hardware, space tech`;
+- markets: Macro-economics, stock markets, IPOs, interest rates, central banks (Fed, ECB), indices (S&P, NASDAQ, CAC40), recessions, M&A of large public companies`;
 
       const summaryResult = await callClaudeWithRetry(manualTextPrompt, `RAW TEXT CONTENT:\n\n${manualText.slice(0, 4000)}`, 2048);
       let parsed = robustParseJSON(summaryResult);
@@ -430,7 +431,7 @@ CATEGORY DEFINITIONS:
     // --- MODE 3: Auto-generate from existing unsummarized articles ---
 
     // Step 1: Get unsummarized articles for target language
-    // Use a 7-day window to catch rare categories (deeptech, vc) that may not have daily articles
+    // Use a 7-day window to catch all categories including rare ones
     const summaryCol = `summary_${targetLang}`;
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const { data: articles, error: fetchErr } = await supabase
@@ -461,7 +462,7 @@ CATEGORY DEFINITIONS:
     // Edge function has ~150s timeout, so we limit to 6 articles per run
     // With 3 cron runs/day, that's up to 18 published articles/day
     const TARGET_PER_CATEGORY = 1; // At least 1 per empty category
-    const MAX_TOTAL = 6; // Max articles per run (safe within timeout)
+    const MAX_TOTAL = 5; // Max articles per run (must stay under 150s edge function limit)
 
     // Group articles by category
     const byCategory: Record<string, typeof articles> = {};
@@ -491,7 +492,7 @@ CATEGORY DEFINITIONS:
     // 2. Then fill remaining slots with best articles from any category
     const selectedArticles: typeof articles = [];
     const usedIds = new Set<string>();
-    const ALL_CATEGORIES = ["startup", "vc", "fintech", "ai", "crypto", "deeptech"];
+    const ALL_CATEGORIES = ["startup", "vc", "fintech", "ai", "crypto", "markets"];
 
     // Phase 1: Ensure every category with available articles gets at least TARGET_PER_CATEGORY
     // Sort categories: those with 0 published come first
@@ -719,7 +720,7 @@ const DEFAULT_SUMMARY_PROMPT = `You are a senior analyst writing for a premium s
 Generate a newsletter-style summary in ENGLISH ONLY. Return ONLY valid JSON:
 {
   "summary_en": "Your English summary here",
-  "category": "one of: startup, vc, fintech, ai, crypto, deeptech"
+  "category": "one of: startup, vc, fintech, ai, crypto, markets"
 }
 
 CATEGORY DEFINITIONS (choose the BEST match):
@@ -728,7 +729,7 @@ CATEGORY DEFINITIONS (choose the BEST match):
 - fintech: Financial technology, neobanks, digital payments, market moves, regulation, banking innovation
 - ai: Artificial intelligence, machine learning, LLMs, OpenAI, Anthropic, AI startups
 - crypto: Cryptocurrency, blockchain, web3, bitcoin, DeFi, NFTs
-- deeptech: Deep technology, quantum computing, biotech, climate tech, hardware, space tech
+- markets: Macro-economics, stock markets, IPOs, interest rates, central banks (Fed, ECB), indices (S&P, NASDAQ, CAC40), recessions, M&A of large public companies
 
 WRITING STYLE:
 - Professional but engaging, like talking to a smart investor friend

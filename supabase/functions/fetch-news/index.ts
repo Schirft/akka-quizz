@@ -42,7 +42,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
 };
 
-const CATEGORIES = ["startup", "vc", "fintech", "ai", "crypto", "deeptech"];
+const CATEGORIES = ["startup", "vc", "fintech", "ai", "crypto", "markets"];
 const LANGUAGES = [
   { code: "en", gnewsLang: "en" },
   { code: "fr", gnewsLang: "fr" },
@@ -81,11 +81,11 @@ const CATEGORY_QUERIES: Record<string, Record<string, string>> = {
     it: "criptovaluta OR blockchain OR bitcoin OR crypto",
     es: "criptomoneda OR blockchain OR bitcoin OR crypto",
   },
-  deeptech: {
-    en: "quantum computing OR biotech OR climate tech OR space tech OR nuclear fusion OR robotics startup",
-    fr: "biotech OR quantique OR technologie spatiale OR fusion nucléaire OR robotique startup OR deeptech",
-    it: "biotech OR quantistico OR tecnologia spaziale OR fusione nucleare OR robotica startup OR deeptech",
-    es: "biotech OR cuántica OR tecnología espacial OR fusión nuclear OR robótica startup OR deeptech",
+  markets: {
+    en: "stock market OR IPO OR interest rates OR economy OR Wall Street OR recession",
+    fr: "bourse OR IPO OR taux intérêt OR économie OR marchés financiers OR récession",
+    it: "borsa OR IPO OR tassi interesse OR economia OR mercati finanziari OR recessione",
+    es: "bolsa OR IPO OR tipos interés OR economía OR mercados financieros OR recesión",
   },
 };
 
