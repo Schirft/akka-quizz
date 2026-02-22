@@ -12,7 +12,7 @@ export const XP_QUIZ_STARTED = 5
 export const XP_CORRECT_ANSWER = 20
 export const XP_SPEED_BONUS_FAST = 15   // <= 3s
 export const XP_SPEED_BONUS_MEDIUM = 5  // 4-7s
-export const XP_PERFECT_QUIZ = 50       // 5/5
+export const XP_PERFECT_QUIZ = 50       // all correct
 export const XP_DAILY_GOAL = 100
 export const XP_STREAK_BASE = 10
 

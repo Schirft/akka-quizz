@@ -203,7 +203,7 @@ export default function DashboardPage() {
       { cat: 'ai', queries: { en: 'artificial intelligence startup', fr: 'intelligence artificielle startup', it: 'intelligenza artificiale startup', es: 'inteligencia artificial startup' } },
       { cat: 'vc', queries: { en: 'venture capital private equity', fr: 'capital risque investissement', it: 'venture capital private equity', es: 'capital riesgo privado' } },
       { cat: 'crypto', queries: { en: 'startup IPO acquisition unicorn', fr: 'startup IPO acquisition licorne', it: 'startup IPO acquisizione unicorno', es: 'startup IPO adquisición unicornio' } },
-      { cat: 'deeptech', queries: { en: 'startup Europe funding', fr: 'startup Europe financement', it: 'startup Europa finanziamento', es: 'startup Europa financiación' } },
+      { cat: 'markets', queries: { en: 'stock market IPO economy', fr: 'bourse IPO économie marchés', it: 'borsa IPO economia mercati', es: 'bolsa IPO economía mercados' } },
       { cat: 'fintech', queries: { en: 'fintech startup funding', fr: 'fintech startup banque', it: 'fintech startup banca', es: 'fintech startup banco' } },
     ]
 

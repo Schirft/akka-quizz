@@ -171,6 +171,33 @@ function robustParseJSON(raw: string): Record<string, string> {
   };
 }
 
+/** Normalize category to one of the 6 valid values */
+const VALID_CATEGORIES = ["startup", "vc", "fintech", "ai", "crypto", "markets"];
+const CATEGORY_MAP: Record<string, string> = {
+  // Exact matches (lowercase)
+  "startup": "startup", "startups": "startup",
+  "vc": "vc", "venture capital": "vc", "funding": "vc", "vc & investors": "vc",
+  "fintech": "fintech", "finance": "fintech", "market moves": "fintech", "regulation": "fintech",
+  "ai": "ai", "ai & tech": "ai", "artificial intelligence": "ai", "tech": "ai",
+  "crypto": "crypto", "cryptocurrency": "crypto", "blockchain": "crypto", "web3": "crypto",
+  "markets": "markets", "market": "markets", "economy": "markets", "macro": "markets", "ipo": "markets", "stock market": "markets", "bourse": "markets",
+  "deeptech": "ai", "deep tech": "ai", "biotech": "startup", "climate tech": "startup",
+  "m&a & exits": "startup", "m&a": "startup", "european tech": "startup",
+  "general": "startup",
+};
+
+function normalizeCategory(raw: string): string {
+  if (!raw) return "startup";
+  const lower = raw.toLowerCase().trim();
+  if (VALID_CATEGORIES.includes(lower)) return lower;
+  if (CATEGORY_MAP[lower]) return CATEGORY_MAP[lower];
+  // Fuzzy match: check if any valid category is a substring
+  for (const cat of VALID_CATEGORIES) {
+    if (lower.includes(cat)) return cat;
+  }
+  return "startup"; // Default fallback
+}
+
 // ---------- MAIN ----------
 
 Deno.serve(async (req: Request) => {
@@ -236,9 +263,17 @@ Return ONLY valid JSON:
   "image_url": "URL of the main image if found, or empty string",
   "summary_en": "English summary (300-400 words, analytical, with why-it-matters and a question at the end)",
   ${urlLangSummaryFields.join(",\n  ")}${urlLangSummaryFields.length > 0 ? "," : ""}
-  "category": "one of: Funding, AI & Tech, M&A & Exits, Market Moves, European Tech, VC & Investors, Regulation"
+  "category": "one of: startup, vc, fintech, ai, crypto, markets"
 }
-Return ONLY the JSON object, no markdown, no code blocks.`;
+Return ONLY the JSON object, no markdown, no code blocks.
+
+CATEGORY DEFINITIONS:
+- startup: General startup ecosystem news, new companies, founders, accelerators, European tech ecosystem, M&A, exits, IPOs
+- vc: Venture capital, funding rounds, seed/series funding, VC fund raises, investor news
+- fintech: Financial technology, neobanks, digital payments, market moves, regulation, banking innovation
+- ai: Artificial intelligence, machine learning, LLMs, OpenAI, Anthropic, AI startups
+- crypto: Cryptocurrency, blockchain, web3, bitcoin, DeFi, NFTs
+- markets: Macro-economics, stock markets, IPOs, interest rates, central banks (Fed, ECB), indices (S&P, NASDAQ, CAC40), recessions, M&A of large public companies`;
       const summaryResult = await callClaudeWithRetry(manualPrompt, `ARTICLE URL: ${manualUrl}\n\nARTICLE CONTENT:\n${fullContent}`);
 
       let parsed = robustParseJSON(summaryResult);
@@ -269,7 +304,7 @@ Return ONLY the JSON object, no markdown, no code blocks.`;
         source_url: manualUrl,
         source_name: new URL(manualUrl).hostname.replace("www.", ""),
         language: "en",
-        category: parsed.category || "general",
+        category: normalizeCategory(parsed.category || ""),
         published_at: new Date().toISOString(),
         is_active: true,
         is_featured: false,
@@ -302,9 +337,17 @@ Return ONLY valid JSON:
   "title": "Generated title in English",
   "detected_language": "en or fr or it or es",
   "summary_en": "English summary (250-350 words, analytical, with why-it-matters and a question at the end)",
-  "category": "one of: Funding, AI & Tech, M&A & Exits, Market Moves, European Tech, VC & Investors, Regulation"
+  "category": "one of: startup, vc, fintech, ai, crypto, markets"
 }
-Return ONLY the JSON object, no markdown, no code blocks.`;
+Return ONLY the JSON object, no markdown, no code blocks.
+
+CATEGORY DEFINITIONS:
+- startup: General startup ecosystem news, new companies, founders, accelerators, European tech ecosystem, M&A, exits, IPOs
+- vc: Venture capital, funding rounds, seed/series funding, VC fund raises, investor news
+- fintech: Financial technology, neobanks, digital payments, market moves, regulation, banking innovation
+- ai: Artificial intelligence, machine learning, LLMs, OpenAI, Anthropic, AI startups
+- crypto: Cryptocurrency, blockchain, web3, bitcoin, DeFi, NFTs
+- markets: Macro-economics, stock markets, IPOs, interest rates, central banks (Fed, ECB), indices (S&P, NASDAQ, CAC40), recessions, M&A of large public companies`;
 
       const summaryResult = await callClaudeWithRetry(manualTextPrompt, `RAW TEXT CONTENT:\n\n${manualText.slice(0, 4000)}`, 2048);
       let parsed = robustParseJSON(summaryResult);
@@ -368,7 +411,7 @@ Return ONLY the JSON object, no markdown, no code blocks.`;
         source_url: `text-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         source_name: "Akka Editorial",
         language: "en",
-        category: parsed.category || "general",
+        category: normalizeCategory(parsed.category || ""),
         published_at: new Date().toISOString(),
         image_url: manualImageUrl || "",
         is_active: true,
@@ -387,24 +430,24 @@ Return ONLY the JSON object, no markdown, no code blocks.`;
 
     // --- MODE 3: Auto-generate from existing unsummarized articles ---
 
-    // Step 1: Get unsummarized articles for target language from last 48h
-    // Include both NULL and empty string summaries (empty = previously failed)
+    // Step 1: Get unsummarized articles for target language
+    // Use a 7-day window to catch all categories including rare ones
     const summaryCol = `summary_${targetLang}`;
-    const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const { data: articles, error: fetchErr } = await supabase
       .from("news_articles")
-      .select("id, title, description, content, source_url, source_name, category, language")
+      .select("id, title, description, content, source_url, source_name, category, language, image_url")
       .eq("language", targetLang)
       .or(`${summaryCol}.is.null,${summaryCol}.eq.`)
-      .gte("published_at", twoDaysAgo)
+      .gte("published_at", sevenDaysAgo)
       .order("published_at", { ascending: false })
-      .limit(30);
+      .limit(60);
 
     if (fetchErr || !articles?.length) {
-      return new Response(JSON.stringify({ 
-        success: true, 
+      return new Response(JSON.stringify({
+        success: true,
         message: "No unsummarized articles found",
-        count: 0 
+        count: 0
       }), {
         headers: { "Content-Type": "application/json", ...corsHeaders },
       });
@@ -414,30 +457,105 @@ Return ONLY the JSON object, no markdown, no code blocks.`;
     const langNames: Record<string, string> = { en: "English", fr: "French", it: "Italian", es: "Spanish" };
     const isLocalLang = targetLang !== "en";
 
-    // Step 2: Ask Claude to select the most important articles
-    const selectionPrompt = customSelectionPrompt || DEFAULT_SELECTION_PROMPT;
-    const articleList = articles.map((a, i) => 
-      `${i + 1}. [${a.category}] ${a.title}\n   Source: ${a.source_name}\n   Description: ${(a.description || "").slice(0, 150)}`
-    ).join("\n\n");
+    // Step 2: Category-balanced selection
+    // Goal: ensure ALL 6 categories are represented in the final selection
+    // Edge function has ~150s timeout, so we limit to 6 articles per run
+    // With 3 cron runs/day, that's up to 18 published articles/day
+    const TARGET_PER_CATEGORY = 1; // At least 1 per empty category
+    const MAX_TOTAL = 5; // Max articles per run (must stay under 150s edge function limit)
 
-    const selectionResult = await callClaudeWithRetry(
-      selectionPrompt,
-      `Here are ${articles.length} recent articles:\n\n${articleList}\n\nReturn ONLY a JSON array of the selected article numbers, e.g. [1, 3, 5, 7, 9]. Select 5-10 articles maximum.`,
-      500
-    );
-
-    let selectedIndices: number[];
-    try {
-      const jsonMatch = selectionResult.match(/\[[\d,\s]+\]/);
-      selectedIndices = JSON.parse(jsonMatch?.[0] || "[]");
-    } catch {
-      selectedIndices = [1, 2, 3, 4, 5]; // Fallback: first 5
+    // Group articles by category
+    const byCategory: Record<string, typeof articles> = {};
+    for (const a of articles) {
+      const cat = a.category || "startup";
+      if (!byCategory[cat]) byCategory[cat] = [];
+      byCategory[cat].push(a);
     }
 
-    const selectedArticles = selectedIndices
-      .map(i => articles[i - 1])
-      .filter(Boolean)
-      .slice(0, 3);
+    // Check which categories already have published articles today
+    const todayStart = new Date();
+    todayStart.setUTCHours(0, 0, 0, 0);
+    const { data: alreadyPublished } = await supabase
+      .from("news_articles")
+      .select("category")
+      .eq("is_published", true)
+      .gte("published_at", todayStart.toISOString());
+
+    const publishedCategoryCounts: Record<string, number> = {};
+    for (const p of (alreadyPublished || [])) {
+      const cat = p.category || "startup";
+      publishedCategoryCounts[cat] = (publishedCategoryCounts[cat] || 0) + 1;
+    }
+
+    // Build category-balanced selection:
+    // 1. Prioritize categories with 0 published articles today
+    // 2. Then fill remaining slots with best articles from any category
+    const selectedArticles: typeof articles = [];
+    const usedIds = new Set<string>();
+    const ALL_CATEGORIES = ["startup", "vc", "fintech", "ai", "crypto", "markets"];
+
+    // Phase 1: Ensure every category with available articles gets at least TARGET_PER_CATEGORY
+    // Sort categories: those with 0 published come first
+    const sortedCategories = [...ALL_CATEGORIES].sort((a, b) =>
+      (publishedCategoryCounts[a] || 0) - (publishedCategoryCounts[b] || 0)
+    );
+
+    for (const cat of sortedCategories) {
+      const available = (byCategory[cat] || []).filter(a => !usedIds.has(a.id));
+      const needed = TARGET_PER_CATEGORY - (publishedCategoryCounts[cat] || 0);
+      const toTake = Math.max(0, Math.min(needed, available.length, MAX_TOTAL - selectedArticles.length));
+      for (let i = 0; i < toTake; i++) {
+        selectedArticles.push(available[i]);
+        usedIds.add(available[i].id);
+      }
+    }
+
+    // Phase 2: If we still have room, ask Claude to pick the best remaining articles
+    if (selectedArticles.length < MAX_TOTAL) {
+      const remaining = articles.filter(a => !usedIds.has(a.id));
+      if (remaining.length > 0) {
+        const selectionPrompt = customSelectionPrompt || DEFAULT_SELECTION_PROMPT;
+        const articleList = remaining.map((a, i) =>
+          `${i + 1}. [${a.category}] ${a.title}\n   Source: ${a.source_name}\n   Description: ${(a.description || "").slice(0, 150)}`
+        ).join("\n\n");
+
+        const spotsLeft = MAX_TOTAL - selectedArticles.length;
+        try {
+          const selectionResult = await callClaudeWithRetry(
+            selectionPrompt,
+            `Here are ${remaining.length} recent articles:\n\n${articleList}\n\nReturn ONLY a JSON array of the selected article numbers, e.g. [1, 3, 5, 7]. Select up to ${spotsLeft} articles maximum.`,
+            500
+          );
+
+          let selectedIndices: number[];
+          const jsonMatch = selectionResult.match(/\[[\d,\s]+\]/);
+          selectedIndices = JSON.parse(jsonMatch?.[0] || "[]");
+
+          for (const idx of selectedIndices) {
+            if (selectedArticles.length >= MAX_TOTAL) break;
+            const art = remaining[idx - 1];
+            if (art && !usedIds.has(art.id)) {
+              selectedArticles.push(art);
+              usedIds.add(art.id);
+            }
+          }
+        } catch (selErr) {
+          console.error("Selection failed, using remaining by recency:", (selErr as Error).message);
+          // Fallback: just add remaining by recency
+          for (const art of remaining) {
+            if (selectedArticles.length >= MAX_TOTAL) break;
+            if (!usedIds.has(art.id)) {
+              selectedArticles.push(art);
+              usedIds.add(art.id);
+            }
+          }
+        }
+      }
+    }
+
+    console.log(`[Selection] ${selectedArticles.length} articles selected from ${articles.length} candidates. Categories: ${
+      ALL_CATEGORIES.map(c => `${c}:${selectedArticles.filter(a => a.category === c).length}`).join(", ")
+    }`);
 
     if (!selectedArticles.length) {
       return new Response(JSON.stringify({ success: true, message: "No articles selected", count: 0 }), {
@@ -469,8 +587,8 @@ Return ONLY the JSON object, no markdown, no code blocks.`;
         let parsed = robustParseJSON(summaryResult);
         // Clean parsed fields
         parsed.summary_en = cleanSummary(parsed.summary_en || parsed.summary || "");
-        parsed.category = parsed.category || "general";
-        console.log("PARSED KEYS:", Object.keys(parsed), "EN length:", parsed.summary_en.length);
+        parsed.category = normalizeCategory(parsed.category || article.category || "");
+        console.log("PARSED KEYS:", Object.keys(parsed), "EN length:", parsed.summary_en.length, "CAT:", parsed.category);
 
         // --- CALL 2: Translate to requested languages (only for EN articles with real summary) ---
         if (!isLocalLang && translateLangs.length > 0 && isValidSummary(parsed.summary_en)) {
@@ -522,7 +640,8 @@ Return ONLY the JSON object, no markdown, no code blocks.`;
 
         const updateData: Record<string, any> = {
           full_content: fullContent.slice(0, 50000),
-          image_url: scrapedImageUrl3 || "",
+          image_url: scrapedImageUrl3 || article.image_url || "",
+          category: parsed.category, // Ensure normalized category is saved
           title_en: article.title,
           title_fr: parsed.title_fr || "",
           title_it: parsed.title_it || "",
@@ -601,8 +720,16 @@ const DEFAULT_SUMMARY_PROMPT = `You are a senior analyst writing for a premium s
 Generate a newsletter-style summary in ENGLISH ONLY. Return ONLY valid JSON:
 {
   "summary_en": "Your English summary here",
-  "category": "one of: Funding, AI & Tech, M&A & Exits, Market Moves, European Tech, VC & Investors, Regulation"
+  "category": "one of: startup, vc, fintech, ai, crypto, markets"
 }
+
+CATEGORY DEFINITIONS (choose the BEST match):
+- startup: General startup ecosystem news, new companies, founders, accelerators, European tech, M&A, exits, IPOs
+- vc: Venture capital, funding rounds, seed/series funding, VC fund raises, investor news
+- fintech: Financial technology, neobanks, digital payments, market moves, regulation, banking innovation
+- ai: Artificial intelligence, machine learning, LLMs, OpenAI, Anthropic, AI startups
+- crypto: Cryptocurrency, blockchain, web3, bitcoin, DeFi, NFTs
+- markets: Macro-economics, stock markets, IPOs, interest rates, central banks (Fed, ECB), indices (S&P, NASDAQ, CAC40), recessions, M&A of large public companies
 
 WRITING STYLE:
 - Professional but engaging, like talking to a smart investor friend

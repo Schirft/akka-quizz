@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useLang } from '../../hooks/useLang'
 import { Newspaper, Clock, ChevronRight, Loader2 } from 'lucide-react'
 
-const CATEGORIES = ['startup', 'vc', 'fintech', 'ai', 'crypto', 'deeptech']
+const CATEGORIES = ['startup', 'vc', 'fintech', 'ai', 'crypto', 'markets']
 
 const CATEGORY_GRADIENTS = {
   startup: 'from-emerald-600 to-teal-700',
@@ -12,7 +12,7 @@ const CATEGORY_GRADIENTS = {
   fintech: 'from-amber-500 to-orange-600',
   ai: 'from-purple-600 to-violet-700',
   crypto: 'from-cyan-500 to-blue-600',
-  deeptech: 'from-rose-500 to-pink-600',
+  markets: 'from-rose-500 to-pink-600',
 }
 
 function timeAgo(dateStr) {

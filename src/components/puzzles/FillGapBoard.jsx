@@ -1,5 +1,22 @@
 import React, { useState } from 'react';
 
+// Extract the best display value from a row, given the missing field name
+function getRowDisplayValue(row, fieldName) {
+  // Try the explicit field name first
+  if (row[fieldName] !== undefined) return row[fieldName];
+  // Common fallbacks
+  if (row.value !== undefined) return row.value;
+  if (row.percentage !== undefined) return row.percentage;
+  if (row.amount !== undefined) return row.amount;
+  // Fallback: find first non-metadata value
+  const skip = new Set(['id', 'label', 'name', 'text', 'detail', 'description']);
+  for (const [key, val] of Object.entries(row)) {
+    if (skip.has(key)) continue;
+    if (typeof val === 'string' || typeof val === 'number') return val;
+  }
+  return '';
+}
+
 export default function FillGapBoard({ puzzle, onAnswer, lang = 'en' }) {
   const [selected, setSelected] = useState(null);
   const ctx = puzzle.context_data || {};
@@ -7,9 +24,10 @@ export default function FillGapBoard({ puzzle, onAnswer, lang = 'en' }) {
   const missingField = ctx.missing_field || {};
   const options = ctx.options || [];
   const question = ctx[`question_${lang}`] || ctx.question_en || ctx.question || 'Fill in the missing value';
+  const fieldName = missingField.field || 'value';
 
   const handlePick = (val) => {
-    if (selected !== null) return; // Block double-click
+    if (selected !== null) return;
     setSelected(val);
     onAnswer(String(val));
   };
@@ -22,6 +40,7 @@ export default function FillGapBoard({ puzzle, onAnswer, lang = 'en' }) {
       <div className="border border-gray-200 rounded-xl overflow-hidden mb-4">
         {rows.map((row, i) => {
           const isMissing = row.id === missingField.row_id;
+          const displayValue = isMissing ? null : getRowDisplayValue(row, fieldName);
           return (
             <div key={row.id || i} className={`flex justify-between px-3.5 py-2.5 text-sm ${
               i < rows.length - 1 ? 'border-b border-gray-100' : ''
@@ -30,7 +49,7 @@ export default function FillGapBoard({ puzzle, onAnswer, lang = 'en' }) {
               <span className={`font-semibold font-mono ${
                 isMissing ? 'text-amber-600' : 'text-gray-900'
               }`}>
-                {isMissing ? '❓' : (row[missingField.field] !== undefined ? row[missingField.field] : row.value)}
+                {isMissing ? '❓' : (typeof displayValue === 'number' ? displayValue.toLocaleString() : displayValue)}
               </span>
             </div>
           );
@@ -44,7 +63,7 @@ export default function FillGapBoard({ puzzle, onAnswer, lang = 'en' }) {
           const isOther = selected !== null && !isSelected;
           return (
             <button
-              key={opt}
+              key={String(opt)}
               onClick={() => handlePick(opt)}
               className={`px-5 py-3 rounded-xl text-base font-bold font-mono transition-all min-w-[60px] text-center border-2 ${
                 isSelected

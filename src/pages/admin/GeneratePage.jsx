@@ -249,7 +249,7 @@ export default function GeneratePage() {
       if (pack.puzzle_id) {
         const { data: pz } = await supabase
           .from('puzzles')
-          .select('id, title, interaction_type, hint, answer, explanation, context_data')
+          .select('id, title, title_fr, title_it, title_es, interaction_type, hint, hint_fr, hint_it, hint_es, answer, explanation, explanation_fr, explanation_it, explanation_es, context_data, context_data_fr, context_data_it, context_data_es')
           .eq('id', pack.puzzle_id)
           .maybeSingle()
         details.puzzle = pz
@@ -259,7 +259,7 @@ export default function GeneratePage() {
       if (pack.lesson_id) {
         const { data: ls } = await supabase
           .from('daily_lessons')
-          .select('id, title, content, key_takeaway')
+          .select('id, title, title_fr, title_it, title_es, content, content_fr, content_it, content_es, key_takeaway, key_takeaway_fr, key_takeaway_it, key_takeaway_es')
           .eq('id', pack.lesson_id)
           .maybeSingle()
         details.lesson = ls
@@ -1598,6 +1598,20 @@ export default function GeneratePage() {
                                   <p className="text-xs text-[#6B7280]">
                                     <span className="font-semibold">Answer:</span> {details.puzzle.answer}
                                   </p>
+                                  {/* Puzzle translations */}
+                                  <div className="flex gap-2 mt-1.5">
+                                    {['fr', 'it', 'es'].map(lng => (
+                                      <span key={lng} className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                                        details.puzzle[`title_${lng}`] && details.puzzle[`context_data_${lng}`]
+                                          ? 'bg-green-100 text-green-700'
+                                          : details.puzzle[`title_${lng}`]
+                                            ? 'bg-amber-100 text-amber-700'
+                                            : 'bg-red-100 text-red-600'
+                                      }`}>
+                                        {lng.toUpperCase()} {details.puzzle[`context_data_${lng}`] ? '✓' : '✗'}
+                                      </span>
+                                    ))}
+                                  </div>
                                 </div>
                               </div>
                             )}
@@ -1634,6 +1648,20 @@ export default function GeneratePage() {
                                       <p className="mt-1 whitespace-pre-wrap">{details.lesson.content}</p>
                                     </details>
                                   )}
+                                  {/* Lesson translations */}
+                                  <div className="flex gap-2 mt-1.5">
+                                    {['fr', 'it', 'es'].map(lng => (
+                                      <span key={lng} className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                                        details.lesson[`title_${lng}`] && details.lesson[`content_${lng}`]
+                                          ? 'bg-green-100 text-green-700'
+                                          : details.lesson[`title_${lng}`]
+                                            ? 'bg-amber-100 text-amber-700'
+                                            : 'bg-red-100 text-red-600'
+                                      }`}>
+                                        {lng.toUpperCase()} {details.lesson[`content_${lng}`] ? '✓' : '✗'}
+                                      </span>
+                                    ))}
+                                  </div>
                                 </div>
                               </div>
                             )}

@@ -13,10 +13,20 @@ export default function MatchChartBoard({ puzzle, onAnswer, lang = 'en' }) {
     onAnswer(id);
   };
 
+  // Extract numeric value from data point (handles simple numbers, {y}, {value}, and multi-key objects like cohort data)
+  const extractVal = (d) => {
+    if (typeof d === 'number') return d;
+    if (d.y !== undefined) return d.y;
+    if (d.value !== undefined) return d.value;
+    // Sum all numeric values (e.g. cohort_2023 + cohort_2024 + cohort_2025)
+    const numericValues = Object.values(d).filter(v => typeof v === 'number');
+    return numericValues.length > 0 ? numericValues.reduce((a, b) => a + b, 0) : 0;
+  };
+
   const renderMiniChart = (chart) => {
     const data = chart.data || [];
     if (data.length === 0) return null;
-    const maxVal = Math.max(...data.map(d => typeof d === 'number' ? d : d.y || d.value || 0), 1);
+    const maxVal = Math.max(...data.map(extractVal), 1);
     const isSelected = selected === chart.id;
     const isOther = selected !== null && !isSelected;
 
@@ -41,7 +51,7 @@ export default function MatchChartBoard({ puzzle, onAnswer, lang = 'en' }) {
         {/* Simple bar chart */}
         <div className="flex items-end gap-0.5 h-[60px]">
           {data.map((d, i) => {
-            const val = typeof d === 'number' ? d : d.y || d.value || 0;
+            const val = extractVal(d);
             const h = Math.max((val / maxVal) * 50, 2);
             return (
               <div key={i} className={`flex-1 rounded-t-sm ${

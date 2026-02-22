@@ -56,7 +56,7 @@ export default function QuizResultsPage() {
       }
     }, 400)
 
-    if (score >= 4) {
+    if (isPerfect || score >= totalQuestions - 1) {
       setShowConfetti(true)
       setTimeout(() => { if (mounted) setShowConfetti(false) }, 3000)
     }
@@ -129,7 +129,7 @@ export default function QuizResultsPage() {
 
       <div className="max-w-[480px] mx-auto px-4 pt-8 pb-6">
         {/* Score Message */}
-        <h2 className={`text-3xl font-black text-center mb-2 ${score === 5 ? 'animate-gradient-text' : 'text-white'}`}>
+        <h2 className={`text-3xl font-black text-center mb-2 ${isPerfect ? 'animate-gradient-text' : 'text-white'}`}>
           {getScoreMessage(score, lang)}
         </h2>
 
@@ -160,7 +160,7 @@ export default function QuizResultsPage() {
         </motion.div>
 
         {/* Star border wrapper if perfect */}
-        <div className={score === 5 ? 'animate-star-border' : ''}>
+        <div className={isPerfect ? 'animate-star-border' : ''}>
           <div className="bg-[#0B1A14] rounded-3xl p-6">
             {/* XP Breakdown staggered */}
             <div className="space-y-0">

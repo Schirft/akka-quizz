@@ -36,7 +36,13 @@ const GNEWS_API_KEY = Deno.env.get("GNEWS_API_KEY") || "53798e3ace1583384a27a73c
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-const CATEGORIES = ["startup", "vc", "fintech", "ai", "crypto", "deeptech"];
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+};
+
+const CATEGORIES = ["startup", "vc", "fintech", "ai", "crypto", "markets"];
 const LANGUAGES = [
   { code: "en", gnewsLang: "en" },
   { code: "fr", gnewsLang: "fr" },
@@ -75,11 +81,11 @@ const CATEGORY_QUERIES: Record<string, Record<string, string>> = {
     it: "criptovaluta OR blockchain OR bitcoin OR crypto",
     es: "criptomoneda OR blockchain OR bitcoin OR crypto",
   },
-  deeptech: {
-    en: "deeptech OR quantum computing OR biotech startup",
-    fr: "deeptech OR quantique OR biotech OR technologie de rupture",
-    it: "deeptech OR quantistico OR biotech OR tecnologia avanzata",
-    es: "deeptech OR cuántica OR biotech OR tecnología profunda",
+  markets: {
+    en: "stock market OR IPO OR interest rates OR economy OR Wall Street OR recession",
+    fr: "bourse OR IPO OR taux intérêt OR économie OR marchés financiers OR récession",
+    it: "borsa OR IPO OR tassi interesse OR economia OR mercati finanziari OR recessione",
+    es: "bolsa OR IPO OR tipos interés OR economía OR mercados financieros OR recesión",
   },
 };
 
@@ -89,6 +95,11 @@ function sleep(ms: number) {
 }
 
 Deno.serve(async (_req: Request) => {
+  // Handle CORS preflight
+  if (_req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
   let totalInserted = 0;
   let totalSkipped = 0;
@@ -187,7 +198,7 @@ Deno.serve(async (_req: Request) => {
       errors,
     }),
     {
-      headers: { "Content-Type": "application/json" },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     }
   );
 });
