@@ -585,20 +585,20 @@ export default function AdminNewsPage() {
             </p>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2">
             <input
               type="text"
               value={manualUrl}
               onChange={(e) => setManualUrl(e.target.value)}
               placeholder="Paste article URL here..."
               disabled={addingManual}
-              className="flex-1 border border-[#D1D5DB] rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2ECC71] disabled:opacity-50"
+              className="w-full border border-[#D1D5DB] rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2ECC71] disabled:opacity-50"
               onKeyDown={(e) => e.key === 'Enter' && handleManualAdd()}
             />
             <button
               onClick={handleManualAdd}
               disabled={addingManual || !manualUrl.trim()}
-              className="flex items-center gap-2 px-4 py-2.5 bg-[#1B3D2F] text-white text-sm font-semibold rounded-xl hover:opacity-90 disabled:opacity-50 transition-opacity shrink-0"
+              className="flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-[#1B3D2F] text-white text-sm font-semibold rounded-xl hover:opacity-90 disabled:opacity-50 transition-opacity"
             >
               {addingManual ? (
                 <Loader2 size={16} className="animate-spin" />

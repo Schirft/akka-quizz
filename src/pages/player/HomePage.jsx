@@ -524,6 +524,20 @@ export default function HomePage() {
         </Card>
       )}
 
+      {/* Showcase link */}
+      <Card className="mb-3 cursor-pointer active:scale-[0.98] transition-transform" onClick={() => navigate('/showcase')}>
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#1B3D2F] to-[#2ECC71] flex items-center justify-center">
+            <span className="text-2xl">🎓</span>
+          </div>
+          <div className="flex-1">
+            <p className="text-sm font-bold text-[#1B3D2F]">Showcase</p>
+            <p className="text-[11px] text-akka-text-secondary">15 demo packs — try the full experience</p>
+          </div>
+          <span className="text-gray-400 text-lg">›</span>
+        </div>
+      </Card>
+
       {/* Admin + Sign Out — visible real buttons */}
       <div className="mt-6 pt-4 border-t border-[#D1D5DB] space-y-3">
         <Button

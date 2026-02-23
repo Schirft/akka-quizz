@@ -103,6 +103,70 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Download an external image and store it in Supabase Storage.
+ * Returns the Supabase public URL, or falls back to the original URL on failure.
+ */
+async function downloadAndStoreImage(imageUrl: string, articleId: string): Promise<string> {
+  if (!imageUrl || imageUrl.includes("supabase.co/storage")) return imageUrl; // Already stored
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout
+    const res = await fetch(imageUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; AkkaBot/1.0)",
+        "Accept": "image/*",
+      },
+      redirect: "follow",
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (!res.ok) {
+      console.log(`[Image] Download failed (${res.status}) for ${articleId}`);
+      return imageUrl;
+    }
+
+    const contentType = res.headers.get("content-type") || "image/jpeg";
+    if (!contentType.startsWith("image/")) return imageUrl;
+
+    const arrayBuffer = await res.arrayBuffer();
+    if (arrayBuffer.byteLength < 1000 || arrayBuffer.byteLength > 10_000_000) {
+      console.log(`[Image] Skipped (size: ${arrayBuffer.byteLength}B) for ${articleId}`);
+      return imageUrl;
+    }
+
+    const extMap: Record<string, string> = {
+      "image/jpeg": "jpg", "image/jpg": "jpg", "image/png": "png",
+      "image/webp": "webp", "image/gif": "gif", "image/avif": "avif",
+    };
+    const ext = extMap[contentType] || "jpg";
+    const fileName = `${articleId}.${ext}`;
+
+    const { error } = await supabase.storage
+      .from("news-images")
+      .upload(fileName, arrayBuffer, {
+        contentType,
+        upsert: true,
+      });
+
+    if (error) {
+      console.error(`[Image] Upload failed for ${articleId}:`, error.message);
+      return imageUrl;
+    }
+
+    const { data: urlData } = supabase.storage
+      .from("news-images")
+      .getPublicUrl(fileName);
+
+    console.log(`[Image] Stored ${fileName} (${(arrayBuffer.byteLength / 1024).toFixed(1)}KB)`);
+    return urlData.publicUrl;
+  } catch (err) {
+    console.error(`[Image] Failed for ${articleId}:`, (err as Error).message);
+    return imageUrl;
+  }
+}
+
 async function callClaudeWithRetry(system: string, user: string, maxTokens = 8192, retries = 5): Promise<string> {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
@@ -291,6 +355,11 @@ CATEGORY DEFINITIONS:
         if (reMatch) parsed.summary_en = cleanSummary(reMatch[1]);
       }
 
+      // Store image in Supabase Storage
+      const rawManualImageUrl = parsed.image_url || scrapedImageUrl || "";
+      const tempId = `manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const storedManualImageUrl = rawManualImageUrl ? await downloadAndStoreImage(rawManualImageUrl, tempId) : "";
+
       const { error } = await supabase.from("news_articles").insert({
         title: parsed.title || "Untitled Article",
         title_en: parsed.title || "Untitled Article",
@@ -298,7 +367,7 @@ CATEGORY DEFINITIONS:
         title_it: cleanSummary(parsed.title_it || ""),
         title_es: cleanSummary(parsed.title_es || ""),
         description: (parsed.summary_en || "").slice(0, 200),
-        image_url: parsed.image_url || scrapedImageUrl || "",
+        image_url: storedManualImageUrl,
         content: fullContent.slice(0, 2000),
         full_content: fullContent,
         source_url: manualUrl,
@@ -399,6 +468,10 @@ CATEGORY DEFINITIONS:
         }
       }
 
+      // Store image in Supabase Storage
+      const tempTextId = `text-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const storedTextImageUrl = manualImageUrl ? await downloadAndStoreImage(manualImageUrl, tempTextId) : "";
+
       const { error } = await supabase.from("news_articles").insert({
         title: finalTitle,
         title_en: finalTitle,
@@ -408,12 +481,12 @@ CATEGORY DEFINITIONS:
         description: (parsed.summary_en || "").slice(0, 200),
         content: manualText.slice(0, 2000),
         full_content: manualText,
-        source_url: `text-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        source_url: tempTextId,
         source_name: "Akka Editorial",
         language: "en",
         category: normalizeCategory(parsed.category || ""),
         published_at: new Date().toISOString(),
-        image_url: manualImageUrl || "",
+        image_url: storedTextImageUrl,
         is_active: true,
         is_featured: false,
         is_published: isValidSummary(parsed.summary_en || ""),
@@ -462,7 +535,7 @@ CATEGORY DEFINITIONS:
     // Edge function has ~150s timeout, so we limit to 6 articles per run
     // With 3 cron runs/day, that's up to 18 published articles/day
     const TARGET_PER_CATEGORY = 1; // At least 1 per empty category
-    const MAX_TOTAL = 5; // Max articles per run (must stay under 150s edge function limit)
+    const MAX_TOTAL = 6; // Max articles per run (must stay under 150s edge function limit)
 
     // Group articles by category
     const byCategory: Record<string, typeof articles> = {};
@@ -567,8 +640,16 @@ CATEGORY DEFINITIONS:
     const summaryPrompt = customSummaryPrompt || DEFAULT_SUMMARY_PROMPT;
     let summarized = 0;
     const results: { id: string; title: string; status: string }[] = [];
+    const startTime = Date.now();
+    const MAX_WALL_CLOCK_MS = 135000; // 135s hard limit (edge fn times out at 150s)
 
     for (const article of selectedArticles) {
+      // Bail out if we're running out of time
+      if (Date.now() - startTime > MAX_WALL_CLOCK_MS) {
+        console.log(`[Timeout] Stopping after ${summarized} articles — wall clock limit reached`);
+        results.push({ id: article.id, title: article.title, status: "skipped: timeout" });
+        continue;
+      }
       try {
         // Scrape full content
         const scraped3 = await scrapeArticle(article.source_url);
@@ -638,9 +719,13 @@ CATEGORY DEFINITIONS:
           ? (parsed.summary_es || parsed.summary_en || null)
           : (parsed.summary_es || null);
 
+        // --- Download image to Supabase Storage for permanent hosting ---
+        const rawImageUrl = scrapedImageUrl3 || article.image_url || "";
+        const storedImageUrl = rawImageUrl ? await downloadAndStoreImage(rawImageUrl, article.id) : "";
+
         const updateData: Record<string, any> = {
           full_content: fullContent.slice(0, 50000),
-          image_url: scrapedImageUrl3 || article.image_url || "",
+          image_url: storedImageUrl,
           category: parsed.category, // Ensure normalized category is saved
           title_en: article.title,
           title_fr: parsed.title_fr || "",

@@ -13,6 +13,7 @@ import QuestionsPage from './pages/admin/QuestionsPage'
 import GeneratePage from './pages/admin/GeneratePage'
 import DailyQuizPage from './pages/admin/DailyQuizPage'
 import AdminNewsPage from './pages/admin/AdminNewsPage'
+import ShowcasePage from './pages/player/ShowcasePage'
 
 /**
  * PlayerShell — centered mobile container for standalone player pages.
@@ -65,6 +66,12 @@ export default function App() {
       <Route
         path="/login"
         element={user ? <Navigate to="/" replace /> : <PlayerShell><LoginPage /></PlayerShell>}
+      />
+
+      {/* Showcase — public, no auth required */}
+      <Route
+        path="/showcase"
+        element={<PlayerShell><ShowcasePage /></PlayerShell>}
       />
 
       {/* Player routes with TabBar */}
