@@ -833,6 +833,7 @@ export default function GeneratePage() {
       puzzle_title: puzzleData.title || 'Puzzle',
       puzzle_answer: JSON.stringify(puzzleData.answer || ''),
       puzzle_explanation: puzzleData.explanation || '',
+      puzzle_visual_type: puzzleData?.context_data?.visual_type || '',
     })
     const lessonId = lResult.lesson_id
 

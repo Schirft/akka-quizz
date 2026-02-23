@@ -138,20 +138,43 @@ Fields to translate:
 }`;
 }
 
-function buildLessonPrompt(theme: string, puzzleTitle: string, answer: string, explanation: string): string {
+function buildLessonPrompt(theme: string, puzzleTitle: string, answer: string, explanation: string, visualType: string): string {
+  const visualContextMap: Record<string, string> = {
+    cap_table: "analyzing a shareholder cap table",
+    bar_chart: "reading a revenue/MRR bar chart",
+    term_sheet: "reviewing term sheet clauses",
+    metric_cards: "evaluating pitch deck metrics",
+    pnl_table: "analyzing a P&L statement",
+    cohort_grid: "reading a retention cohort table",
+    funding_timeline: "reviewing a fundraising timeline",
+    unit_economics: "analyzing unit economics per order/transaction",
+    investor_email: "reading a CEO investor update email",
+    comp_table: "evaluating a comparable companies table",
+  };
+
+  const visualContext = visualType
+    ? `\nPuzzle format: ${visualType} (${visualContextMap[visualType] || visualType})`
+    : "";
+
   return `Based on this puzzle about ${theme}:
 Title: ${puzzleTitle}
 Flaw found: ${answer}
-Explanation: ${explanation}
+Explanation: ${explanation}${visualContext}
 
-Write a "Lesson of the Day" for startup investors (300-500 words):
-1. title: educational title about the underlying concept
+Write a "Lesson of the Day" for startup investors (300-500 words).
+
+The lesson should DIRECTLY relate to what the user just experienced in the puzzle.
+If the puzzle was about a cap table with percentages > 100%, teach them HOW to read a cap table.
+If the puzzle was about buried bad news in an investor email, teach them WHAT to look for in updates.
+
+Structure:
+1. title: educational title (relate to the puzzle concept)
 2. content: structured text with:
-   - What is the concept
-   - Why it matters for angel investors
-   - How to spot this issue in real deals
-   - A real-world example or analogy
-   - One actionable takeaway
+   - What is the concept (relate to the puzzle format: ${visualType || "generic"})
+   - Why it matters for angel investors doing due diligence
+   - How to spot this specific issue in real deals
+   - A real-world example or analogy (use REAL startup examples when possible)
+   - One actionable checklist item they can use immediately
 3. key_takeaway: 1 sentence summary
 
 Return ONLY valid JSON:
@@ -172,6 +195,7 @@ Deno.serve(async (req: Request) => {
     const puzzleTitle = body.puzzle_title || "Puzzle";
     const puzzleAnswer = body.puzzle_answer || "";
     const puzzleExplanation = body.puzzle_explanation || "";
+    const puzzleVisualType = body.puzzle_visual_type || "";
 
     const startTime = Date.now();
     let apiCalls = 0;
@@ -179,7 +203,7 @@ Deno.serve(async (req: Request) => {
     // ─── STEP 1: Generate lesson ────────────────────────────────────────
     console.log(`[PackLesson] Generating lesson for ${theme}...`);
     const lessonResp = await callClaudeWithRetry(
-      buildLessonPrompt(theme, puzzleTitle, puzzleAnswer, puzzleExplanation),
+      buildLessonPrompt(theme, puzzleTitle, puzzleAnswer, puzzleExplanation, puzzleVisualType),
       4096
     );
     const lessonData = extractJSON(lessonResp);
