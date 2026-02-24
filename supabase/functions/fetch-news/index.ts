@@ -105,10 +105,13 @@ Deno.serve(async (_req: Request) => {
   let totalSkipped = 0;
   const errors: string[] = [];
 
+  // Only fetch articles published in the last 10 hours → ensures freshness
+  const fromDate = new Date(Date.now() - 10 * 60 * 60 * 1000).toISOString();
+
   for (const lang of LANGUAGES) {
     for (const cat of CATEGORIES) {
       const query = CATEGORY_QUERIES[cat][lang.gnewsLang] || CATEGORY_QUERIES[cat]["en"];
-      const url = `https://gnews.io/api/v4/search?q=${encodeURIComponent(query)}&lang=${lang.gnewsLang}&max=5&apikey=${GNEWS_API_KEY}`;
+      const url = `https://gnews.io/api/v4/search?q=${encodeURIComponent(query)}&lang=${lang.gnewsLang}&max=5&sortby=publishedAt&from=${encodeURIComponent(fromDate)}&apikey=${GNEWS_API_KEY}`;
 
       try {
         const res = await fetch(url);

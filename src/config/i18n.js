@@ -81,6 +81,9 @@ export const translations = {
     score_tooltip_text: 'Your Investor Score reflects your learning progress: quiz accuracy, streak consistency, XP earned, and overall engagement. Max 1000.',
     keep_streak: 'Come back tomorrow to keep your streak!',
     view_results: 'View Results',
+    see_journey: 'See journey',
+    progression_path: 'Your Journey',
+    climb_ranks: 'Climb the ranks — unlock rewards',
   },
   fr: {
     welcome_back: 'Bienvenue,',
@@ -158,7 +161,10 @@ export const translations = {
     score_improving: 'Construction de votre profil investisseur',
     score_tooltip_text: 'Ton Score Investisseur refl\u00e8te ta progression : pr\u00e9cision des quiz, r\u00e9gularit\u00e9 de ta s\u00e9rie, XP gagn\u00e9s et engagement global. Max 1000.',
     keep_streak: 'Reviens demain pour garder ta s\u00e9rie !',
-    view_results: 'Voir les r\u00e9sultats',
+    view_results: 'Voir les résultats',
+    see_journey: 'Voir le parcours',
+    progression_path: 'Ton Parcours',
+    climb_ranks: 'Progresse et débloque des récompenses',
   },
   it: {
     welcome_back: 'Bentornato,',
@@ -237,6 +243,9 @@ export const translations = {
     score_tooltip_text: 'Il tuo Punteggio Investitore riflette i tuoi progressi: precisione nei quiz, costanza della serie, XP guadagnati e coinvolgimento generale. Max 1000.',
     keep_streak: 'Torna domani per mantenere la tua serie!',
     view_results: 'Vedi risultati',
+    see_journey: 'Vedi percorso',
+    progression_path: 'Il Tuo Percorso',
+    climb_ranks: 'Scala le classifiche — sblocca premi',
   },
   es: {
     welcome_back: 'Bienvenido,',
@@ -315,6 +324,9 @@ export const translations = {
     score_tooltip_text: 'Tu Puntuación de Inversor refleja tu progreso de aprendizaje: precisión en los quiz, constancia de tu racha, XP ganados y participación general. Máx 1000.',
     keep_streak: '¡Vuelve mañana para mantener tu racha!',
     view_results: 'Ver resultados',
+    see_journey: 'Ver camino',
+    progression_path: 'Tu Camino',
+    climb_ranks: 'Sube de nivel — desbloquea recompensas',
   },
 }
 
