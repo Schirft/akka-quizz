@@ -1,7 +1,7 @@
 /**
  * Edge Function: generate-pack-puzzle
  *
- * Generates 1 puzzle "The Catch" for a pack, then auto-translates to FR/IT/ES.
+ * Generates 1 puzzle "Problem of the Day" for a pack, then auto-translates to FR/IT/ES.
  * Inserts it into the "puzzles" table and returns its ID.
  *
  * Body: { theme, difficulty }
@@ -195,7 +195,7 @@ function rebuildContextData(contextData: any, translations: Record<string, strin
 }
 
 function buildPuzzlePrompt(theme: string, difficulty: string): string {
-  return `You are creating an investment analysis puzzle for "The Catch" — a daily game where startup investors must solve a visual puzzle about real-looking startup data.
+  return `You are creating an investment analysis puzzle for "Problem of the Day" — a daily game where startup investors must solve a visual puzzle about real-looking startup data.
 
 Theme: ${theme}
 Difficulty: ${difficulty}
@@ -326,6 +326,17 @@ MANDATORY FIELD NAMING RULES — FOLLOW EXACTLY:
 7. The "answer" field MUST match an actual "id" from the rows (for tap_to_spot, before_after)
    or "a"/"b" (for ab_choice) or a number in options (for fill_gap) or a month string (for crash_point)
    or a chart id (for match_chart).
+
+═══════════════════════════════════════════════════════
+TRANSLATION-READINESS RULES:
+═══════════════════════════════════════════════════════
+ALL text in context_data will be auto-translated to French, Italian, and Spanish.
+- Use clear, natural English for ALL labels, descriptions, questions, and values.
+- Avoid abbreviations, slang, or culture-specific idioms (e.g. write "Monthly Recurring Revenue" not "MRR" for labels — short codes like "MRR" in value fields are fine).
+- Use complete sentences for question_en, hint, and explanation.
+- Use descriptive row labels (e.g. "Founders' Shares" not "FDR").
+- For investor_email visual_type: write the email body in clear, professional English paragraphs.
+- Keep financial terms internationally recognized (Revenue, Valuation, Equity, Runway, etc.).
 
 CONCRETE EXAMPLES FOR EACH VISUAL TYPE:
 
@@ -604,7 +615,7 @@ Deno.serve(async (req: Request) => {
         difficulty: difficulty,
         puzzle_type: puzzleData.puzzle_type || theme.toLowerCase().replace(/ /g, "_"),
         interaction_type: puzzleData.interaction_type || "tap_to_spot",
-        title: puzzleData.title || "The Catch",
+        title: puzzleData.title || "Problem of the Day",
         subtitle: puzzleData.subtitle || "",
         context_data: puzzleData.context_data || {},
         hint: puzzleData.hint || "",
@@ -689,7 +700,7 @@ Deno.serve(async (req: Request) => {
         success: true,
         puzzle_id: insertedPuzzle.id,
         puzzle_data: {
-          title: puzzleData.title || "The Catch",
+          title: puzzleData.title || "Problem of the Day",
           answer: answerStr,
           explanation: puzzleData.explanation || "",
           context_data: puzzleData.context_data || {},

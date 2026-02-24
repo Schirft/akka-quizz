@@ -716,9 +716,25 @@ export default function QuizPage() {
           <p className="text-[#A7C4B8] text-center mb-1">
             {tp('questions_per_question', { count: questions.length, timer: QUESTION_TIMER_SECONDS })}
           </p>
-          <p className="text-xs text-[#A7C4B8] mb-4">
+          <p className="text-xs text-[#A7C4B8] mb-3">
             {t('answer_quickly')}
           </p>
+          {/* Difficulty pills */}
+          <div className="flex gap-2 mb-4">
+            {['easy', 'medium', 'hard'].map(d => {
+              const count = questions.filter(q => q.difficulty === d).length
+              if (!count) return null
+              return (
+                <span key={d} className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
+                  d === 'easy' ? 'bg-emerald-400/20 text-emerald-300' :
+                  d === 'medium' ? 'bg-amber-400/20 text-amber-300' :
+                  'bg-red-400/20 text-red-300'
+                }`}>
+                  {count}× {t(`difficulty_${d}`)}
+                </span>
+              )
+            })}
+          </div>
           {/* Streak badge */}
           {streak > 0 && (
             <div className="flex items-center gap-2 mb-6 px-4 py-2 rounded-full bg-[#2ECC71]/10 border border-[#2ECC71]/20">
@@ -756,8 +772,19 @@ export default function QuizPage() {
     const puzzleLangFallback = lang !== 'en' && !puzzleData[`explanation_${lang}`]
     return (
       <div className="min-h-screen bg-akka-bg flex flex-col pb-24">
-        <QuizHeader onBack={() => navigate('/')} muted={muted} onToggleMute={handleToggleMute} title="The Catch" />
+        <QuizHeader onBack={() => navigate('/')} muted={muted} onToggleMute={handleToggleMute} title={t('the_catch')} />
         <div className="flex-1 px-4 pt-4">
+          {puzzleData?.difficulty && (
+            <div className="flex justify-end mb-2">
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                puzzleData.difficulty === 'easy' ? 'bg-emerald-100 text-emerald-700' :
+                puzzleData.difficulty === 'medium' ? 'bg-amber-100 text-amber-700' :
+                'bg-red-100 text-red-700'
+              }`}>
+                {t(`difficulty_${puzzleData.difficulty}`)}
+              </span>
+            </div>
+          )}
           {puzzleLangFallback && (
             <div className="mb-3 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-1.5">
               <span className="text-amber-600 text-xs font-semibold">⚠️ {lang.toUpperCase()} translation unavailable — showing English</span>
@@ -945,11 +972,20 @@ export default function QuizPage() {
         </div>
       )}
 
-      {/* Question counter */}
-      <div className="px-4 pt-4">
+      {/* Question counter + difficulty badge */}
+      <div className="px-4 pt-4 flex items-center justify-between">
         <p className="text-xs font-semibold text-akka-text-secondary uppercase tracking-wide">
           {tp('question_of', { n: currentIndex + 1, total: questions.length })}
         </p>
+        {question?.difficulty && (
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+            question.difficulty === 'easy' ? 'bg-emerald-100 text-emerald-700' :
+            question.difficulty === 'medium' ? 'bg-amber-100 text-amber-700' :
+            'bg-red-100 text-red-700'
+          }`}>
+            {t(`difficulty_${question.difficulty}`)}
+          </span>
+        )}
       </div>
 
       {/* Language fallback badge */}

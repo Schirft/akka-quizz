@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
-import { AI_SYSTEM_PROMPT } from '../../config/aiPrompts'
+import { AI_SYSTEM_PROMPT, PACK_DEFAULT_PROMPT } from '../../config/aiPrompts'
 import { X, Save, RotateCcw, Loader2 } from 'lucide-react'
 
 /**
@@ -167,6 +167,16 @@ export default function AISettingsPanel({ onClose, currentPrompt, onPromptChange
               </label>
               <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-xs font-mono text-[#6B7280] max-h-[200px] overflow-y-auto whitespace-pre-wrap leading-relaxed">
                 {AI_SYSTEM_PROMPT}
+              </div>
+            </div>
+          )}
+          {activeTab === 'pack' && (
+            <div className="border-t border-[#D1D5DB] pt-4">
+              <label className="block mb-2 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
+                Default Pack Prompt (read-only)
+              </label>
+              <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-xs font-mono text-[#6B7280] max-h-[200px] overflow-y-auto whitespace-pre-wrap leading-relaxed">
+                {PACK_DEFAULT_PROMPT}
               </div>
             </div>
           )}

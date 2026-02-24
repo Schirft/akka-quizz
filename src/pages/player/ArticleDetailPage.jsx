@@ -2,12 +2,47 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { useLang } from '../../hooks/useLang'
 import { supabase } from '../../lib/supabase'
+import { Zap, Lightbulb } from 'lucide-react'
+
+/** Render a paragraph with bold markdown support (**text**) */
+function RichText({ text, className }) {
+  if (!text) return null
+  const parts = text.split(/(\*\*.*?\*\*)/g)
+  return (
+    <p className={className}>
+      {parts.map((part, i) =>
+        part.startsWith('**') && part.endsWith('**')
+          ? <strong key={i} className="font-semibold text-gray-900">{part.slice(2, -2)}</strong>
+          : part
+      )}
+    </p>
+  )
+}
+
+/** Parse summary into structured blocks: key_fact, takeaway, regular paragraphs */
+function parseSummary(text) {
+  if (!text) return []
+  const blocks = []
+  const paragraphs = text.split('\n\n')
+  for (const p of paragraphs) {
+    const trimmed = p.trim()
+    if (!trimmed) continue
+    if (trimmed.startsWith('[KEY_FACT]')) {
+      blocks.push({ type: 'key_fact', text: trimmed.replace('[KEY_FACT]', '').trim() })
+    } else if (trimmed.startsWith('[TAKEAWAY]')) {
+      blocks.push({ type: 'takeaway', text: trimmed.replace('[TAKEAWAY]', '').trim() })
+    } else {
+      blocks.push({ type: 'paragraph', text: trimmed })
+    }
+  }
+  return blocks
+}
 
 export default function ArticleDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
-  const { lang: userLang } = useLang()
+  const { lang: userLang, t } = useLang()
 
   const [article, setArticle] = useState(location.state?.article || null)
   const [loading, setLoading] = useState(!article)
@@ -75,10 +110,32 @@ export default function ArticleDetailPage() {
 
         <hr className="border-gray-200 mb-4" />
 
-        {/* Summary paragraphs */}
-        {summary.split('\n\n').map((p, i) => (
-          <p key={i} className="text-gray-700 leading-relaxed mb-4 text-[15px]">{p}</p>
-        ))}
+        {/* Summary — structured blocks */}
+        {parseSummary(summary).map((block, i) => {
+          if (block.type === 'key_fact') {
+            return (
+              <div key={i} className="flex gap-3 p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 mb-4">
+                <Zap size={18} className="text-emerald-600 shrink-0 mt-0.5" />
+                <div>
+                  <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">{t('key_fact')}</span>
+                  <RichText text={block.text} className="text-emerald-900 text-[15px] leading-relaxed mt-1" />
+                </div>
+              </div>
+            )
+          }
+          if (block.type === 'takeaway') {
+            return (
+              <div key={i} className="flex gap-3 p-3.5 rounded-xl bg-amber-50 border border-amber-200 mb-4">
+                <Lightbulb size={18} className="text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">{t('takeaway')}</span>
+                  <RichText text={block.text} className="text-amber-900 text-[15px] leading-relaxed mt-1" />
+                </div>
+              </div>
+            )
+          }
+          return <RichText key={i} text={block.text} className="text-gray-700 leading-relaxed mb-4 text-[15px]" />
+        })}
 
       </div>
     </div>

@@ -86,7 +86,7 @@ const PACK_DIFFICULTIES = ['random', ...ALL_DIFFICULTIES]
 // B1: Pack step definitions for 4-function sequential flow
 const PACK_STEPS = [
   { label: 'Generating 3 QCM questions...', icon: '🧠' },
-  { label: 'Creating puzzle "The Catch"...', icon: '🧩' },
+  { label: 'Creating puzzle "Problem of the Day"...', icon: '🧩' },
   { label: 'Writing lesson of the day...', icon: '📚' },
   { label: 'Translating to FR/IT/ES...', icon: '🌍' },
   { label: 'Assembling pack record...', icon: '💾' },
@@ -1575,7 +1575,7 @@ export default function GeneratePage() {
                               <div>
                                 <div className="flex items-center justify-between mb-2">
                                   <p className="text-xs font-bold uppercase tracking-wide text-[#6B7280]">
-                                    🧩 Puzzle — The Catch
+                                    🧩 Puzzle — Problem of the Day
                                   </p>
                                   <button
                                     onClick={() => setEditPuzzle({ ...details.puzzle })}

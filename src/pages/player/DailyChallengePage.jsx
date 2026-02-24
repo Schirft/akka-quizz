@@ -8,7 +8,7 @@ import { ArrowLeft, Loader2, CheckCircle, Puzzle, BookOpen } from 'lucide-react'
 /**
  * DailyChallengePage — orchestrates the daily flow:
  *   1. 3 QCM quiz questions (themed pack)
- *   2. Puzzle ("The Catch")
+ *   2. Puzzle ("Problem of the Day")
  *   3. Celebration screen
  *   4. Lesson of the Day
  *
@@ -225,9 +225,9 @@ export default function DailyChallengePage() {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center px-6">
         <Puzzle size={48} className="text-purple-500 mb-4" />
-        <h2 className="text-xl font-bold text-[#1A1A1A] mb-2">The Catch</h2>
+        <h2 className="text-xl font-bold text-[#1A1A1A] mb-2">{t('the_catch')}</h2>
         <p className="text-sm text-[#6B7280] mb-6 text-center">
-          Time for today's puzzle challenge!
+          {t('the_catch_subtitle')}
         </p>
         <button
           onClick={() => navigate('/puzzle', { state: { puzzleId: dailyQuiz.puzzle_id, onDone: 'challenge' } })}

@@ -144,16 +144,30 @@ function buildQCMPrompt(theme: string, difficulty: string): string {
 Theme: ${theme}
 Difficulty: ${difficulty}
 
-Create 3 multiple-choice questions about ${theme} in startup investing:
-- Question 1: Easy — general knowledge, culture, famous examples
-- Question 2: Medium — analytical thinking, understanding concepts
-- Question 3: Hard — scenario-based, requires deep understanding
+Create 3 multiple-choice questions about ${theme} in startup investing.
+Our audience ranges from complete beginners to experienced investors.
+
+DIFFICULTY GUIDELINES (follow strictly):
+- Question 1: EASY — Accessible to anyone with zero finance knowledge.
+  Use simple everyday language. No jargon, no acronyms.
+  Think: "What does X mean?" or "Which famous company did Y?"
+  Example level: "What does IPO stand for?" or "Who founded Tesla?"
+
+- Question 2: MEDIUM — Requires understanding a concept but no calculation.
+  Can use common investing terms (explain if specialized).
+  Think: "Why is X important?" or "What happens when Y?"
+  Example level: "Why do VCs prefer convertible notes for early-stage deals?"
+
+- Question 3: HARD — Scenario-based, analytical, combines multiple concepts.
+  Can use technical terms. Requires reasoning, not just recall.
+  Think: "Given this situation, what's the best strategy?"
+  Example level: "A startup has 18 months runway but 40% monthly growth. Should they raise now or wait?"
 
 For EACH question provide:
-- question: the question text
-- answers: array of 4 possible answers
+- question: the question text (clear, concise, one sentence)
+- answers: array of 4 possible answers (max 8-10 words each)
 - correct_answer_index: 0-3
-- explanation: why the correct answer is right (100-200 words)
+- explanation: why the correct answer is right (100-200 words, educational tone)
 - category: subcategory within the theme
 
 Return ONLY valid JSON:

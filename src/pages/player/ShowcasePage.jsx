@@ -481,7 +481,7 @@ export default function ShowcasePage() {
     return (
       <div className="min-h-screen bg-[#E5E7EB]">
         <div className="max-w-md mx-auto min-h-screen shadow-xl bg-akka-bg flex flex-col pb-24">
-          <ShowcaseHeader onBack={backToGrid} muted={muted} onToggleMute={handleToggleMute} title="The Catch" />
+          <ShowcaseHeader onBack={backToGrid} muted={muted} onToggleMute={handleToggleMute} title={txt('Problem of the Day', 'Problème du Jour')} />
           <div className="flex-1 px-4 pt-4">
             <PuzzleRenderer puzzle={puzzleData} onAnswer={handlePuzzleAnswer} lang={lang} />
           </div>

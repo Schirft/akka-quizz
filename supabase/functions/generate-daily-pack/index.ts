@@ -3,7 +3,7 @@
  *
  * Generates a complete daily challenge pack:
  *   - 3 QCM questions (easy/medium/hard)
- *   - 1 Puzzle "The Catch"
+ *   - 1 Puzzle "Problem of the Day"
  *   - 1 Lesson of the Day
  *   - Translations in FR/IT/ES
  *
@@ -75,16 +75,19 @@ function buildQCMPrompt(theme: string, difficulty: string): string {
 Theme: ${theme}
 Difficulty: ${difficulty}
 
-Create 3 multiple-choice questions about ${theme} in startup investing:
-- Question 1: Easy — general knowledge, culture, famous examples
-- Question 2: Medium — analytical thinking, understanding concepts
-- Question 3: Hard — scenario-based, requires deep understanding
+Create 3 multiple-choice questions about ${theme} in startup investing.
+Our audience ranges from complete beginners to experienced investors.
+
+DIFFICULTY GUIDELINES:
+- Question 1: EASY — Accessible to anyone with zero finance knowledge. No jargon, no acronyms. Simple everyday language.
+- Question 2: MEDIUM — Requires understanding a concept. Can use common investing terms.
+- Question 3: HARD — Scenario-based, analytical. Requires reasoning and combining multiple concepts.
 
 For EACH question provide:
-- question: the question text
-- answers: array of 4 possible answers
+- question: the question text (clear, concise)
+- answers: array of 4 possible answers (max 8-10 words each)
 - correct_answer_index: 0-3
-- explanation: why the correct answer is right (100-200 words)
+- explanation: why the correct answer is right (100-200 words, educational)
 - category: subcategory within the theme
 
 Return ONLY valid JSON:
@@ -102,7 +105,7 @@ Return ONLY valid JSON:
 }
 
 function buildPuzzlePrompt(theme: string, difficulty: string): string {
-  return `You are creating an investment analysis puzzle for "The Catch" — a daily game where startup investors must solve a visual puzzle about real-looking startup data.
+  return `You are creating an investment analysis puzzle for "Problem of the Day" — a daily game where startup investors must solve a visual puzzle about real-looking startup data.
 
 Theme: ${theme}
 Difficulty: ${difficulty}
@@ -172,7 +175,14 @@ IMPORTANT:
 - Every clickable/interactive element MUST have a unique "id" field
 - The puzzle must be solvable — there is exactly ONE correct answer
 - The explanation should teach a real investment concept
-- Vary the mechanics — don't always use tap_to_spot`;
+- Vary the mechanics — don't always use tap_to_spot
+
+TRANSLATION-READINESS (all text will be auto-translated to FR/IT/ES):
+- Use clear, natural English for ALL labels, descriptions, questions, and text values
+- Avoid abbreviations or culture-specific idioms in labels (write "Monthly Recurring Revenue" not just "MRR")
+- Use complete sentences for hint and explanation
+- Keep financial terms internationally recognized (Revenue, Valuation, Equity, Runway)
+- For email content: write in clear, professional English paragraphs`;
 }
 
 function buildLessonPrompt(theme: string, puzzleTitle: string, answer: string, explanation: string): string {
@@ -426,7 +436,7 @@ async function generateOnePack(theme: string, difficulty: string) {
       difficulty: difficulty,
       puzzle_type: puzzleData.puzzle_type || theme.toLowerCase().replace(/ /g, "_"),
       interaction_type: puzzleData.interaction_type || "tap_to_spot",
-      title: puzzleData.title || "The Catch",
+      title: puzzleData.title || "Problem of the Day",
       title_fr: fr["puzzle_title"] || "",
       title_it: it["puzzle_title"] || "",
       title_es: es["puzzle_title"] || "",

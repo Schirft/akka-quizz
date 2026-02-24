@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useLang } from '../../hooks/useLang'
-import { Newspaper, Clock, ChevronRight, Loader2 } from 'lucide-react'
+import { Newspaper, Clock, ChevronRight, Loader2, Flame } from 'lucide-react'
 
-const CATEGORIES = ['startup', 'vc', 'fintech', 'ai', 'crypto', 'markets']
+const CATEGORIES = ['top_news', 'startup', 'vc', 'fintech', 'ai', 'crypto', 'markets']
 
 const CATEGORY_GRADIENTS = {
   startup: 'from-emerald-600 to-teal-700',
@@ -51,13 +51,15 @@ export default function NewsPage() {
       try {
         let query = supabase
           .from('news_articles')
-          .select('*, title_en, title_fr, title_it, title_es, summary_en, summary_fr, summary_it, summary_es, hidden_langs')
+          .select('*, title_en, title_fr, title_it, title_es, summary_en, summary_fr, summary_it, summary_es, hidden_langs, is_top_news')
           .eq('is_active', true)
           .eq('is_published', true)
           .order('published_at', { ascending: false })
           .limit(50)
 
-        if (activeCategory && activeCategory !== 'all') {
+        if (activeCategory === 'top_news') {
+          query = query.eq('is_top_news', true)
+        } else if (activeCategory && activeCategory !== 'all') {
           query = query.eq('category', activeCategory)
         }
 
@@ -97,7 +99,9 @@ export default function NewsPage() {
 
   const filtered = activeCategory === 'all'
     ? articles
-    : articles.filter((a) => a.category === activeCategory)
+    : activeCategory === 'top_news'
+      ? articles.filter((a) => a.is_top_news)
+      : articles.filter((a) => a.category === activeCategory)
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#0B1A14] to-[#132A1F]">
@@ -186,13 +190,17 @@ export default function NewsPage() {
                 <button
                   key={cat}
                   onClick={() => setActiveCategory(cat)}
-                  className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold capitalize transition-all ${
+                  className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
                     activeCategory === cat
-                      ? 'bg-[#2ECC71] text-white'
+                      ? cat === 'top_news' ? 'bg-orange-500 text-white' : 'bg-[#2ECC71] text-white'
                       : 'bg-white/8 text-white/50 hover:bg-white/12'
                   }`}
                 >
-                  {cat}
+                  {cat === 'top_news' ? (
+                    <span className="flex items-center gap-1"><Flame size={12} /> Top News</span>
+                  ) : (
+                    <span className="capitalize">{cat}</span>
+                  )}
                 </button>
               ))}
             </div>
@@ -226,11 +234,18 @@ export default function NewsPage() {
                   {/* Text */}
                   <div className="flex-1 min-w-0 flex flex-col justify-between">
                     <div>
-                      {article.category && (
-                        <span className="text-[10px] font-semibold text-[#2ECC71] uppercase tracking-wider">
-                          {article.category}
-                        </span>
-                      )}
+                      <div className="flex items-center gap-1.5">
+                        {article.category && (
+                          <span className="text-[10px] font-semibold text-[#2ECC71] uppercase tracking-wider">
+                            {article.category}
+                          </span>
+                        )}
+                        {article.is_top_news && (
+                          <span className="flex items-center gap-0.5 text-[10px] font-bold text-orange-400">
+                            <Flame size={10} /> Top
+                          </span>
+                        )}
+                      </div>
                       <h3 className="text-sm font-semibold text-white leading-tight line-clamp-2 mt-0.5">
                         {getLocalizedTitle(article, lang)}
                       </h3>

@@ -17,10 +17,10 @@ TAXONOMY — 5 MACRO CATEGORIES:
 4. Trends & Tech — Emerging technologies, macro threats, sector risks
 5. Startups vs. Other Asset Classes — Comparative investing, VC vs PE, returns
 
-DIFFICULTY LEVELS:
-- Easy: Definition-based, straightforward recall
-- Medium: Requires understanding concepts and implications
-- Hard: Scenario-based, analytical thinking, combining multiple concepts
+DIFFICULTY LEVELS (follow strictly):
+- Easy: Accessible to anyone with zero finance knowledge. Simple language, no jargon, no acronyms. Think: "What does X mean?" or "Which famous company did Y?"
+- Medium: Requires understanding a concept. Can use common investing terms. Think: "Why is X important?" or "What happens when Y?"
+- Hard: Scenario-based, analytical, combines multiple concepts. Requires reasoning, not just recall. Think: "Given this situation, what's the best strategy?"
 
 OUTPUT FORMAT:
 Return ONLY a valid JSON array. No markdown, no backticks, no preamble. Each object:
@@ -38,12 +38,34 @@ Return ONLY a valid JSON array. No markdown, no backticks, no preamble. Each obj
 QUALITY RULES:
 1. No trivial questions — even "easy" should teach something
 2. All 4 answers must be plausible — no joke answers
-3. Explanations must be educational — 2-3 sentences with real context
-4. Use real examples — real startups, real VCs, real events
-5. Vary question formats
-6. correct_answer_index is 1-based (1, 2, 3, or 4)
-7. Each question is self-contained
+3. ANSWERS MUST BE SHORT — maximum 8-10 words per answer option. Use concise phrases, not full sentences.
+4. Explanations must be educational — 2-3 sentences with real context
+5. Use real examples — real startups, real VCs, real events
+6. Vary question formats
+7. correct_answer_index is 1-based (1, 2, 3, or 4)
+8. Each question is self-contained
 CRITICAL: Generate EXACTLY the number of questions requested. Not more, not less.`
+
+export const PACK_DEFAULT_PROMPT = `You are creating quiz questions for AKKA, a European startup investment club.
+
+Theme: {theme}
+Difficulty: {difficulty}
+
+Create 3 multiple-choice questions about {theme} in startup investing:
+- Question 1: Easy — accessible to beginners, no jargon, simple recall
+- Question 2: Medium — understanding concepts, common investing terms
+- Question 3: Hard — scenario-based, analytical, combines multiple concepts
+
+For EACH question provide:
+- question: the question text
+- answers: array of 4 possible answers
+- correct_answer_index: 0-3
+- explanation: why the correct answer is right (100-200 words)
+- category: subcategory within the theme
+
++ 1 Puzzle ("Problem of the Day") — visual investment analysis puzzle
++ 1 Lesson of the Day — educational summary of the theme
++ Auto-translations to FR/IT/ES`
 
 /**
  * Build the user prompt for Step 1 — EN-only generation.

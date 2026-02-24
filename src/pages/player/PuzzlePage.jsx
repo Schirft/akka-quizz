@@ -15,7 +15,7 @@ export default function PuzzlePage() {
   const navigate = useNavigate()
   const location = useLocation()
   const { user } = useAuth()
-  const { lang } = useLang()
+  const { lang, t } = useLang()
 
   const puzzleId = location.state?.puzzleId
   const fromChallenge = location.state?.onDone === 'challenge'
@@ -111,7 +111,7 @@ export default function PuzzlePage() {
             <ArrowLeft size={20} className="text-[#6B7280]" />
           </button>
           <div>
-            <p className="text-xs uppercase tracking-wider text-purple-600 font-bold">The Catch</p>
+            <p className="text-xs uppercase tracking-wider text-purple-600 font-bold">{t('the_catch')}</p>
             <p className="text-[10px] text-[#6B7280]">{puzzle.theme}</p>
           </div>
         </div>

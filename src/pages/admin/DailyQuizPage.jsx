@@ -38,6 +38,8 @@ export default function DailyQuizPage() {
   const [unassignedPacks, setUnassignedPacks] = useState([])
   const [showPackPicker, setShowPackPicker] = useState(null) // date string
   const [autoFillWithPacks, setAutoFillWithPacks] = useState(false)
+  const [showAutoFillModal, setShowAutoFillModal] = useState(false)
+  const [autoFillDuration, setAutoFillDuration] = useState('1_week')
 
   useEffect(() => {
     loadData()
@@ -114,13 +116,36 @@ export default function DailyQuizPage() {
   }
 
   /**
+   * Calculate empty dates for a duration period.
+   */
+  function getEmptyDatesForDuration(duration) {
+    const today = new Date()
+    const todayStr = today.toISOString().split('T')[0]
+    let endDate = new Date(today)
+    if (duration === '1_week') endDate.setDate(endDate.getDate() + 7)
+    else if (duration === '1_month') endDate.setMonth(endDate.getMonth() + 1)
+    else if (duration === '3_months') endDate.setMonth(endDate.getMonth() + 3)
+    const endStr = endDate.toISOString().split('T')[0]
+
+    // Generate all dates in range
+    const allDates = []
+    const cursor = new Date(today)
+    while (cursor <= endDate) {
+      allDates.push(cursor.toISOString().split('T')[0])
+      cursor.setDate(cursor.getDate() + 1)
+    }
+    return allDates.filter(d => d >= todayStr && !packsMap[d])
+  }
+
+  const missingCount = getEmptyDatesForDuration(autoFillDuration).length
+
+  /**
    * Auto-fill empty dates with unassigned packs.
    */
   async function autoFillPacks() {
     setAutoFillWithPacks(true)
     try {
-      const today = new Date().toISOString().split('T')[0]
-      const emptyDates = days.filter(d => d >= today && !packsMap[d])
+      const emptyDates = getEmptyDatesForDuration(autoFillDuration)
       const { data: available } = await supabase
         .from('daily_packs')
         .select('id')
@@ -131,6 +156,7 @@ export default function DailyQuizPage() {
 
       if (!available || available.length === 0) {
         setAutoFillWithPacks(false)
+        setShowAutoFillModal(false)
         return
       }
 
@@ -141,6 +167,7 @@ export default function DailyQuizPage() {
           .eq('id', available[i].id)
       }
       await loadData()
+      setShowAutoFillModal(false)
     } catch (err) {
       console.error('Auto-fill packs error:', err)
     } finally {
@@ -167,7 +194,7 @@ export default function DailyQuizPage() {
           </p>
         </div>
         <button
-          onClick={autoFillPacks}
+          onClick={() => setShowAutoFillModal(true)}
           disabled={autoFillWithPacks || unassignedPacks.length === 0}
           className="flex items-center gap-2 px-4 py-2 bg-[#1B3D2F] text-white text-sm font-semibold rounded-xl hover:opacity-90 disabled:opacity-50 transition-opacity shrink-0"
         >
@@ -307,6 +334,81 @@ export default function DailyQuizPage() {
           )
         })}
       </div>
+
+      {/* Auto-fill Modal */}
+      {showAutoFillModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-[#D1D5DB]">
+              <h2 className="text-lg font-bold text-[#1A1A1A]">Auto-fill Packs</h2>
+              <button onClick={() => setShowAutoFillModal(false)} className="text-[#6B7280] hover:text-[#1A1A1A]">
+                <XCircle size={20} />
+              </button>
+            </div>
+            <div className="px-6 py-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280] mb-3">Duration</p>
+              <div className="flex gap-2 mb-4">
+                {[
+                  { key: '1_week', label: '1 week' },
+                  { key: '1_month', label: '1 month' },
+                  { key: '3_months', label: '3 months' },
+                ].map(opt => (
+                  <button
+                    key={opt.key}
+                    onClick={() => setAutoFillDuration(opt.key)}
+                    className={`flex-1 px-3 py-2 rounded-xl text-sm font-semibold transition-all ${
+                      autoFillDuration === opt.key
+                        ? 'bg-[#1B3D2F] text-white'
+                        : 'bg-gray-100 text-[#6B7280] hover:bg-gray-200'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Missing packs info */}
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 mb-4">
+                <p className="text-sm font-semibold text-amber-800">
+                  {missingCount} days without packs
+                </p>
+                <p className="text-xs text-amber-600 mt-1">
+                  {unassignedPacks.length} packs available to assign
+                </p>
+                {missingCount > unassignedPacks.length && (
+                  <p className="text-xs text-red-600 font-semibold mt-1">
+                    ⚠️ Not enough packs! Generate {missingCount - unassignedPacks.length} more.
+                  </p>
+                )}
+              </div>
+
+              {/* Link to generator */}
+              <a
+                href="/admin/generate"
+                className="flex items-center justify-center gap-2 w-full px-4 py-2.5 mb-4 border-2 border-dashed border-[#2ECC71] rounded-xl text-sm font-semibold text-[#2ECC71] hover:bg-emerald-50 transition-colors"
+              >
+                🤖 Go to AI Generator
+              </a>
+            </div>
+            <div className="flex items-center gap-2 px-6 py-4 border-t border-[#D1D5DB]">
+              <button
+                onClick={() => setShowAutoFillModal(false)}
+                className="flex-1 px-4 py-2 text-sm text-[#6B7280] font-medium hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={autoFillPacks}
+                disabled={autoFillWithPacks || unassignedPacks.length === 0}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-[#1B3D2F] text-white text-sm font-semibold rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity"
+              >
+                {autoFillWithPacks ? <Loader2 size={14} className="animate-spin" /> : <Package size={14} />}
+                Fill {Math.min(missingCount, unassignedPacks.length)} days
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Pack Picker Modal */}
       {showPackPicker && (

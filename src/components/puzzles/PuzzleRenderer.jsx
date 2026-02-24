@@ -29,7 +29,7 @@ export default function PuzzleRenderer({ puzzle, onAnswer, lang = 'en' }) {
     );
   }
 
-  const langTitle = puzzle[`title_${lang}`] || puzzle.title || 'The Catch';
+  const langTitle = puzzle[`title_${lang}`] || puzzle.title || 'Problem of the Day';
   const langHint = puzzle[`hint_${lang}`] || puzzle.hint || '';
 
   // Use translated context_data if available AND non-empty for the current language

@@ -759,12 +759,68 @@ CATEGORY DEFINITIONS:
       await sleep(500);
     }
 
+    // ─── STEP 4: Auto-select Top News ──────────────────────────────────
+    // After summarizing, pick the 3-4 most important articles from today and mark as top_news
+    let topNewsCount = 0;
+    try {
+      if (Date.now() - startTime < MAX_WALL_CLOCK_MS - 10000) {
+        // Reset today's top news first
+        await supabase
+          .from("news_articles")
+          .update({ is_top_news: false })
+          .eq("is_top_news", true)
+          .gte("published_at", todayStart.toISOString());
+
+        // Get all published articles from today
+        const { data: todaysArticles } = await supabase
+          .from("news_articles")
+          .select("id, title, category, summary_en")
+          .eq("is_published", true)
+          .gte("published_at", todayStart.toISOString())
+          .order("published_at", { ascending: false })
+          .limit(20);
+
+        if (todaysArticles && todaysArticles.length >= 3) {
+          const topNewsPrompt = `You are selecting the TOP 3-4 most important news stories for startup investors today.
+
+Pick articles that:
+- Have the highest impact on the startup/investment ecosystem
+- Cover major events (big funding rounds, IPOs, market shifts, policy changes)
+- Would be "must-read" for a busy investor
+
+From these articles, return ONLY a JSON array of the selected article IDs.
+Example: ["id1", "id2", "id3"]
+
+Articles:
+${todaysArticles.map(a => `ID: ${a.id}\nTitle: ${a.title}\nCategory: ${a.category}\nSummary: ${(a.summary_en || "").slice(0, 150)}\n`).join("\n")}
+
+Return ONLY the JSON array of 3-4 IDs. No explanation.`;
+
+          const topResult = await callClaudeWithRetry("Select top news articles.", topNewsPrompt, 500);
+          const topIds = JSON.parse(topResult.match(/\[[\s\S]*?\]/)?.[0] || "[]");
+
+          if (topIds.length > 0) {
+            const { error: topErr } = await supabase
+              .from("news_articles")
+              .update({ is_top_news: true })
+              .in("id", topIds.slice(0, 4));
+
+            if (!topErr) topNewsCount = Math.min(topIds.length, 4);
+            console.log(`[TopNews] Marked ${topNewsCount} articles as top news`);
+          }
+        }
+      }
+    } catch (topErr) {
+      console.error("[TopNews] Auto-selection failed (non-fatal):", (topErr as Error).message);
+    }
+
     return new Response(JSON.stringify({
       success: true,
       mode: "auto",
       analyzed: articles.length,
       selected: selectedArticles.length,
       summarized,
+      top_news_selected: topNewsCount,
       results,
     }), {
       headers: { "Content-Type": "application/json", ...corsHeaders },
@@ -816,14 +872,25 @@ CATEGORY DEFINITIONS (choose the BEST match):
 - crypto: Cryptocurrency, blockchain, web3, bitcoin, DeFi, NFTs
 - markets: Macro-economics, stock markets, IPOs, interest rates, central banks (Fed, ECB), indices (S&P, NASDAQ, CAC40), recessions, M&A of large public companies
 
-WRITING STYLE:
-- Professional but engaging, like talking to a smart investor friend
-- Start with the key fact, then add context
-- Include specific numbers (amounts raised, valuations, percentages)
-- Why it matters perspective for investors
-- End with a reflective question for investors
-- Summary MUST be 250-350 words. Not shorter. Not much longer.
-- Structure: 1) Key fact 2) Context 3) Market impact 4) Why it matters 5) Thought-provoking question
+STRUCTURED FORMAT — use these tags:
+- Start with [KEY_FACT] — one paragraph with the core news fact (who, what, how much)
+- Then 2-3 regular paragraphs with context, analysis, and market impact
+- End with [TAKEAWAY] — one paragraph with investor insight + thought-provoking question
+- Use **bold** for key numbers, company names, and important terms
+
+EXAMPLE STRUCTURE:
+[KEY_FACT] **Stripe** has raised **$6.5B** at a **$50B valuation** in what marks the largest private funding round of 2024...
+
+Context paragraph here with industry analysis...
+
+Market impact paragraph with comparison to competitors...
+
+[TAKEAWAY] For investors, this signals that **late-stage fintech** remains attractive despite the broader downturn. The question is: will Stripe's IPO finally happen in 2025?
+
+RULES:
+- Summary MUST be 200-300 words (shorter than before — readers skim on mobile)
+- Professional but engaging tone
+- Include specific numbers (amounts, valuations, percentages)
 - DO NOT just repeat the article. Add analytical value.
 
 Return ONLY the JSON object, no markdown, no code blocks.`;
