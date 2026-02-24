@@ -292,6 +292,13 @@ export default function DailyQuizPage() {
                           <Package size={14} className="text-emerald-600" />
                           <span className="text-sm font-semibold text-emerald-800">{pack.theme}</span>
                           <span className="text-xs text-emerald-600 capitalize">{pack.difficulty}</span>
+                          {pack.created_at && (
+                            <span className="text-[10px] text-emerald-500">
+                              {new Date(pack.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
+                              {' '}
+                              {new Date(pack.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          )}
                         </div>
                         <button
                           onClick={() => unassignPack(date)}
@@ -461,6 +468,7 @@ export default function DailyQuizPage() {
                       {p.difficulty} — {p.question_ids?.length || 0} questions
                       {p.puzzle_id && ' + puzzle'}
                       {p.lesson_id && ' + lesson'}
+                      {p.created_at && ` · ${new Date(p.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`}
                     </p>
                   </div>
                 </div>

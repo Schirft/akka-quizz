@@ -30,7 +30,7 @@ function corsHeaders() {
   };
 }
 
-async function callClaude(prompt: string, maxTokens = 4096): Promise<string> {
+async function callClaudeOnce(prompt: string, maxTokens = 4096): Promise<string> {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -52,6 +52,25 @@ async function callClaude(prompt: string, maxTokens = 4096): Promise<string> {
 
   const data = await res.json();
   return data.content?.[0]?.text || "";
+}
+
+async function callClaude(prompt: string, maxTokens = 4096, retries = 3): Promise<string> {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      return await callClaudeOnce(prompt, maxTokens);
+    } catch (err: any) {
+      const msg = err.message || "";
+      const isRetryable = msg.includes("529") || msg.includes("500") || msg.includes("overloaded") || msg.includes("rate");
+      if (isRetryable && attempt < retries) {
+        const delay = Math.min(attempt * 8000, 30000);
+        console.log(`[Retry] Attempt ${attempt}/${retries} failed, waiting ${delay}ms...`);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error("All retry attempts failed");
 }
 
 function extractJSON(text: string): any {
@@ -78,16 +97,36 @@ Difficulty: ${difficulty}
 Create 3 multiple-choice questions about ${theme} in startup investing.
 Our audience ranges from complete beginners to experienced investors.
 
-DIFFICULTY GUIDELINES:
-- Question 1: EASY — Accessible to anyone with zero finance knowledge. No jargon, no acronyms. Simple everyday language.
-- Question 2: MEDIUM — Requires understanding a concept. Can use common investing terms.
-- Question 3: HARD — Scenario-based, analytical. Requires reasoning and combining multiple concepts.
+DIFFICULTY GUIDELINES (follow strictly):
+- Question 1: EASY — Accessible to anyone with zero finance knowledge.
+  Use simple everyday language. No jargon, no acronyms.
+  Think: "What does X mean?" or "Which famous company did Y?"
+  Example level: "What does IPO stand for?" or "Who founded Tesla?"
+
+- Question 2: MEDIUM — Requires understanding a concept but no calculation.
+  Can use common investing terms (explain if specialized).
+  Think: "Why is X important?" or "What happens when Y?"
+  Example level: "Why do VCs prefer convertible notes for early-stage deals?"
+
+- Question 3: HARD — Scenario-based, analytical, combines multiple concepts.
+  Can use technical terms. Requires reasoning, not just recall.
+  Think: "Given this situation, what's the best strategy?"
+  Example level: "A startup has 18 months runway but 40% monthly growth. Should they raise now or wait?"
+
+CRITICAL ANSWER LENGTH RULE:
+Each answer option MUST be SHORT — maximum 20 words, ideally under 10 words.
+Answers are displayed on mobile phones in small buttons.
+NEVER write long sentence answers. Use short phrases, names, numbers, or brief concepts.
+BAD: "The process by which a company offers its shares to the public for the first time on a stock exchange"
+GOOD: "Initial Public Offering (IPO)"
+BAD: "They provide both capital and strategic guidance to help startups grow and succeed"
+GOOD: "Capital + strategic guidance"
 
 For EACH question provide:
-- question: the question text (clear, concise)
-- answers: array of 4 possible answers (max 8-10 words each)
+- question: the question text (clear, concise, one sentence)
+- answers: array of 4 possible answers (MAXIMUM 20 words each, ideally under 10)
 - correct_answer_index: 0-3
-- explanation: why the correct answer is right (100-200 words, educational)
+- explanation: why the correct answer is right (100-200 words, educational tone)
 - category: subcategory within the theme
 
 Return ONLY valid JSON:
@@ -95,7 +134,7 @@ Return ONLY valid JSON:
   "questions": [
     {
       "question": "...",
-      "answers": ["A", "B", "C", "D"],
+      "answers": ["Short A", "Short B", "Short C", "Short D"],
       "correct_answer_index": 0,
       "explanation": "...",
       "category": "..."

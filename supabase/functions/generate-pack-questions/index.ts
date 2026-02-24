@@ -163,9 +163,18 @@ DIFFICULTY GUIDELINES (follow strictly):
   Think: "Given this situation, what's the best strategy?"
   Example level: "A startup has 18 months runway but 40% monthly growth. Should they raise now or wait?"
 
+CRITICAL ANSWER LENGTH RULE:
+Each answer option MUST be SHORT — maximum 20 words, ideally under 10 words.
+Answers are displayed on mobile phones in small buttons.
+NEVER write long sentence answers. Use short phrases, names, numbers, or brief concepts.
+BAD: "The process by which a company offers its shares to the public for the first time on a stock exchange"
+GOOD: "Initial Public Offering (IPO)"
+BAD: "They provide both capital and strategic guidance to help startups grow and succeed"
+GOOD: "Capital + strategic guidance"
+
 For EACH question provide:
 - question: the question text (clear, concise, one sentence)
-- answers: array of 4 possible answers (max 8-10 words each)
+- answers: array of 4 possible answers (MAXIMUM 20 words each, ideally under 10)
 - correct_answer_index: 0-3
 - explanation: why the correct answer is right (100-200 words, educational tone)
 - category: subcategory within the theme
@@ -175,7 +184,7 @@ Return ONLY valid JSON:
   "questions": [
     {
       "question": "...",
-      "answers": ["A", "B", "C", "D"],
+      "answers": ["Short A", "Short B", "Short C", "Short D"],
       "correct_answer_index": 0,
       "explanation": "...",
       "category": "..."

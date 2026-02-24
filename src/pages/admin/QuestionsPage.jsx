@@ -85,6 +85,9 @@ export default function QuestionsPage() {
   const [showPacks, setShowPacks] = useState(false)
   const [editPuzzle, setEditPuzzle] = useState(null)
   const [editLesson, setEditLesson] = useState(null)
+  // Pack multi-select
+  const [packSelectionMode, setPackSelectionMode] = useState(false)
+  const [selectedPackIds, setSelectedPackIds] = useState(new Set())
 
   // Debounce search
   const searchTimeoutRef = useRef(null)
@@ -425,8 +428,13 @@ export default function QuestionsPage() {
     }
   }
 
-  // Load packs on mount
+  // Load packs on mount + auto-refresh when page becomes visible (e.g. after pack generation finishes on another tab)
   useEffect(() => { loadPacks() }, [])
+  useEffect(() => {
+    const onFocus = () => loadPacks()
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [])
 
   // C5: Load pack details (questions + puzzle + lesson) when expanding
   async function loadPackDetails(pack) {
@@ -491,11 +499,47 @@ export default function QuestionsPage() {
   async function handleDeletePack(packId) {
     if (!window.confirm('Delete this pack? This cannot be undone.')) return
     try {
+      const { data: pack } = await supabase.from('daily_packs').select('question_ids, puzzle_id, lesson_id').eq('id', packId).single()
+      if (pack) {
+        if (pack.question_ids?.length > 0) await supabase.from('questions').delete().in('id', pack.question_ids)
+        if (pack.puzzle_id) await supabase.from('puzzles').delete().eq('id', pack.puzzle_id)
+        if (pack.lesson_id) await supabase.from('daily_lessons').delete().eq('id', pack.lesson_id)
+      }
       await supabase.from('daily_packs').delete().eq('id', packId)
       setPacks(prev => prev.filter(p => p.id !== packId))
       setExpandedPack(null)
       setPackDetails(prev => { const n = { ...prev }; delete n[packId]; return n })
     } catch (err) { console.error('Delete pack error:', err) }
+  }
+
+  // B2: Multi-delete packs
+  async function handleDeleteSelectedPacks() {
+    if (selectedPackIds.size === 0) return
+    if (!window.confirm(`Delete ${selectedPackIds.size} pack(s) and all their questions, puzzles and lessons? This cannot be undone.`)) return
+    try {
+      for (const packId of selectedPackIds) {
+        const { data: pack } = await supabase.from('daily_packs').select('question_ids, puzzle_id, lesson_id').eq('id', packId).single()
+        if (pack) {
+          if (pack.question_ids?.length > 0) await supabase.from('questions').delete().in('id', pack.question_ids)
+          if (pack.puzzle_id) await supabase.from('puzzles').delete().eq('id', pack.puzzle_id)
+          if (pack.lesson_id) await supabase.from('daily_lessons').delete().eq('id', pack.lesson_id)
+          await supabase.from('daily_packs').delete().eq('id', packId)
+        }
+      }
+      setPacks(prev => prev.filter(p => !selectedPackIds.has(p.id)))
+      setSelectedPackIds(new Set())
+      setPackSelectionMode(false)
+      setExpandedPack(null)
+    } catch (err) { console.error('Multi-delete packs error:', err) }
+  }
+
+  function togglePackSelection(packId) {
+    setSelectedPackIds(prev => {
+      const next = new Set(prev)
+      if (next.has(packId)) next.delete(packId)
+      else next.add(packId)
+      return next
+    })
   }
 
   // B2: Save puzzle edits
@@ -728,6 +772,15 @@ export default function QuestionsPage() {
                 className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors"
               >
                 <div className="flex items-center gap-3 min-w-0">
+                  {packSelectionMode && (
+                    <input
+                      type="checkbox"
+                      checked={selectedPackIds.has(pack.id)}
+                      onChange={(e) => { e.stopPropagation(); togglePackSelection(pack.id) }}
+                      onClick={(e) => e.stopPropagation()}
+                      className="rounded shrink-0"
+                    />
+                  )}
                   <Package size={14} className="text-[#2ECC71] shrink-0" />
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-[#1A1A1A] truncate">
@@ -738,6 +791,7 @@ export default function QuestionsPage() {
                       {pack.puzzle_id ? ' + puzzle' : ''}
                       {pack.lesson_id ? ' + lesson' : ''}
                       {pack.assigned_date ? ` — ${pack.assigned_date}` : ''}
+                      {pack.created_at ? ` · ${new Date(pack.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : ''}
                     </p>
                   </div>
                 </div>
@@ -950,13 +1004,46 @@ export default function QuestionsPage() {
 
         return (
           <>
+            {/* Pack multi-select bar */}
+            {packSelectionMode && (
+              <div className="flex items-center justify-between bg-red-50 px-4 py-2 rounded-xl mb-3">
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedPackIds.size === packs.length && packs.length > 0}
+                    onChange={() => {
+                      if (selectedPackIds.size === packs.length) setSelectedPackIds(new Set())
+                      else setSelectedPackIds(new Set(packs.map(p => p.id)))
+                    }}
+                    className="rounded"
+                  />
+                  <span className="text-sm font-medium text-red-800">{selectedPackIds.size} selected</span>
+                </label>
+                <button
+                  onClick={handleDeleteSelectedPacks}
+                  disabled={selectedPackIds.size === 0}
+                  className="text-sm text-red-600 font-semibold hover:text-red-800 disabled:opacity-40 transition-colors"
+                >
+                  Delete selected
+                </button>
+              </div>
+            )}
+
             {/* Today's Packs */}
             {todayPacks.length > 0 && (
               <Card className="mb-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <Package size={18} className="text-[#2ECC71]" />
-                  <span className="text-sm font-semibold text-[#1A1A1A]">Today's Packs</span>
-                  <span className="text-xs text-[#6B7280]">({todayPacks.length})</span>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Package size={18} className="text-[#2ECC71]" />
+                    <span className="text-sm font-semibold text-[#1A1A1A]">Today's Packs</span>
+                    <span className="text-xs text-[#6B7280]">({todayPacks.length})</span>
+                  </div>
+                  <button
+                    onClick={() => { setPackSelectionMode(!packSelectionMode); setSelectedPackIds(new Set()) }}
+                    className={`text-xs font-medium px-2 py-1 rounded-lg transition-colors ${packSelectionMode ? 'bg-red-50 text-red-600' : 'text-[#6B7280] hover:text-[#1A1A1A]'}`}
+                  >
+                    {packSelectionMode ? 'Cancel' : 'Select'}
+                  </button>
                 </div>
                 <div className="space-y-2">
                   {todayPacks.map(renderPackRow)}
@@ -966,11 +1053,11 @@ export default function QuestionsPage() {
 
             {/* All Packs */}
             <Card className="mb-4">
-              <button
-                onClick={() => setShowPacks(!showPacks)}
-                className="flex items-center justify-between w-full"
-              >
-                <div className="flex items-center gap-2">
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={() => setShowPacks(!showPacks)}
+                  className="flex items-center gap-2 flex-1"
+                >
                   <Package size={18} className="text-[#1B3D2F]" />
                   <span className="text-sm font-semibold text-[#1A1A1A]">
                     {todayPacks.length > 0 ? 'Past Packs' : 'All Packs'}
@@ -978,9 +1065,17 @@ export default function QuestionsPage() {
                   <span className="text-xs text-[#6B7280]">
                     ({(todayPacks.length > 0 ? pastPacks : packs).length})
                   </span>
-                </div>
-                {showPacks ? <ChevronUp size={16} className="text-[#6B7280]" /> : <ChevronDown size={16} className="text-[#6B7280]" />}
-              </button>
+                  {showPacks ? <ChevronUp size={16} className="text-[#6B7280]" /> : <ChevronDown size={16} className="text-[#6B7280]" />}
+                </button>
+                {todayPacks.length === 0 && (
+                  <button
+                    onClick={() => { setPackSelectionMode(!packSelectionMode); setSelectedPackIds(new Set()) }}
+                    className={`text-xs font-medium px-2 py-1 rounded-lg transition-colors ${packSelectionMode ? 'bg-red-50 text-red-600' : 'text-[#6B7280] hover:text-[#1A1A1A]'}`}
+                  >
+                    {packSelectionMode ? 'Cancel' : 'Select'}
+                  </button>
+                )}
+              </div>
 
               {showPacks && (
                 <div className="mt-4 space-y-2">

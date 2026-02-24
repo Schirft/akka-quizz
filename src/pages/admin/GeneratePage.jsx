@@ -211,10 +211,17 @@ export default function GeneratePage() {
     loadPrompt()
   }, [])
 
-  // F1: Load recent packs on mount
+  // F1: Load recent packs on mount + auto-refresh when generation finishes
   useEffect(() => {
     loadPacks()
   }, [])
+
+  // F1b: Auto-refresh packs list when pack generation finishes (fixes BUG where new packs don't appear)
+  useEffect(() => {
+    if (!packGenerating) {
+      loadPacks()
+    }
+  }, [packGenerating])
 
   async function loadPacks() {
     try {
