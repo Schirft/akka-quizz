@@ -446,7 +446,7 @@ export default function QuestionsPage() {
       if (pack.question_ids?.length > 0) {
         const { data: qs } = await supabase
           .from('questions')
-          .select('id, question_en, answers_en, correct_answer_index, question_fr, question_it, question_es, macro_category, difficulty, status')
+          .select('id, question_en, answers_en, correct_answer_index, explanation_en, question_fr, question_it, question_es, answers_fr, answers_it, answers_es, explanation_fr, explanation_it, explanation_es, macro_category, difficulty, status')
           .in('id', pack.question_ids)
         details.questions = qs || []
       }
@@ -852,6 +852,43 @@ export default function QuestionsPage() {
                                       </div>
                                     ))}
                                   </div>
+                                )}
+                                {/* Explanation */}
+                                {q.explanation_en && (
+                                  <details className="mt-1.5">
+                                    <summary className="text-[10px] text-blue-600 cursor-pointer font-medium">Explanation</summary>
+                                    <p className="text-[10px] text-gray-600 mt-1 bg-blue-50 rounded p-2 leading-relaxed">{q.explanation_en}</p>
+                                  </details>
+                                )}
+                                {/* Translations */}
+                                {(q.question_fr || q.question_it || q.question_es) && (
+                                  <details className="mt-1.5">
+                                    <summary className="text-[10px] text-indigo-600 cursor-pointer font-medium">
+                                      Translations {q.question_fr ? '\u{1F1EB}\u{1F1F7}' : ''}{q.question_it ? ' \u{1F1EE}\u{1F1F9}' : ''}{q.question_es ? ' \u{1F1EA}\u{1F1F8}' : ''}
+                                    </summary>
+                                    <div className="mt-1 space-y-2">
+                                      {[
+                                        { lang: 'FR', flag: '\u{1F1EB}\u{1F1F7}', q: q.question_fr, a: q.answers_fr, e: q.explanation_fr },
+                                        { lang: 'IT', flag: '\u{1F1EE}\u{1F1F9}', q: q.question_it, a: q.answers_it, e: q.explanation_it },
+                                        { lang: 'ES', flag: '\u{1F1EA}\u{1F1F8}', q: q.question_es, a: q.answers_es, e: q.explanation_es },
+                                      ].filter(t => t.q).map(t => (
+                                        <div key={t.lang} className="bg-indigo-50 rounded p-2 space-y-1">
+                                          <p className="text-[10px] font-semibold text-indigo-700">{t.flag} {t.lang}</p>
+                                          <p className="text-[10px] text-gray-800">{t.q}</p>
+                                          {t.a && Array.isArray(t.a) && (
+                                            <div className="grid grid-cols-2 gap-0.5">
+                                              {t.a.map((ans, ai) => (
+                                                <span key={ai} className={`text-[9px] px-1.5 py-0.5 rounded ${ai === (q.correct_answer_index - 1) ? 'bg-green-100 text-green-700 font-medium' : 'bg-white text-gray-500'}`}>
+                                                  {String.fromCharCode(65 + ai)}. {ans}
+                                                </span>
+                                              ))}
+                                            </div>
+                                          )}
+                                          {t.e && <p className="text-[9px] text-gray-500 line-clamp-2">{t.e}</p>}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </details>
                                 )}
                               </div>
                             ))}

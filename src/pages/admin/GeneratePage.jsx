@@ -248,7 +248,7 @@ export default function GeneratePage() {
       if (pack.question_ids?.length > 0) {
         const { data: qs } = await supabase
           .from('questions')
-          .select('id, question_en, answers_en, correct_answer_index, difficulty, question_fr, question_it, question_es')
+          .select('id, question_en, answers_en, correct_answer_index, explanation_en, difficulty, question_fr, question_it, question_es, answers_fr, answers_it, answers_es, explanation_fr, explanation_it, explanation_es')
           .in('id', pack.question_ids)
         details.questions = qs || []
       } else {
@@ -1315,19 +1315,56 @@ export default function GeneratePage() {
                                               }`}
                                             >
                                               {String.fromCharCode(65 + ai)}. {a}
-                                              {ai + 1 === q.correct_answer_index && ' ✓'}
+                                              {ai + 1 === q.correct_answer_index && ' \u2713'}
                                             </div>
                                           ))}
                                         </div>
+                                      )}
+                                      {/* Explanation */}
+                                      {q.explanation_en && (
+                                        <details className="mb-1.5">
+                                          <summary className="text-[10px] text-blue-600 cursor-pointer font-medium">Explanation</summary>
+                                          <p className="text-[10px] text-gray-600 mt-1 bg-blue-50 rounded p-2 leading-relaxed">{q.explanation_en}</p>
+                                        </details>
                                       )}
                                       <div className="flex items-center gap-2">
                                         <span className={`text-[10px] font-medium capitalize ${
                                           q.difficulty === 'hard' ? 'text-red-600' : q.difficulty === 'medium' ? 'text-amber-600' : 'text-green-600'
                                         }`}>{q.difficulty}</span>
                                         <span className="text-[10px] text-[#6B7280]">
-                                          🇬🇧{q.question_fr ? ' 🇫🇷' : ''}{q.question_it ? ' 🇮🇹' : ''}{q.question_es ? ' 🇪🇸' : ''}
+                                          {'\u{1F1EC}\u{1F1E7}'}{q.question_fr ? ' \u{1F1EB}\u{1F1F7}' : ''}{q.question_it ? ' \u{1F1EE}\u{1F1F9}' : ''}{q.question_es ? ' \u{1F1EA}\u{1F1F8}' : ''}
                                         </span>
                                       </div>
+                                      {/* Translations */}
+                                      {(q.question_fr || q.question_it || q.question_es) && (
+                                        <details className="mt-1.5">
+                                          <summary className="text-[10px] text-indigo-600 cursor-pointer font-medium">
+                                            Translations {q.question_fr ? '\u{1F1EB}\u{1F1F7}' : ''}{q.question_it ? ' \u{1F1EE}\u{1F1F9}' : ''}{q.question_es ? ' \u{1F1EA}\u{1F1F8}' : ''}
+                                          </summary>
+                                          <div className="mt-1 space-y-2">
+                                            {[
+                                              { lang: 'FR', flag: '\u{1F1EB}\u{1F1F7}', q: q.question_fr, a: q.answers_fr, e: q.explanation_fr },
+                                              { lang: 'IT', flag: '\u{1F1EE}\u{1F1F9}', q: q.question_it, a: q.answers_it, e: q.explanation_it },
+                                              { lang: 'ES', flag: '\u{1F1EA}\u{1F1F8}', q: q.question_es, a: q.answers_es, e: q.explanation_es },
+                                            ].filter(t => t.q).map(t => (
+                                              <div key={t.lang} className="bg-indigo-50 rounded p-2 space-y-1">
+                                                <p className="text-[10px] font-semibold text-indigo-700">{t.flag} {t.lang}</p>
+                                                <p className="text-[10px] text-gray-800">{t.q}</p>
+                                                {t.a && Array.isArray(t.a) && (
+                                                  <div className="grid grid-cols-2 gap-0.5">
+                                                    {t.a.map((ans, ai) => (
+                                                      <span key={ai} className={`text-[9px] px-1.5 py-0.5 rounded ${ai + 1 === q.correct_answer_index ? 'bg-green-100 text-green-700 font-medium' : 'bg-white text-gray-500'}`}>
+                                                        {String.fromCharCode(65 + ai)}. {ans}
+                                                      </span>
+                                                    ))}
+                                                  </div>
+                                                )}
+                                                {t.e && <p className="text-[9px] text-gray-500 line-clamp-2">{t.e}</p>}
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </details>
+                                      )}
                                     </div>
                                   ))}
                                 </div>
@@ -1363,20 +1400,37 @@ export default function GeneratePage() {
                                   <p className="text-xs text-[#6B7280]">
                                     <span className="font-semibold">Answer:</span> {details.puzzle.answer}
                                   </p>
+                                  {/* Puzzle explanation */}
+                                  {details.puzzle.explanation && (
+                                    <details className="mt-1.5">
+                                      <summary className="text-[10px] text-blue-600 cursor-pointer font-medium">Explanation</summary>
+                                      <p className="text-[10px] text-gray-600 mt-1 bg-blue-50 rounded p-2 leading-relaxed">{details.puzzle.explanation}</p>
+                                    </details>
+                                  )}
                                   {/* Puzzle translations */}
-                                  <div className="flex gap-2 mt-1.5">
-                                    {['fr', 'it', 'es'].map(lng => (
-                                      <span key={lng} className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                                        details.puzzle[`title_${lng}`] && details.puzzle[`context_data_${lng}`]
-                                          ? 'bg-green-100 text-green-700'
-                                          : details.puzzle[`title_${lng}`]
-                                            ? 'bg-amber-100 text-amber-700'
-                                            : 'bg-red-100 text-red-600'
-                                      }`}>
-                                        {lng.toUpperCase()} {details.puzzle[`context_data_${lng}`] ? '✓' : '✗'}
-                                      </span>
-                                    ))}
-                                  </div>
+                                  <details className="mt-1.5">
+                                    <summary className="text-[10px] text-indigo-600 cursor-pointer font-medium">
+                                      Translations {['fr', 'it', 'es'].map(lng => (
+                                        <span key={lng} className={`ml-1 px-1 py-0.5 rounded text-[9px] ${details.puzzle[`title_${lng}`] ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                                          {lng.toUpperCase()} {details.puzzle[`title_${lng}`] ? '\u2713' : '\u2717'}
+                                        </span>
+                                      ))}
+                                    </summary>
+                                    <div className="mt-1 space-y-2">
+                                      {[
+                                        { lang: 'FR', flag: '\u{1F1EB}\u{1F1F7}', title: details.puzzle.title_fr, hint: details.puzzle.hint_fr, expl: details.puzzle.explanation_fr },
+                                        { lang: 'IT', flag: '\u{1F1EE}\u{1F1F9}', title: details.puzzle.title_it, hint: details.puzzle.hint_it, expl: details.puzzle.explanation_it },
+                                        { lang: 'ES', flag: '\u{1F1EA}\u{1F1F8}', title: details.puzzle.title_es, hint: details.puzzle.hint_es, expl: details.puzzle.explanation_es },
+                                      ].filter(t => t.title).map(t => (
+                                        <div key={t.lang} className="bg-indigo-50 rounded p-2 space-y-0.5">
+                                          <p className="text-[10px] font-semibold text-indigo-700">{t.flag} {t.lang}</p>
+                                          <p className="text-[10px] text-gray-800 font-medium">{t.title}</p>
+                                          {t.hint && <p className="text-[9px] text-gray-500">Hint: {t.hint}</p>}
+                                          {t.expl && <p className="text-[9px] text-gray-500 line-clamp-2">{t.expl}</p>}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </details>
                                 </div>
                               </div>
                             )}
@@ -1414,19 +1468,34 @@ export default function GeneratePage() {
                                     </details>
                                   )}
                                   {/* Lesson translations */}
-                                  <div className="flex gap-2 mt-1.5">
-                                    {['fr', 'it', 'es'].map(lng => (
-                                      <span key={lng} className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                                        details.lesson[`title_${lng}`] && details.lesson[`content_${lng}`]
-                                          ? 'bg-green-100 text-green-700'
-                                          : details.lesson[`title_${lng}`]
-                                            ? 'bg-amber-100 text-amber-700'
-                                            : 'bg-red-100 text-red-600'
-                                      }`}>
-                                        {lng.toUpperCase()} {details.lesson[`content_${lng}`] ? '✓' : '✗'}
-                                      </span>
-                                    ))}
-                                  </div>
+                                  <details className="mt-1.5">
+                                    <summary className="text-[10px] text-indigo-600 cursor-pointer font-medium">
+                                      Translations {['fr', 'it', 'es'].map(lng => (
+                                        <span key={lng} className={`ml-1 px-1 py-0.5 rounded text-[9px] ${details.lesson[`content_${lng}`] ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                                          {lng.toUpperCase()} {details.lesson[`content_${lng}`] ? '\u2713' : '\u2717'}
+                                        </span>
+                                      ))}
+                                    </summary>
+                                    <div className="mt-1 space-y-2">
+                                      {[
+                                        { lang: 'FR', flag: '\u{1F1EB}\u{1F1F7}', title: details.lesson.title_fr, content: details.lesson.content_fr, takeaway: details.lesson.key_takeaway_fr },
+                                        { lang: 'IT', flag: '\u{1F1EE}\u{1F1F9}', title: details.lesson.title_it, content: details.lesson.content_it, takeaway: details.lesson.key_takeaway_it },
+                                        { lang: 'ES', flag: '\u{1F1EA}\u{1F1F8}', title: details.lesson.title_es, content: details.lesson.content_es, takeaway: details.lesson.key_takeaway_es },
+                                      ].filter(t => t.title).map(t => (
+                                        <div key={t.lang} className="bg-indigo-50 rounded p-2 space-y-0.5">
+                                          <p className="text-[10px] font-semibold text-indigo-700">{t.flag} {t.lang}</p>
+                                          <p className="text-[10px] text-gray-800 font-medium">{t.title}</p>
+                                          {t.takeaway && <p className="text-[9px] text-emerald-600">{t.takeaway}</p>}
+                                          {t.content && (
+                                            <details>
+                                              <summary className="text-[9px] text-gray-500 cursor-pointer">Show content</summary>
+                                              <p className="text-[9px] text-gray-500 mt-0.5 whitespace-pre-wrap line-clamp-6">{t.content}</p>
+                                            </details>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </details>
                                 </div>
                               </div>
                             )}

@@ -176,7 +176,7 @@ For EACH question provide:
 - question: the question text (clear, concise, one sentence)
 - answers: array of 4 possible answers (MAXIMUM 20 words each, ideally under 10)
 - correct_answer_index: 0-3
-- explanation: why the correct answer is right (100-200 words, educational tone)
+- explanation: 2-3 simple sentences explaining the answer (max 50-80 words, beginner-friendly, no jargon)
 - category: subcategory within the theme
 
 Return ONLY valid JSON:

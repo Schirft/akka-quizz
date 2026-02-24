@@ -122,11 +122,18 @@ GOOD: "Initial Public Offering (IPO)"
 BAD: "They provide both capital and strategic guidance to help startups grow and succeed"
 GOOD: "Capital + strategic guidance"
 
+EXPLANATION RULE:
+Explanations must be SHORT and SIMPLE — 2-3 sentences maximum, ~50 words.
+Write like you're explaining to a smart 15-year-old. No jargon.
+Use a conversational, friendly tone. One key insight, one practical example if possible.
+BAD: "Dilution refers to the decrease in ownership percentage experienced by existing shareholders when a company issues new shares during a funding round, which can significantly impact the economic returns of early-stage investors..."
+GOOD: "When a startup raises money, new shares are created for investors. This means your slice of the pie gets smaller — that's dilution. If you owned 10% and they double the shares, you now own 5%."
+
 For EACH question provide:
 - question: the question text (clear, concise, one sentence)
 - answers: array of 4 possible answers (MAXIMUM 20 words each, ideally under 10)
 - correct_answer_index: 0-3
-- explanation: why the correct answer is right (100-200 words, educational tone)
+- explanation: 2-3 simple sentences explaining the answer (max 50-80 words, beginner-friendly)
 - category: subcategory within the theme
 
 Return ONLY valid JSON:
@@ -205,7 +212,7 @@ Create a puzzle and return ONLY valid JSON:
   "context_data": { ... },
   "hint": "Check if the total adds up",
   "answer": "advisor_shares_row",
-  "explanation": "Detailed explanation 200-300 words...",
+  "explanation": "Simple explanation 50-80 words max, beginner-friendly...",
   "timer_seconds": 90
 }
 
@@ -213,7 +220,7 @@ IMPORTANT:
 - context_data MUST be valid JSON that a React frontend can render directly
 - Every clickable/interactive element MUST have a unique "id" field
 - The puzzle must be solvable — there is exactly ONE correct answer
-- The explanation should teach a real investment concept
+- The explanation must be SHORT (50-80 words max, 2-3 sentences), simple language, beginner-friendly
 - Vary the mechanics — don't always use tap_to_spot
 
 TRANSLATION-READINESS (all text will be auto-translated to FR/IT/ES):
@@ -230,15 +237,18 @@ Title: ${puzzleTitle}
 Flaw found: ${answer}
 Explanation: ${explanation}
 
-Write a "Lesson of the Day" for startup investors (300-500 words):
-1. title: educational title about the underlying concept
-2. content: structured text with:
-   - What is the concept
-   - Why it matters for angel investors
-   - How to spot this issue in real deals
-   - A real-world example or analogy
-   - One actionable takeaway
-3. key_takeaway: 1 sentence summary
+Write a "Lesson of the Day" for beginner-friendly startup investors (150-200 words MAX):
+
+TONE: Conversational, like explaining to a friend over coffee. No jargon.
+Use short paragraphs (2-3 sentences each). Simple vocabulary.
+
+1. title: catchy, simple educational title (no jargon)
+2. content: structured text (150-200 words max) with:
+   - What is it? (1-2 sentences, simple definition)
+   - Why should I care? (1-2 sentences, practical impact)
+   - Quick tip: how to use this knowledge (1-2 sentences)
+   - A simple real-world example or analogy
+3. key_takeaway: 1 short sentence (max 15 words)
 
 Return ONLY valid JSON:
 { "title": "...", "content": "...", "key_takeaway": "..." }`;

@@ -39,7 +39,7 @@ QUALITY RULES:
 1. No trivial questions — even "easy" should teach something
 2. All 4 answers must be plausible — no joke answers
 3. ANSWERS MUST BE SHORT — maximum 20 words per answer option, ideally under 10 words. Use concise phrases, not full sentences. Never write multi-line answers.
-4. Explanations must be educational — 2-3 sentences with real context
+4. Explanations must be SHORT and SIMPLE — 2-3 sentences max (~50 words), beginner-friendly, no jargon. Write like explaining to a friend.
 5. Use real examples — real startups, real VCs, real events
 6. Vary question formats
 7. correct_answer_index is 1-based (1, 2, 3, or 4)
@@ -68,7 +68,7 @@ For EACH question provide:
 - question: the question text (clear, concise, one sentence)
 - answers: array of 4 possible answers (MAXIMUM 20 words each, ideally under 10)
 - correct_answer_index: 0-3
-- explanation: why the correct answer is right (100-200 words, educational tone)
+- explanation: 2-3 simple sentences explaining the answer (max 50-80 words, beginner-friendly)
 - category: subcategory within the theme
 
 + 1 Puzzle ("Problem of the Day") — visual investment analysis puzzle
