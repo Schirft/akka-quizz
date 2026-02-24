@@ -187,17 +187,17 @@ export default function ProgressionPathModal({ open, onClose, currentLevel, tota
                         </div>
                       ) : (
                         /* 🔒 Locked level — gray/dark node */
-                        <div className="w-[52px] h-[52px] rounded-full bg-white/[0.03] border border-white/[0.07] flex items-center justify-center">
-                          <Lock size={16} className="text-white/15" />
+                        <div className="w-[52px] h-[52px] rounded-full bg-white/[0.05] border border-white/[0.10] flex items-center justify-center">
+                          <Lock size={16} className="text-white/30" />
                         </div>
                       )}
                     </div>
 
                     {/* ─── LEVEL INFO ─── */}
-                    <div className={`flex-1 min-w-0 pt-1 ${!isUnlocked && !isCurrent ? 'opacity-30' : ''}`}>
+                    <div className="flex-1 min-w-0 pt-1">
                       {/* Level tag + status badge */}
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-[10px] font-bold text-white/25 uppercase tracking-widest">
+                        <span className={`text-[10px] font-bold uppercase tracking-widest ${isUnlocked || isCurrent ? 'text-white/25' : 'text-white/35'}`}>
                           LVL {lvl.level}
                         </span>
                         {isCurrent && (
@@ -223,7 +223,7 @@ export default function ProgressionPathModal({ open, onClose, currentLevel, tota
                       {/* Level name */}
                       <p
                         className={`text-[15px] font-bold mt-1 ${
-                          isCurrent ? 'text-white' : isUnlocked ? 'text-white/70' : 'text-white/25'
+                          isCurrent ? 'text-white' : isUnlocked ? 'text-white/70' : 'text-white/50'
                         }`}
                       >
                         {lvl.name}
@@ -232,14 +232,14 @@ export default function ProgressionPathModal({ open, onClose, currentLevel, tota
                       {/* Benefit / reward */}
                       <p
                         className={`text-[11px] mt-0.5 leading-snug ${
-                          isCurrent ? 'text-white/50' : isUnlocked ? 'text-white/30' : 'text-white/15'
+                          isCurrent ? 'text-white/50' : isUnlocked ? 'text-white/30' : 'text-white/30'
                         }`}
                       >
                         🎁 {lvl.benefit}
                       </p>
 
                       {/* XP requirement */}
-                      <p className="text-[10px] text-white/20 mt-1 tabular-nums">
+                      <p className="text-[10px] text-white/25 mt-1 tabular-nums">
                         {lvl.xpRequired.toLocaleString()} XP {isUnlocked ? '' : 'required'}
                       </p>
 
