@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
+import { useGeneration } from '../../contexts/GenerationContext'
 import { supabase } from '../../lib/supabase'
 import { CATEGORIES } from '../../config/constants'
 import { AI_SYSTEM_PROMPT, buildUserPrompt, buildSingleLangTranslationPrompt, estimateCost } from '../../config/aiPrompts'
@@ -33,10 +34,6 @@ const STORAGE_KEY = 'akka_last_generation'
 const STORAGE_EXPIRY = 2 * 60 * 60 * 1000 // 2 hours
 const GENERATION_MODEL = 'claude-sonnet-4-5-20250929' // For generating EN questions
 const TRANSLATION_MODEL = 'claude-3-5-haiku-20241022' // For translating FR/IT/ES
-
-const SUPABASE_FN_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
-const PACK_STORAGE_KEY = 'akka_pack_gen'
-const PACK_STORAGE_EXPIRY = 5 * 60 * 1000 // 5 minutes
 
 /* ── HOTFIX A: Robust JSON parsing ── */
 function parsePartialJSON(text) {
@@ -96,7 +93,25 @@ export default function GeneratePage() {
   const navigate = useNavigate()
   const { user } = useAuth()
 
-  // Form state
+  // ── Pack generation state from context (Correction 5: persistent across tabs) ──
+  const {
+    packTheme, setPackTheme,
+    packDifficulty, setPackDifficulty,
+    packCount, setPackCount,
+    packGenerating,
+    packStep,
+    packBatchProgress, setPackBatchProgress,
+    packBatchResults, setPackBatchResults,
+    packResult, setPackResult,
+    packError, setPackError,
+    retryingTranslation,
+    handleGeneratePack: ctxGeneratePack,
+    abortPackGeneration,
+    retryTranslations,
+    setClassicGenerating,
+  } = useGeneration()
+
+  // Form state (classic question generation — local to this page)
   const [count, setCount] = useState(5)
   const [mode, setMode] = useState('auto')
   const [category, setCategory] = useState(CATEGORIES[0])
@@ -104,7 +119,7 @@ export default function GeneratePage() {
   const [difficulty, setDifficulty] = useState('mix')
   const [languages, setLanguages] = useState(['en', 'fr', 'it', 'es'])
 
-  // Generation state
+  // Classic generation state
   const [generating, setGenerating] = useState(false)
   const [progress, setProgress] = useState({ done: 0, total: 0 })
   const [generated, setGenerated] = useState([])
@@ -125,26 +140,14 @@ export default function GeneratePage() {
   const elapsedTimerRef = useRef(null)
   const stepsRef = useRef(STEP1_MESSAGES)
 
-  // ── Pack generation state (B1-B4) ──
-  const [packGenerating, setPackGenerating] = useState(false)
-  const [packTheme, setPackTheme] = useState('fundraising')
-  const [packDifficulty, setPackDifficulty] = useState('medium')
-  const [packCount, setPackCount] = useState(1) // B2: batch count 1-100
-  const [packStep, setPackStep] = useState(0)
-  const [packResult, setPackResult] = useState(null)
-  const [packError, setPackError] = useState(null)
-  const packAbortRef = useRef(false)
-  const [retryingTranslation, setRetryingTranslation] = useState(false)
-
-  // B4: Batch progress state
-  const [packBatchProgress, setPackBatchProgress] = useState({ current: 0, total: 0, step: 0, errors: [] })
-  const [packBatchResults, setPackBatchResults] = useState([]) // accumulates per-pack results
-
   // F1: Recent packs from DB
   const [packs, setPacks] = useState([])
   // F2: Expanded pack details cache
   const [packDetails, setPackDetails] = useState({})
   const [expandedPackId, setExpandedPackId] = useState(null)
+  // Multi-select for packs
+  const [packSelectionMode, setPackSelectionMode] = useState(false)
+  const [selectedPackIds, setSelectedPackIds] = useState(new Set())
 
   // Edit modals
   const [editQuestion, setEditQuestion] = useState(null)
@@ -271,148 +274,10 @@ export default function GeneratePage() {
     }
   }
 
-  // D1: localStorage persistence for pack generation — independent restore + polling
+  // Sync classic generating state to context for nav indicator
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(PACK_STORAGE_KEY)
-      if (!saved) { console.log('[PackGen] No saved state found'); return }
-      const data = JSON.parse(saved)
-      console.log('[PackGen] Restored state:', data)
-
-      // Check expiry
-      if (data.startedAt && Date.now() - data.startedAt > PACK_STORAGE_EXPIRY) {
-        console.log('[PackGen] State expired, clearing')
-        localStorage.removeItem(PACK_STORAGE_KEY)
-        return
-      }
-
-      // Restore theme + difficulty if saved
-      if (data.theme) {
-        console.log('[PackGen] Restoring theme:', data.theme)
-        setPackTheme(data.theme)
-      }
-      if (data.difficulty) {
-        console.log('[PackGen] Restoring difficulty:', data.difficulty)
-        setPackDifficulty(data.difficulty)
-      }
-
-      // Generation was in progress — start polling DB every 3s
-      if (data.startedAt) {
-        console.log('[PackGen] Generation was in-progress, starting DB poll...')
-        const pollStart = new Date(data.startedAt).toISOString()
-        let pollCount = 0
-        const maxPolls = 60 // 3 minutes max
-
-        const interval = setInterval(async () => {
-          pollCount++
-          console.log(`[PackGen] Poll #${pollCount}...`)
-          try {
-            const { data: recentPacks } = await supabase
-              .from('daily_packs')
-              .select('id')
-              .gte('created_at', pollStart)
-              .order('created_at', { ascending: false })
-
-            if (recentPacks && recentPacks.length > 0) {
-              console.log(`[PackGen] Found ${recentPacks.length} packs — refreshing list`)
-              loadPacks()
-              clearInterval(interval)
-              localStorage.removeItem(PACK_STORAGE_KEY)
-            } else if (pollCount >= maxPolls) {
-              console.log('[PackGen] Max polls reached, giving up')
-              clearInterval(interval)
-              localStorage.removeItem(PACK_STORAGE_KEY)
-            }
-          } catch (err) {
-            console.error('[PackGen] Poll error:', err)
-          }
-        }, 3000)
-
-        // Also do one immediate check
-        supabase
-          .from('daily_packs')
-          .select('id')
-          .gte('created_at', pollStart)
-          .order('created_at', { ascending: false })
-          .then(({ data: recentPacks }) => {
-            if (recentPacks && recentPacks.length > 0) {
-              console.log(`[PackGen] Immediate check: found ${recentPacks.length} packs`)
-              loadPacks()
-              clearInterval(interval)
-              localStorage.removeItem(PACK_STORAGE_KEY)
-            }
-          })
-
-        return () => clearInterval(interval)
-      }
-    } catch (err) {
-      console.error('[PackGen] Restore error:', err)
-      localStorage.removeItem(PACK_STORAGE_KEY)
-    }
-  }, [])
-
-  // F3: Save pack generation state to localStorage
-  function savePackGenState(step, current, total) {
-    try {
-      localStorage.setItem(PACK_STORAGE_KEY, JSON.stringify({
-        startedAt: Date.now(),
-        theme: packTheme,
-        difficulty: packDifficulty,
-        step,
-        current,
-        total,
-      }))
-    } catch {}
-  }
-
-  function clearPackGenState() {
-    try { localStorage.removeItem(PACK_STORAGE_KEY) } catch {}
-  }
-
-  // Export generating state for AdminLayout nav indicator
-  useEffect(() => {
-    window.__akka_generating = !!generating
-    window.dispatchEvent(new Event('akka-gen-state'))
-    return () => { window.__akka_generating = false }
-  }, [generating])
-
-  // ── Part E: Restore pack generation state from sessionStorage on mount ──
-  useEffect(() => {
-    try {
-      const saved = sessionStorage.getItem('akka_gen_state')
-      if (!saved) return
-      const data = JSON.parse(saved)
-      if (!data.generating) return
-      // Stale after 10 min
-      if (data.startTime && Date.now() - data.startTime > 600_000) {
-        sessionStorage.removeItem('akka_gen_state')
-        return
-      }
-      // Restore pack generating UI
-      setPackGenerating(true)
-      setPackTheme(data.theme || 'fundraising')
-      setPackDifficulty(data.difficulty || 'medium')
-      setPackStep(PACK_STEPS.length - 1) // show final step
-      // Poll for completion — check if a pack was created since startTime
-      const pollId = setInterval(async () => {
-        try {
-          const { data: packs } = await supabase
-            .from('daily_packs')
-            .select('id')
-            .gte('created_at', new Date(data.startTime).toISOString())
-            .order('created_at', { ascending: false })
-            .limit(1)
-          if (packs?.length > 0) {
-            clearInterval(pollId)
-            setPackGenerating(false)
-            setPackResult({ questions: 3, puzzle: 1, lesson: 1, packId: packs[0].id })
-            sessionStorage.removeItem('akka_gen_state')
-          }
-        } catch {}
-      }, 3000)
-      return () => clearInterval(pollId)
-    } catch {}
-  }, [])
+    setClassicGenerating(generating)
+  }, [generating, setClassicGenerating])
 
   function toggleLang(code) {
     if (code === 'en') return
@@ -790,186 +655,14 @@ export default function GeneratePage() {
   }
 
   // ═══════════════════════════════════════════════════════════════════════
-  // B1: Pack generation — 4 sequential edge function calls
+  // B1: Pack generation — delegated to GenerationContext (Correction 5)
   // ═══════════════════════════════════════════════════════════════════════
 
-  async function callEdgeFunction(fnName, body) {
-    const res = await fetch(`${SUPABASE_FN_URL}/${fnName}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-      },
-      body: JSON.stringify(body),
+  function handleGeneratePack() {
+    ctxGeneratePack(() => {
+      // onComplete callback: refresh packs list
+      loadPacks()
     })
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({}))
-      throw new Error(errData.error || `HTTP ${res.status}`)
-    }
-    return res.json()
-  }
-
-  async function generateOnePack(theme, difficulty) {
-    // Step 1: Questions
-    setPackStep(0)
-    const qResult = await callEdgeFunction('generate-pack-questions', { theme, difficulty })
-    const questionIds = qResult.question_ids || []
-
-    if (packAbortRef.current) return null
-
-    // Step 2: Puzzle
-    setPackStep(1)
-    const pResult = await callEdgeFunction('generate-pack-puzzle', { theme, difficulty })
-    const puzzleId = pResult.puzzle_id
-    const puzzleData = pResult.puzzle_data || {}
-
-    if (packAbortRef.current) return null
-
-    // Step 3: Lesson
-    setPackStep(2)
-    const lResult = await callEdgeFunction('generate-pack-lesson', {
-      theme,
-      puzzle_id: puzzleId,
-      puzzle_title: puzzleData.title || 'Puzzle',
-      puzzle_answer: JSON.stringify(puzzleData.answer || ''),
-      puzzle_explanation: puzzleData.explanation || '',
-      puzzle_visual_type: puzzleData?.context_data?.visual_type || '',
-    })
-    const lessonId = lResult.lesson_id
-
-    if (packAbortRef.current) return null
-
-    // Step 4: Translate all content to FR/IT/ES
-    setPackStep(3)
-    let tResult = { translated: {}, stats: { duration_s: 0, estimated_cost_usd: 0 } }
-    let translationNote = null
-    try {
-      tResult = await callEdgeFunction('translate-pack', {
-        question_ids: questionIds,
-        puzzle_id: puzzleId,
-        lesson_id: lessonId,
-      })
-    } catch (tErr) {
-      console.error('[Pack] Translation failed:', tErr.message)
-      translationNote = `⚠️ Translation failed: ${tErr.message}. Pack created in English only.`
-    }
-
-    if (packAbortRef.current) return null
-
-    // Step 5: Assemble pack record client-side
-    setPackStep(4)
-    // Assign to today's date so the quiz can find it
-    const todayDate = new Date().toISOString().slice(0, 10)
-    const { data: packRow, error: packErr } = await supabase
-      .from('daily_packs')
-      .insert({
-        theme,
-        difficulty,
-        question_ids: questionIds,
-        puzzle_id: puzzleId,
-        lesson_id: lessonId,
-        status: 'active',
-        assigned_date: todayDate,
-      })
-      .select('id')
-      .single()
-
-    if (packErr) {
-      console.error('[Pack] daily_packs insert error:', packErr)
-    }
-
-    const totalStats = {
-      duration_s: (qResult.stats?.duration_s || 0) + (pResult.stats?.duration_s || 0) +
-        (lResult.stats?.duration_s || 0) + (tResult.stats?.duration_s || 0),
-      api_calls: 4,
-      estimated_cost_usd: +((qResult.stats?.estimated_cost_usd || 0) + (pResult.stats?.estimated_cost_usd || 0) +
-        (lResult.stats?.estimated_cost_usd || 0) + (tResult.stats?.estimated_cost_usd || 0)).toFixed(3),
-    }
-
-    return {
-      questions: questionIds.length,
-      puzzle: puzzleId ? 1 : 0,
-      lesson: lessonId ? 1 : 0,
-      packId: packRow?.id || null,
-      stats: totalStats,
-      translated: tResult.translated || {},
-      translationNote,
-    }
-  }
-
-  // B2: Batch generation (1-100 packs) with abort
-  async function handleGeneratePack() {
-    setPackGenerating(true)
-    setPackStep(0)
-    setPackResult(null)
-    setPackError(null)
-    setPackBatchResults([])
-    setPackBatchProgress({ current: 0, total: packCount, step: 0, errors: [] })
-    packAbortRef.current = false
-
-    // F3: Save generation start to localStorage
-    savePackGenState(0, 0, packCount)
-
-    const startTime = Date.now()
-    const results = []
-
-    try {
-      for (let i = 0; i < packCount; i++) {
-        if (packAbortRef.current) break
-        // F3: Update localStorage with current progress
-        savePackGenState(0, i + 1, packCount)
-
-        setPackBatchProgress(prev => ({ ...prev, current: i + 1, step: 0 }))
-
-        try {
-          // F4: Theme & difficulty rotation for batch mode
-          const effectiveTheme = packTheme === 'random' ? ALL_THEMES[i % ALL_THEMES.length] : packTheme
-          const effectiveDifficulty = packDifficulty === 'random' ? ALL_DIFFICULTIES[i % ALL_DIFFICULTIES.length] : packDifficulty
-          const result = await generateOnePack(effectiveTheme, effectiveDifficulty)
-          if (result) {
-            results.push(result)
-            setPackBatchResults(prev => [...prev, result])
-          }
-        } catch (err) {
-          console.error(`[Pack ${i + 1}] Error:`, err)
-          setPackBatchProgress(prev => ({
-            ...prev,
-            errors: [...prev.errors, { index: i + 1, message: err.message }],
-          }))
-          // B2: Continue to next pack on error (error resilience)
-          continue
-        }
-      }
-
-      const totalDuration = Math.round((Date.now() - startTime) / 1000)
-      const totalCost = results.reduce((sum, r) => sum + (r.stats?.estimated_cost_usd || 0), 0)
-      const totalApiCalls = results.reduce((sum, r) => sum + (r.stats?.api_calls || 0), 0)
-
-      if (results.length > 0) {
-        setPackResult({
-          questions: results.reduce((s, r) => s + (r.questions || 0), 0),
-          puzzle: results.reduce((s, r) => s + (r.puzzle || 0), 0),
-          lesson: results.reduce((s, r) => s + (r.lesson || 0), 0),
-          packCount: results.length,
-          packIds: results.map(r => r.packId).filter(Boolean),
-          stats: {
-            duration_s: totalDuration,
-            api_calls: totalApiCalls,
-            estimated_cost_usd: +totalCost.toFixed(3),
-          },
-        })
-      } else if (!packAbortRef.current) {
-        setPackError('All pack generations failed')
-      }
-    } catch (err) {
-      setPackError(err.message)
-    }
-
-    setPackGenerating(false)
-    // F3: Clear localStorage on completion
-    clearPackGenState()
-    // F1: Refresh packs list
-    loadPacks()
   }
 
   async function handleDeletePack(packId) {
@@ -999,6 +692,42 @@ export default function GeneratePage() {
     } catch (err) {
       console.error('Delete pack error:', err)
     }
+  }
+
+  // Multi-delete packs
+  async function handleDeleteSelectedPacks() {
+    if (selectedPackIds.size === 0) return
+    if (!window.confirm(`Delete ${selectedPackIds.size} pack(s) and all their questions, puzzles and lessons? This cannot be undone.`)) return
+    try {
+      for (const packId of selectedPackIds) {
+        const { data: pack } = await supabase
+          .from('daily_packs')
+          .select('question_ids, puzzle_id, lesson_id')
+          .eq('id', packId)
+          .single()
+        if (pack) {
+          if (pack.question_ids?.length > 0) await supabase.from('questions').delete().in('id', pack.question_ids)
+          if (pack.puzzle_id) await supabase.from('puzzles').delete().eq('id', pack.puzzle_id)
+          if (pack.lesson_id) await supabase.from('daily_lessons').delete().eq('id', pack.lesson_id)
+          await supabase.from('daily_packs').delete().eq('id', packId)
+        }
+      }
+      setPacks(prev => prev.filter(p => !selectedPackIds.has(p.id)))
+      setPackBatchResults(prev => prev.filter(r => !selectedPackIds.has(r.packId)))
+      setSelectedPackIds(new Set())
+      setPackSelectionMode(false)
+    } catch (err) {
+      console.error('Multi-delete packs error:', err)
+    }
+  }
+
+  function togglePackSelection(packId) {
+    setSelectedPackIds(prev => {
+      const next = new Set(prev)
+      if (next.has(packId)) next.delete(packId)
+      else next.add(packId)
+      return next
+    })
   }
 
   // B1: Toggle pack active/inactive
@@ -1065,20 +794,7 @@ export default function GeneratePage() {
     }
   }
 
-  async function retryTranslations(packId) {
-    if (!packId) return
-    setRetryingTranslation(true)
-    try {
-      const { data, error } = await supabase.functions.invoke('translate-pack', { body: { pack_id: packId } })
-      if (error) throw error
-      console.log('Translation retry result:', data)
-      setPackResult(prev => prev ? { ...prev, translationRetried: true } : prev)
-    } catch (err) {
-      console.error('Translation retry error:', err)
-      setPackError(`Translation retry failed: ${err.message}`)
-    }
-    setRetryingTranslation(false)
-  }
+  // retryTranslations is now in GenerationContext
 
   async function approveAll() {
     const ids = generated.filter((q) => q.status === 'pending_review').map((q) => q.id)
@@ -1289,7 +1005,7 @@ export default function GeneratePage() {
           </button>
           {packGenerating && (
             <button
-              onClick={() => { packAbortRef.current = true }}
+              onClick={() => abortPackGeneration()}
               className="flex items-center gap-1.5 px-4 py-2.5 text-sm text-red-600 font-medium border border-red-200 rounded-xl hover:bg-red-50 transition-colors"
             >
               <StopCircle size={16} />
@@ -1446,13 +1162,45 @@ export default function GeneratePage() {
               <h3 className="text-sm font-bold uppercase tracking-wide text-[#6B7280]">
                 Recent Packs ({packs.length})
               </h3>
-              <button
-                onClick={loadPacks}
-                className="text-xs text-[#6B7280] hover:text-[#1A1A1A] transition-colors"
-              >
-                ↻ Refresh
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => { setPackSelectionMode(!packSelectionMode); setSelectedPackIds(new Set()) }}
+                  className={`text-xs font-medium px-2 py-1 rounded-lg transition-colors ${packSelectionMode ? 'bg-red-50 text-red-600' : 'text-[#6B7280] hover:text-[#1A1A1A]'}`}
+                >
+                  {packSelectionMode ? 'Cancel' : 'Select'}
+                </button>
+                <button
+                  onClick={loadPacks}
+                  className="text-xs text-[#6B7280] hover:text-[#1A1A1A] transition-colors"
+                >
+                  ↻ Refresh
+                </button>
+              </div>
             </div>
+            {/* Multi-select bar */}
+            {packSelectionMode && (
+              <div className="flex items-center justify-between bg-red-50 px-4 py-2 rounded-xl mb-3">
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedPackIds.size === packs.length && packs.length > 0}
+                    onChange={() => {
+                      if (selectedPackIds.size === packs.length) setSelectedPackIds(new Set())
+                      else setSelectedPackIds(new Set(packs.map(p => p.id)))
+                    }}
+                    className="rounded"
+                  />
+                  <span className="text-sm font-medium text-red-800">{selectedPackIds.size} selected</span>
+                </label>
+                <button
+                  onClick={handleDeleteSelectedPacks}
+                  disabled={selectedPackIds.size === 0}
+                  className="text-sm text-red-600 font-semibold hover:text-red-800 disabled:opacity-40 transition-colors"
+                >
+                  Delete selected
+                </button>
+              </div>
+            )}
             <div className="space-y-2">
               {packs.map((pack) => {
                 const isExpanded = expandedPackId === pack.id
@@ -1474,6 +1222,15 @@ export default function GeneratePage() {
                       }}
                     >
                       <div className="flex items-center gap-3 min-w-0">
+                        {packSelectionMode && (
+                          <input
+                            type="checkbox"
+                            checked={selectedPackIds.has(pack.id)}
+                            onChange={(e) => { e.stopPropagation(); togglePackSelection(pack.id) }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="rounded shrink-0"
+                          />
+                        )}
                         <span className="text-lg">{isToday ? '🟢' : '⚪'}</span>
                         <div className="min-w-0">
                           <p className="text-sm font-semibold text-[#1A1A1A] truncate">

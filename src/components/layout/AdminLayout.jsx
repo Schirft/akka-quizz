@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { useGeneration } from '../../contexts/GenerationContext'
 import {
   LayoutDashboard,
   FileQuestion,
@@ -8,8 +9,18 @@ import {
   Calendar,
   Newspaper,
   ArrowLeft,
+  Loader2,
+  Package,
 } from 'lucide-react'
 import TabBar from './TabBar'
+
+const PACK_STEPS = [
+  'Generating questions...',
+  'Creating puzzle...',
+  'Writing lesson...',
+  'Translating...',
+  'Assembling pack...',
+]
 
 /**
  * AdminLayout — horizontal tab navigation for the back-office.
@@ -17,12 +28,15 @@ import TabBar from './TabBar'
  *  • Questions  → pending_review count badge
  *  • AI Generator → green pulsing dot when generating
  *  • Daily Quiz → unplanned-days count (next 7 days)
+ *
+ * Correction 5: persistent generation banner from GenerationContext.
  */
 export default function AdminLayout() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const { isGenerating, packGenerating, packBatchProgress, packStep } = useGeneration()
 
   const [pendingCount, setPendingCount] = useState(0)
-  const [generating, setGenerating] = useState(!!window.__akka_generating)
   const [unplannedDays, setUnplannedDays] = useState(0)
 
   // ── Load counters ──
@@ -57,15 +71,6 @@ export default function AdminLayout() {
     return () => clearInterval(iv)
   }, [loadCounts])
 
-  // ── Listen for generation state changes ──
-  useEffect(() => {
-    function onGenState() {
-      setGenerating(!!window.__akka_generating)
-    }
-    window.addEventListener('akka-gen-state', onGenState)
-    return () => window.removeEventListener('akka-gen-state', onGenState)
-  }, [])
-
   // ── Nav items ──
   const NAV_ITEMS = [
     { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -79,7 +84,7 @@ export default function AdminLayout() {
       to: '/admin/generate',
       label: 'AI Generator',
       icon: Sparkles,
-      dot: generating,
+      dot: isGenerating,
     },
     {
       to: '/admin/daily',
@@ -94,6 +99,10 @@ export default function AdminLayout() {
       icon: Newspaper,
     },
   ]
+
+  // Show persistent banner when pack generating & NOT on the generate page (inline progress there)
+  const isOnGeneratePage = location.pathname === '/admin/generate'
+  const showBanner = packGenerating && !isOnGeneratePage
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -161,6 +170,41 @@ export default function AdminLayout() {
           </nav>
         </div>
       </header>
+
+      {/* Persistent generation banner — visible on all admin pages except /admin/generate */}
+      {showBanner && (
+        <div className="bg-gradient-to-r from-[#1B3D2F] to-[#2ECC71]/80 border-b border-[#2ECC71]/30">
+          <div className="max-w-7xl mx-auto px-4 lg:px-8">
+            <div
+              className="flex items-center gap-3 py-2.5 cursor-pointer hover:opacity-90 transition-opacity"
+              onClick={() => navigate('/admin/generate')}
+            >
+              <Loader2 size={16} className="text-white animate-spin shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <Package size={14} className="text-white/80" />
+                  <span className="text-sm font-medium text-white">
+                    Generating pack {packBatchProgress.current}/{packBatchProgress.total}
+                  </span>
+                  <span className="text-xs text-white/60">
+                    — {PACK_STEPS[packStep] || 'Processing...'}
+                  </span>
+                </div>
+                {/* Progress bar */}
+                <div className="mt-1 h-1 bg-white/20 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-white/80 rounded-full transition-all duration-500"
+                    style={{
+                      width: `${packBatchProgress.total > 0 ? (packBatchProgress.current / packBatchProgress.total) * 100 : 0}%`,
+                    }}
+                  />
+                </div>
+              </div>
+              <span className="text-xs text-white/50 shrink-0">Click to view →</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main content */}
       <main className="max-w-7xl mx-auto px-4 lg:px-8 py-6 pb-24">

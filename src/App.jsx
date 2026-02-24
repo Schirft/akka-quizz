@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './hooks/useAuth'
+import { GenerationProvider } from './contexts/GenerationContext'
 import PlayerLayout from './components/layout/PlayerLayout'
 import AdminLayout from './components/layout/AdminLayout'
 import LoginPage from './pages/auth/LoginPage'
@@ -123,12 +124,14 @@ export default function App() {
         }
       />
 
-      {/* Admin routes */}
+      {/* Admin routes — wrapped in GenerationProvider for persistent generation */}
       <Route
         path="/admin"
         element={
           <ProtectedRoute>
-            <AdminLayout />
+            <GenerationProvider>
+              <AdminLayout />
+            </GenerationProvider>
           </ProtectedRoute>
         }
       >

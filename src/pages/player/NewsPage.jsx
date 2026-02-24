@@ -119,21 +119,54 @@ export default function NewsPage() {
           <div className="flex items-center justify-center py-20">
             <Loader2 size={24} className="text-[#2ECC71] animate-spin" />
           </div>
-        ) : !featured && articles.length === 0 ? (
-          /* Empty state */
-          <div className="flex flex-col items-center justify-center py-20">
-            <div className="w-16 h-16 rounded-2xl bg-[#1A3529]/60 flex items-center justify-center mb-4">
-              <Newspaper size={32} className="text-[#2ECC71]" />
-            </div>
-            <h2 className="text-xl font-bold text-white mb-2">No articles yet</h2>
-            <p className="text-white/40 text-center text-sm">
-              News articles will appear here once available.
-            </p>
-          </div>
         ) : (
           <>
-            {/* Featured article hero */}
-            {featured && (
+            {/* Category pills — always visible */}
+            <div className="flex gap-2 overflow-x-auto pb-2 mb-4 scrollbar-hide">
+              <button
+                onClick={() => setActiveCategory('all')}
+                className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                  activeCategory === 'all'
+                    ? 'bg-[#2ECC71] text-white'
+                    : 'bg-white/8 text-white/50 hover:bg-white/12'
+                }`}
+              >
+                All
+              </button>
+              {CATEGORIES.map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setActiveCategory(cat)}
+                  className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                    activeCategory === cat
+                      ? cat === 'top_news' ? 'bg-amber-400 text-black font-bold' : 'bg-[#2ECC71] text-white'
+                      : cat === 'top_news' ? 'bg-amber-400/15 text-amber-400 hover:bg-amber-400/25' : 'bg-white/8 text-white/50 hover:bg-white/12'
+                  }`}
+                >
+                  {cat === 'top_news' ? (
+                    <span className="flex items-center gap-1"><Flame size={12} /> Top News</span>
+                  ) : (
+                    <span className="capitalize">{cat}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {!featured && articles.length === 0 ? (
+              /* Empty state */
+              <div className="flex flex-col items-center justify-center py-20">
+                <div className="w-16 h-16 rounded-2xl bg-[#1A3529]/60 flex items-center justify-center mb-4">
+                  <Newspaper size={32} className="text-[#2ECC71]" />
+                </div>
+                <h2 className="text-xl font-bold text-white mb-2">No articles in this category</h2>
+                <p className="text-white/40 text-center text-sm">
+                  Try selecting a different category above.
+                </p>
+              </div>
+            ) : (
+              <>
+                {/* Featured article hero */}
+                {featured && (
               <div
                 onClick={() => navigate(`/news/${featured.id}`, { state: { article: featured } })}
                 className="relative rounded-2xl overflow-hidden mb-6 cursor-pointer group"
@@ -173,37 +206,6 @@ export default function NewsPage() {
                 </div>
               </div>
             )}
-
-            {/* Category pills */}
-            <div className="flex gap-2 overflow-x-auto pb-2 mb-4 scrollbar-hide">
-              <button
-                onClick={() => setActiveCategory('all')}
-                className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
-                  activeCategory === 'all'
-                    ? 'bg-[#2ECC71] text-white'
-                    : 'bg-white/8 text-white/50 hover:bg-white/12'
-                }`}
-              >
-                All
-              </button>
-              {CATEGORIES.map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => setActiveCategory(cat)}
-                  className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
-                    activeCategory === cat
-                      ? cat === 'top_news' ? 'bg-orange-500 text-white' : 'bg-[#2ECC71] text-white'
-                      : 'bg-white/8 text-white/50 hover:bg-white/12'
-                  }`}
-                >
-                  {cat === 'top_news' ? (
-                    <span className="flex items-center gap-1"><Flame size={12} /> Top News</span>
-                  ) : (
-                    <span className="capitalize">{cat}</span>
-                  )}
-                </button>
-              ))}
-            </div>
 
             {/* Article cards */}
             <div className="space-y-3">
@@ -267,6 +269,8 @@ export default function NewsPage() {
                 </p>
               )}
             </div>
+              </>
+            )}
           </>
         )}
       </div>

@@ -483,6 +483,13 @@ export default function ShowcasePage() {
         <div className="max-w-md mx-auto min-h-screen shadow-xl bg-akka-bg flex flex-col pb-24">
           <ShowcaseHeader onBack={backToGrid} muted={muted} onToggleMute={handleToggleMute} title={txt('Problem of the Day', 'Problème du Jour')} />
           <div className="flex-1 px-4 pt-4">
+            {activePack?.difficulty && (
+              <div className="flex justify-end mb-2">
+                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${diffColor[activePack.difficulty] || 'bg-gray-100 text-gray-600'}`}>
+                  {activePack.difficulty}
+                </span>
+              </div>
+            )}
             <PuzzleRenderer puzzle={puzzleData} onAnswer={handlePuzzleAnswer} lang={lang} />
           </div>
 
@@ -743,11 +750,16 @@ export default function ShowcasePage() {
           </div>
         )}
 
-        {/* Question counter */}
-        <div className="px-4 pt-4">
+        {/* Question counter + difficulty badge */}
+        <div className="px-4 pt-4 flex items-center justify-between">
           <p className="text-xs font-semibold text-akka-text-secondary uppercase tracking-wide">
             {txt('Question', 'Question')} {currentIndex + 1} {txt('of', 'sur')} {questions.length}
           </p>
+          {activePack?.difficulty && (
+            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${diffColor[activePack.difficulty] || 'bg-gray-100 text-gray-600'}`}>
+              {activePack.difficulty}
+            </span>
+          )}
         </div>
 
         {/* Question text */}

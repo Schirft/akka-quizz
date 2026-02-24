@@ -40,6 +40,7 @@ export default function DailyQuizPage() {
   const [autoFillWithPacks, setAutoFillWithPacks] = useState(false)
   const [showAutoFillModal, setShowAutoFillModal] = useState(false)
   const [autoFillDuration, setAutoFillDuration] = useState('1_week')
+  const [customDays, setCustomDays] = useState('')
 
   useEffect(() => {
     loadData()
@@ -118,14 +119,15 @@ export default function DailyQuizPage() {
   /**
    * Calculate empty dates for a duration period.
    */
-  function getEmptyDatesForDuration(duration) {
+  function getEmptyDatesForDuration(duration, customDaysVal) {
     const today = new Date()
     const todayStr = today.toISOString().split('T')[0]
     let endDate = new Date(today)
-    if (duration === '1_week') endDate.setDate(endDate.getDate() + 7)
+    if (duration === 'custom' && customDaysVal > 0) {
+      endDate.setDate(endDate.getDate() + Number(customDaysVal))
+    } else if (duration === '1_week') endDate.setDate(endDate.getDate() + 7)
     else if (duration === '1_month') endDate.setMonth(endDate.getMonth() + 1)
     else if (duration === '3_months') endDate.setMonth(endDate.getMonth() + 3)
-    const endStr = endDate.toISOString().split('T')[0]
 
     // Generate all dates in range
     const allDates = []
@@ -137,7 +139,7 @@ export default function DailyQuizPage() {
     return allDates.filter(d => d >= todayStr && !packsMap[d])
   }
 
-  const missingCount = getEmptyDatesForDuration(autoFillDuration).length
+  const missingCount = getEmptyDatesForDuration(autoFillDuration, customDays).length
 
   /**
    * Auto-fill empty dates with unassigned packs.
@@ -145,7 +147,7 @@ export default function DailyQuizPage() {
   async function autoFillPacks() {
     setAutoFillWithPacks(true)
     try {
-      const emptyDates = getEmptyDatesForDuration(autoFillDuration)
+      const emptyDates = getEmptyDatesForDuration(autoFillDuration, customDays)
       const { data: available } = await supabase
         .from('daily_packs')
         .select('id')
@@ -347,7 +349,7 @@ export default function DailyQuizPage() {
             </div>
             <div className="px-6 py-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280] mb-3">Duration</p>
-              <div className="flex gap-2 mb-4">
+              <div className="flex gap-2 mb-4 flex-wrap">
                 {[
                   { key: '1_week', label: '1 week' },
                   { key: '1_month', label: '1 month' },
@@ -355,7 +357,7 @@ export default function DailyQuizPage() {
                 ].map(opt => (
                   <button
                     key={opt.key}
-                    onClick={() => setAutoFillDuration(opt.key)}
+                    onClick={() => { setAutoFillDuration(opt.key); setCustomDays('') }}
                     className={`flex-1 px-3 py-2 rounded-xl text-sm font-semibold transition-all ${
                       autoFillDuration === opt.key
                         ? 'bg-[#1B3D2F] text-white'
@@ -365,6 +367,26 @@ export default function DailyQuizPage() {
                     {opt.label}
                   </button>
                 ))}
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    min="1"
+                    max="365"
+                    placeholder="Custom"
+                    className={`w-20 px-3 py-2 rounded-xl text-sm text-center border transition-all ${
+                      autoFillDuration === 'custom'
+                        ? 'border-[#1B3D2F] bg-[#1B3D2F]/5 font-semibold'
+                        : 'border-gray-200'
+                    }`}
+                    value={customDays}
+                    onChange={(e) => {
+                      const val = e.target.value
+                      setCustomDays(val)
+                      if (val && Number(val) > 0) setAutoFillDuration('custom')
+                    }}
+                  />
+                  <span className="text-xs text-[#6B7280]">days</span>
+                </div>
               </div>
 
               {/* Missing packs info */}
