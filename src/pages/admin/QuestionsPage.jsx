@@ -542,22 +542,26 @@ export default function QuestionsPage() {
     })
   }
 
-  // B2: Save puzzle edits
+  // B2: Save puzzle edits (all languages)
   async function handleSavePuzzle(puzzle) {
     try {
+      const parseCtx = (v) => { try { return typeof v === 'string' ? JSON.parse(v) : v } catch { return v } }
       const { error } = await supabase.from('puzzles').update({
-        title: puzzle.title,
-        hint: puzzle.hint,
+        title: puzzle.title, title_fr: puzzle.title_fr || null, title_it: puzzle.title_it || null, title_es: puzzle.title_es || null,
+        hint: puzzle.hint, hint_fr: puzzle.hint_fr || null, hint_it: puzzle.hint_it || null, hint_es: puzzle.hint_es || null,
         answer: puzzle.answer,
-        context_data: typeof puzzle.context_data === 'string' ? JSON.parse(puzzle.context_data) : puzzle.context_data,
+        explanation: puzzle.explanation || null, explanation_fr: puzzle.explanation_fr || null, explanation_it: puzzle.explanation_it || null, explanation_es: puzzle.explanation_es || null,
+        context_data: parseCtx(puzzle.context_data),
+        context_data_fr: parseCtx(puzzle.context_data_fr) || null,
+        context_data_it: parseCtx(puzzle.context_data_it) || null,
+        context_data_es: parseCtx(puzzle.context_data_es) || null,
       }).eq('id', puzzle.id)
       if (error) throw error
-      // Refresh cache
       setPackDetails(prev => {
         const next = { ...prev }
         for (const [pid, det] of Object.entries(next)) {
           if (det.puzzle?.id === puzzle.id) {
-            next[pid] = { ...det, puzzle: { ...det.puzzle, title: puzzle.title, hint: puzzle.hint, answer: puzzle.answer, context_data: typeof puzzle.context_data === 'string' ? JSON.parse(puzzle.context_data) : puzzle.context_data } }
+            next[pid] = { ...det, puzzle: { ...det.puzzle, ...puzzle, context_data: parseCtx(puzzle.context_data), context_data_fr: parseCtx(puzzle.context_data_fr), context_data_it: parseCtx(puzzle.context_data_it), context_data_es: parseCtx(puzzle.context_data_es) } }
           }
         }
         return next
@@ -566,21 +570,20 @@ export default function QuestionsPage() {
     } catch (err) { console.error('Save puzzle error:', err) }
   }
 
-  // B2: Save lesson edits
+  // B2: Save lesson edits (all languages)
   async function handleSaveLesson(lesson) {
     try {
       const { error } = await supabase.from('daily_lessons').update({
-        title: lesson.title,
-        content: lesson.content,
-        key_takeaway: lesson.key_takeaway,
+        title: lesson.title, title_fr: lesson.title_fr || null, title_it: lesson.title_it || null, title_es: lesson.title_es || null,
+        content: lesson.content, content_fr: lesson.content_fr || null, content_it: lesson.content_it || null, content_es: lesson.content_es || null,
+        key_takeaway: lesson.key_takeaway, key_takeaway_fr: lesson.key_takeaway_fr || null, key_takeaway_it: lesson.key_takeaway_it || null, key_takeaway_es: lesson.key_takeaway_es || null,
       }).eq('id', lesson.id)
       if (error) throw error
-      // Refresh cache
       setPackDetails(prev => {
         const next = { ...prev }
         for (const [pid, det] of Object.entries(next)) {
           if (det.lesson?.id === lesson.id) {
-            next[pid] = { ...det, lesson: { ...det.lesson, title: lesson.title, content: lesson.content, key_takeaway: lesson.key_takeaway } }
+            next[pid] = { ...det, lesson: { ...det.lesson, ...lesson } }
           }
         }
         return next
@@ -1077,9 +1080,9 @@ export default function QuestionsPage() {
                   </div>
                   <button
                     onClick={() => { setPackSelectionMode(!packSelectionMode); setSelectedPackIds(new Set()) }}
-                    className={`text-xs font-medium px-2 py-1 rounded-lg transition-colors ${packSelectionMode ? 'bg-red-50 text-red-600' : 'text-[#6B7280] hover:text-[#1A1A1A]'}`}
+                    className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-all ${packSelectionMode ? 'bg-red-100 text-red-600 border border-red-200' : 'bg-[#1B3D2F]/10 text-[#1B3D2F] border border-[#1B3D2F]/20 hover:bg-[#1B3D2F]/20'}`}
                   >
-                    {packSelectionMode ? 'Cancel' : 'Select'}
+                    {packSelectionMode ? 'Cancel' : 'Select multiple'}
                   </button>
                 </div>
                 <div className="space-y-2">
@@ -1107,9 +1110,9 @@ export default function QuestionsPage() {
                 {todayPacks.length === 0 && (
                   <button
                     onClick={() => { setPackSelectionMode(!packSelectionMode); setSelectedPackIds(new Set()) }}
-                    className={`text-xs font-medium px-2 py-1 rounded-lg transition-colors ${packSelectionMode ? 'bg-red-50 text-red-600' : 'text-[#6B7280] hover:text-[#1A1A1A]'}`}
+                    className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-all ${packSelectionMode ? 'bg-red-100 text-red-600 border border-red-200' : 'bg-[#1B3D2F]/10 text-[#1B3D2F] border border-[#1B3D2F]/20 hover:bg-[#1B3D2F]/20'}`}
                   >
-                    {packSelectionMode ? 'Cancel' : 'Select'}
+                    {packSelectionMode ? 'Cancel' : 'Select multiple'}
                   </button>
                 )}
               </div>
@@ -1454,63 +1457,108 @@ export default function QuestionsPage() {
         />
       )}
 
-      {/* B2: Puzzle Edit Modal */}
-      {editPuzzle && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setEditPuzzle(null)}>
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <h3 className="text-sm font-bold text-[#1A1A1A] mb-4">Edit Puzzle</h3>
-            <div className="space-y-3">
-              <div>
-                <label className="text-[10px] font-medium text-[#6B7280] uppercase">Title</label>
-                <input value={editPuzzle.title || ''} onChange={e => setEditPuzzle(p => ({ ...p, title: e.target.value }))} className="w-full mt-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2ECC71]/30" />
+      {/* B2: Puzzle Edit Modal — Multi-language */}
+      {editPuzzle && (() => {
+        const pzLang = editPuzzle._lang || 'en'
+        const setPzLang = (l) => setEditPuzzle(p => ({ ...p, _lang: l }))
+        const sfx = pzLang === 'en' ? '' : `_${pzLang}`
+        const titleKey = pzLang === 'en' ? 'title' : `title_${pzLang}`
+        const hintKey = pzLang === 'en' ? 'hint' : `hint_${pzLang}`
+        const explKey = pzLang === 'en' ? 'explanation' : `explanation_${pzLang}`
+        const ctxKey = pzLang === 'en' ? 'context_data' : `context_data_${pzLang}`
+        const ctxVal = editPuzzle[ctxKey]
+        const ctxStr = typeof ctxVal === 'object' && ctxVal ? JSON.stringify(ctxVal, null, 2) : (ctxVal || '')
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setEditPuzzle(null)}>
+            <div className="bg-white rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              <h3 className="text-sm font-bold text-[#1A1A1A] mb-3">Edit Puzzle</h3>
+              {/* Language tabs */}
+              <div className="flex gap-1 mb-4 bg-gray-100 rounded-lg p-1">
+                {[{ code: 'en', flag: '\ud83c\uddec\ud83c\udde7', label: 'EN' }, { code: 'fr', flag: '\ud83c\uddeb\ud83c\uddf7', label: 'FR' }, { code: 'it', flag: '\ud83c\uddee\ud83c\uddf9', label: 'IT' }, { code: 'es', flag: '\ud83c\uddea\ud83c\uddf8', label: 'ES' }].map(l => (
+                  <button key={l.code} onClick={() => setPzLang(l.code)}
+                    className={`flex-1 text-xs font-semibold py-1.5 rounded-md transition-all ${pzLang === l.code ? 'bg-white text-[#1B3D2F] shadow-sm' : 'text-[#6B7280] hover:text-[#1A1A1A]'}`}>
+                    {l.flag} {l.label}
+                  </button>
+                ))}
               </div>
-              <div>
-                <label className="text-[10px] font-medium text-[#6B7280] uppercase">Hint</label>
-                <input value={editPuzzle.hint || ''} onChange={e => setEditPuzzle(p => ({ ...p, hint: e.target.value }))} className="w-full mt-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2ECC71]/30" />
+              <div className="space-y-3">
+                {pzLang === 'en' && (
+                  <div>
+                    <label className="text-[10px] font-medium text-[#6B7280] uppercase">Answer</label>
+                    <input value={editPuzzle.answer || ''} onChange={e => setEditPuzzle(p => ({ ...p, answer: e.target.value }))} className="w-full mt-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2ECC71]/30" />
+                  </div>
+                )}
+                <div>
+                  <label className="text-[10px] font-medium text-[#6B7280] uppercase">Title ({pzLang.toUpperCase()})</label>
+                  <input value={editPuzzle[titleKey] || ''} onChange={e => setEditPuzzle(p => ({ ...p, [titleKey]: e.target.value }))} className="w-full mt-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2ECC71]/30" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-medium text-[#6B7280] uppercase">Hint ({pzLang.toUpperCase()})</label>
+                  <input value={editPuzzle[hintKey] || ''} onChange={e => setEditPuzzle(p => ({ ...p, [hintKey]: e.target.value }))} className="w-full mt-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2ECC71]/30" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-medium text-[#6B7280] uppercase">Explanation ({pzLang.toUpperCase()})</label>
+                  <textarea value={editPuzzle[explKey] || ''} onChange={e => setEditPuzzle(p => ({ ...p, [explKey]: e.target.value }))} rows={3} className="w-full mt-1 px-3 py-2 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2ECC71]/30" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-medium text-[#6B7280] uppercase">Context Data — {pzLang.toUpperCase()} (JSON)</label>
+                  <textarea value={ctxStr} onChange={e => {
+                    try { const parsed = JSON.parse(e.target.value); setEditPuzzle(p => ({ ...p, [ctxKey]: parsed })) }
+                    catch { setEditPuzzle(p => ({ ...p, [ctxKey]: e.target.value })) }
+                  }} rows={6} className="w-full mt-1 px-3 py-2 text-xs font-mono border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2ECC71]/30" />
+                </div>
               </div>
-              <div>
-                <label className="text-[10px] font-medium text-[#6B7280] uppercase">Answer</label>
-                <input value={editPuzzle.answer || ''} onChange={e => setEditPuzzle(p => ({ ...p, answer: e.target.value }))} className="w-full mt-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2ECC71]/30" />
+              <div className="flex gap-2 mt-4">
+                <button onClick={() => setEditPuzzle(null)} className="flex-1 py-2 text-xs font-medium text-[#6B7280] bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">Cancel</button>
+                <button onClick={() => handleSavePuzzle(editPuzzle)} className="flex-1 py-2 text-xs font-medium text-white bg-[#1B3D2F] rounded-lg hover:bg-[#15332A] transition-colors">Save All Languages</button>
               </div>
-              <div>
-                <label className="text-[10px] font-medium text-[#6B7280] uppercase">Context Data (JSON)</label>
-                <textarea value={typeof editPuzzle.context_data === 'string' ? editPuzzle.context_data : JSON.stringify(editPuzzle.context_data, null, 2)} onChange={e => setEditPuzzle(p => ({ ...p, context_data: e.target.value }))} rows={6} className="w-full mt-1 px-3 py-2 text-xs font-mono border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2ECC71]/30" />
-              </div>
-            </div>
-            <div className="flex gap-2 mt-4">
-              <button onClick={() => setEditPuzzle(null)} className="flex-1 py-2 text-xs font-medium text-[#6B7280] bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">Cancel</button>
-              <button onClick={() => handleSavePuzzle(editPuzzle)} className="flex-1 py-2 text-xs font-medium text-white bg-[#1B3D2F] rounded-lg hover:bg-[#15332A] transition-colors">Save</button>
             </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
-      {/* B2: Lesson Edit Modal */}
-      {editLesson && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setEditLesson(null)}>
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <h3 className="text-sm font-bold text-[#1A1A1A] mb-4">Edit Lesson</h3>
-            <div className="space-y-3">
-              <div>
-                <label className="text-[10px] font-medium text-[#6B7280] uppercase">Title</label>
-                <input value={editLesson.title || ''} onChange={e => setEditLesson(l => ({ ...l, title: e.target.value }))} className="w-full mt-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2ECC71]/30" />
+      {/* B2: Lesson Edit Modal — Multi-language */}
+      {editLesson && (() => {
+        const lsLang = editLesson._lang || 'en'
+        const setLsLang = (l) => setEditLesson(p => ({ ...p, _lang: l }))
+        const titleKey = lsLang === 'en' ? 'title' : `title_${lsLang}`
+        const contentKey = lsLang === 'en' ? 'content' : `content_${lsLang}`
+        const takeawayKey = lsLang === 'en' ? 'key_takeaway' : `key_takeaway_${lsLang}`
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setEditLesson(null)}>
+            <div className="bg-white rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              <h3 className="text-sm font-bold text-[#1A1A1A] mb-3">Edit Lesson</h3>
+              {/* Language tabs */}
+              <div className="flex gap-1 mb-4 bg-gray-100 rounded-lg p-1">
+                {[{ code: 'en', flag: '\ud83c\uddec\ud83c\udde7', label: 'EN' }, { code: 'fr', flag: '\ud83c\uddeb\ud83c\uddf7', label: 'FR' }, { code: 'it', flag: '\ud83c\uddee\ud83c\uddf9', label: 'IT' }, { code: 'es', flag: '\ud83c\uddea\ud83c\uddf8', label: 'ES' }].map(l => (
+                  <button key={l.code} onClick={() => setLsLang(l.code)}
+                    className={`flex-1 text-xs font-semibold py-1.5 rounded-md transition-all ${lsLang === l.code ? 'bg-white text-[#1B3D2F] shadow-sm' : 'text-[#6B7280] hover:text-[#1A1A1A]'}`}>
+                    {l.flag} {l.label}
+                  </button>
+                ))}
               </div>
-              <div>
-                <label className="text-[10px] font-medium text-[#6B7280] uppercase">Content</label>
-                <textarea value={editLesson.content || ''} onChange={e => setEditLesson(l => ({ ...l, content: e.target.value }))} rows={8} className="w-full mt-1 px-3 py-2 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2ECC71]/30" />
+              <div className="space-y-3">
+                <div>
+                  <label className="text-[10px] font-medium text-[#6B7280] uppercase">Title ({lsLang.toUpperCase()})</label>
+                  <input value={editLesson[titleKey] || ''} onChange={e => setEditLesson(p => ({ ...p, [titleKey]: e.target.value }))} className="w-full mt-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2ECC71]/30" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-medium text-[#6B7280] uppercase">Content ({lsLang.toUpperCase()})</label>
+                  <textarea value={editLesson[contentKey] || ''} onChange={e => setEditLesson(p => ({ ...p, [contentKey]: e.target.value }))} rows={8} className="w-full mt-1 px-3 py-2 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2ECC71]/30" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-medium text-[#6B7280] uppercase">Key Takeaway ({lsLang.toUpperCase()})</label>
+                  <textarea value={editLesson[takeawayKey] || ''} onChange={e => setEditLesson(p => ({ ...p, [takeawayKey]: e.target.value }))} rows={3} className="w-full mt-1 px-3 py-2 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2ECC71]/30" />
+                </div>
               </div>
-              <div>
-                <label className="text-[10px] font-medium text-[#6B7280] uppercase">Key Takeaway</label>
-                <textarea value={editLesson.key_takeaway || ''} onChange={e => setEditLesson(l => ({ ...l, key_takeaway: e.target.value }))} rows={3} className="w-full mt-1 px-3 py-2 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2ECC71]/30" />
+              <div className="flex gap-2 mt-4">
+                <button onClick={() => setEditLesson(null)} className="flex-1 py-2 text-xs font-medium text-[#6B7280] bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">Cancel</button>
+                <button onClick={() => handleSaveLesson(editLesson)} className="flex-1 py-2 text-xs font-medium text-white bg-[#1B3D2F] rounded-lg hover:bg-[#15332A] transition-colors">Save All Languages</button>
               </div>
-            </div>
-            <div className="flex gap-2 mt-4">
-              <button onClick={() => setEditLesson(null)} className="flex-1 py-2 text-xs font-medium text-[#6B7280] bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">Cancel</button>
-              <button onClick={() => handleSaveLesson(editLesson)} className="flex-1 py-2 text-xs font-medium text-white bg-[#1B3D2F] rounded-lg hover:bg-[#15332A] transition-colors">Save</button>
             </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
     </div>
   )
 }

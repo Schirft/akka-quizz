@@ -32,12 +32,15 @@ export default function ABChoiceBoard({ puzzle, onAnswer, lang = 'en' }) {
     return Object.keys(fallback).length > 0 ? fallback : {};
   };
 
+  // Optional labels dict for translating metric keys: ctx.labels_fr = { "Total capital": "Capital total", ... }
+  const metricLabels = ctx[`labels_${lang}`] || {};
+
   const renderMetrics = (opt) => {
     const metrics = getMetrics(opt);
     if (!metrics || typeof metrics !== 'object' || Object.keys(metrics).length === 0) return null;
     return Object.entries(metrics).map(([key, value]) => (
       <div key={key} className="flex justify-between items-baseline gap-1 py-1.5 border-b border-gray-100 text-xs">
-        <span className="text-gray-500 shrink-0">{key.replace(/_/g, ' ')}</span>
+        <span className="text-gray-500 shrink-0">{metricLabels[key] || key.replace(/_/g, ' ')}</span>
         <span className="font-semibold font-mono text-gray-900 text-right">
           {typeof value === 'number' ? value.toLocaleString() : String(value)}
         </span>
@@ -68,7 +71,7 @@ export default function ABChoiceBoard({ puzzle, onAnswer, lang = 'en' }) {
         <div className={`font-bold text-sm mb-2 text-center ${
           isSelected ? 'text-green-700' : 'text-gray-800'
         }`}>
-          {opt.title || `Option ${choice.toUpperCase()}`}
+          {opt[`title_${lang}`] || opt.title || `Option ${choice.toUpperCase()}`}
         </div>
         {renderMetrics(opt)}
         {renderDescription(opt)}
