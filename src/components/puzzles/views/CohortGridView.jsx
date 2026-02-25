@@ -10,12 +10,12 @@ function getCellColor(val) {
   return 'bg-red-500 text-white';
 }
 
-export default function CohortGridView({ puzzle, onAnswer, lang = 'en' }) {
+export default function CohortGridView({ puzzle, onAnswer, lang = 'en', hideQuestion }) {
   const [selected, setSelected] = useState(null);
   const ctx = puzzle.context_data || {};
   const rows = ctx.rows || [];
   const columns = ctx.columns || [];
-  const question = ctx[`question_${lang}`] || ctx.question_en || ctx.question || 'Which cohort shows the worst retention?';
+  const question = hideQuestion ? null : (ctx[`question_${lang}`] || ctx.question_en || ctx.question || 'Which cohort shows the worst retention?');
 
   const handleTap = (id) => {
     if (selected !== null) return;
@@ -27,7 +27,7 @@ export default function CohortGridView({ puzzle, onAnswer, lang = 'en' }) {
 
   return (
     <div className="p-4">
-      <p className="font-semibold mb-3 text-[15px] text-gray-900">{question}</p>
+      {question && <p className="font-semibold mb-3 text-[15px] text-gray-900">{question}</p>}
       <div className="border border-gray-200 rounded-xl overflow-hidden overflow-x-auto">
         {/* Header */}
         <div className="grid bg-gray-700 text-gray-200 text-[10px] font-semibold uppercase tracking-wide"

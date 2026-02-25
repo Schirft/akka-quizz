@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 
-export default function FundingTimelineView({ puzzle, onAnswer, lang = 'en' }) {
+export default function FundingTimelineView({ puzzle, onAnswer, lang = 'en', hideQuestion }) {
   const [selected, setSelected] = useState(null);
   const ctx = puzzle.context_data || {};
   const rows = ctx.rows || [];
-  const question = ctx[`question_${lang}`] || ctx.question_en || ctx.question || 'Find the hidden down round';
+  const question = hideQuestion ? null : (ctx[`question_${lang}`] || ctx.question_en || ctx.question || 'Find the hidden down round');
 
   const handleTap = (id) => {
     if (selected !== null) return;
@@ -29,7 +29,7 @@ export default function FundingTimelineView({ puzzle, onAnswer, lang = 'en' }) {
 
   return (
     <div className="p-4">
-      <p className="font-semibold mb-3 text-[15px] text-gray-900">{question}</p>
+      {question && <p className="font-semibold mb-3 text-[15px] text-gray-900">{question}</p>}
       {/* Timeline horizontal scrollable */}
       <div className="overflow-x-auto pb-2 -mx-1">
         <div className="flex items-start gap-0 min-w-max px-1" style={{ minWidth: rows.length * 90 }}>

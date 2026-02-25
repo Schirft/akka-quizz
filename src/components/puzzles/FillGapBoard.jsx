@@ -17,13 +17,13 @@ function getRowDisplayValue(row, fieldName) {
   return '';
 }
 
-export default function FillGapBoard({ puzzle, onAnswer, lang = 'en' }) {
+export default function FillGapBoard({ puzzle, onAnswer, lang = 'en', hideQuestion }) {
   const [selected, setSelected] = useState(null);
   const ctx = puzzle.context_data || {};
   const rows = ctx.rows || ctx.table || [];
   const missingField = ctx.missing_field || {};
   const options = ctx.options || [];
-  const question = ctx[`question_${lang}`] || ctx.question_en || ctx.question || 'Fill in the missing value';
+  const question = hideQuestion ? null : (ctx[`question_${lang}`] || ctx.question_en || ctx.question || 'Fill in the missing value');
   const fieldName = missingField.field || 'value';
 
   const handlePick = (val) => {
@@ -34,7 +34,7 @@ export default function FillGapBoard({ puzzle, onAnswer, lang = 'en' }) {
 
   return (
     <div className="p-4">
-      <p className="font-semibold mb-3 text-[15px] text-gray-900">{question}</p>
+      {question && <p className="font-semibold mb-3 text-[15px] text-gray-900">{question}</p>}
 
       {/* Data table */}
       <div className="border border-gray-200 rounded-xl overflow-hidden mb-4">

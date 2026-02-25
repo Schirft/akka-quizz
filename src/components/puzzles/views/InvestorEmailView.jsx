@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 
-export default function InvestorEmailView({ puzzle, onAnswer, lang = 'en' }) {
+export default function InvestorEmailView({ puzzle, onAnswer, lang = 'en', hideQuestion }) {
   const [selected, setSelected] = useState(null);
   const ctx = puzzle.context_data || {};
   const rows = ctx.rows || [];
-  const question = ctx[`question_${lang}`] || ctx.question_en || ctx.question || 'Which paragraph buries bad news?';
+  const question = hideQuestion ? null : (ctx[`question_${lang}`] || ctx.question_en || ctx.question || 'Which paragraph buries bad news?');
   const emailFrom = ctx[`email_from_${lang}`] || ctx.email_from || 'CEO';
   const emailSubject = ctx[`email_subject_${lang}`] || ctx.email_subject || 'Quarterly Update';
   const emailDate = ctx.email_date || '';
@@ -17,7 +17,7 @@ export default function InvestorEmailView({ puzzle, onAnswer, lang = 'en' }) {
 
   return (
     <div className="p-4">
-      <p className="font-semibold mb-3 text-[15px] text-gray-900">{question}</p>
+      {question && <p className="font-semibold mb-3 text-[15px] text-gray-900">{question}</p>}
       {/* Email container */}
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
         {/* Email header */}

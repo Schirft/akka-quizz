@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 
-export default function CrashPointBoard({ puzzle, onAnswer, lang = 'en' }) {
+export default function CrashPointBoard({ puzzle, onAnswer, lang = 'en', hideQuestion }) {
   const [selected, setSelected] = useState(null);
   const ctx = puzzle.context_data || {};
   const dataPoints = ctx.data || ctx.monthly_data || [];
   const burnData = ctx.monthly_burn || [];
-  const question = ctx[`question_${lang}`] || ctx.question_en || ctx.question || 'Tap the danger month';
+  const question = hideQuestion ? null : (ctx[`question_${lang}`] || ctx.question_en || ctx.question || 'Tap the danger month');
 
   const maxCash = Math.max(...dataPoints.map(d => d.cash || d.value || 0), 1);
 
@@ -17,7 +17,7 @@ export default function CrashPointBoard({ puzzle, onAnswer, lang = 'en' }) {
 
   return (
     <div className="p-4">
-      <p className="font-semibold mb-3 text-[15px] text-gray-900">{question}</p>
+      {question && <p className="font-semibold mb-3 text-[15px] text-gray-900">{question}</p>}
 
       {/* Chart */}
       <div className="flex items-end gap-0.5 h-40 border-b-2 border-gray-200 mb-2 relative">

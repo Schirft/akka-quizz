@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 
-export default function TermSheetView({ puzzle, onAnswer, lang = 'en' }) {
+export default function TermSheetView({ puzzle, onAnswer, lang = 'en', hideQuestion }) {
   const [selected, setSelected] = useState(null);
   const ctx = puzzle.context_data || {};
   const rows = ctx.rows || [];
-  const question = ctx[`question_${lang}`] || ctx.question_en || ctx.question || 'Find the problematic clause';
+  const question = hideQuestion ? null : (ctx[`question_${lang}`] || ctx.question_en || ctx.question || 'Find the problematic clause');
   const docTitle = ctx[`document_title_${lang}`] || ctx.document_title || 'Term Sheet';
 
   const handleTap = (id) => {
@@ -15,7 +15,7 @@ export default function TermSheetView({ puzzle, onAnswer, lang = 'en' }) {
 
   return (
     <div className="p-4">
-      <p className="font-semibold mb-3 text-[15px] text-gray-900">{question}</p>
+      {question && <p className="font-semibold mb-3 text-[15px] text-gray-900">{question}</p>}
       {/* Document */}
       <div className="bg-stone-50 border border-stone-200 rounded-xl overflow-hidden">
         {/* Document header */}

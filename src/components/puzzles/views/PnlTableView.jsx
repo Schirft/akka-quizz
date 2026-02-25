@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 
-export default function PnlTableView({ puzzle, onAnswer, lang = 'en' }) {
+export default function PnlTableView({ puzzle, onAnswer, lang = 'en', hideQuestion }) {
   const [selected, setSelected] = useState(null);
   const ctx = puzzle.context_data || {};
   const rows = ctx.rows || [];
-  const question = ctx[`question_${lang}`] || ctx.question_en || ctx.question || 'Find the hidden cost';
+  const question = hideQuestion ? null : (ctx[`question_${lang}`] || ctx.question_en || ctx.question || 'Find the hidden cost');
   const revenue = ctx.revenue || 0;
   const claimedRunway = ctx[`claimed_runway_${lang}`] || ctx.claimed_runway || '';
 
@@ -29,7 +29,7 @@ export default function PnlTableView({ puzzle, onAnswer, lang = 'en' }) {
 
   return (
     <div className="p-4">
-      <p className="font-semibold mb-3 text-[15px] text-gray-900">{question}</p>
+      {question && <p className="font-semibold mb-3 text-[15px] text-gray-900">{question}</p>}
       <div className="border border-gray-200 rounded-xl overflow-hidden">
         {/* Revenue header */}
         {revenue > 0 && (

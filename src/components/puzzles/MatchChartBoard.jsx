@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 
-export default function MatchChartBoard({ puzzle, onAnswer, lang = 'en' }) {
+export default function MatchChartBoard({ puzzle, onAnswer, lang = 'en', hideQuestion }) {
   const [selected, setSelected] = useState(null);
   const ctx = puzzle.context_data || {};
   const charts = ctx.charts || [];
   const description = ctx[`description_${lang}`] || ctx.description_en || ctx.description || '';
-  const question = ctx[`question_${lang}`] || ctx.question_en || ctx.question || 'Match the description to the chart';
+  const question = hideQuestion ? null : (ctx[`question_${lang}`] || ctx.question_en || ctx.question || 'Match the description to the chart');
 
   const handlePick = (id) => {
     if (selected !== null) return; // Block double-click
@@ -72,7 +72,7 @@ export default function MatchChartBoard({ puzzle, onAnswer, lang = 'en' }) {
 
   return (
     <div className="p-4">
-      <p className="font-semibold mb-2 text-[15px] text-gray-900">{question}</p>
+      {question && <p className="font-semibold mb-2 text-[15px] text-gray-900">{question}</p>}
 
       {/* Description box */}
       <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 mb-4 text-sm text-slate-700 leading-relaxed italic">

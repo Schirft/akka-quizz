@@ -15,11 +15,11 @@ function getDisplayValue(row) {
   return undefined;
 }
 
-export default function DefaultListView({ puzzle, onAnswer, lang = 'en' }) {
+export default function DefaultListView({ puzzle, onAnswer, lang = 'en', hideQuestion }) {
   const [selected, setSelected] = useState(null);
   const ctx = puzzle.context_data || {};
   const rows = ctx.rows || ctx.clauses || ctx.items || [];
-  const question = ctx[`question_${lang}`] || ctx.question_en || ctx.question || 'Spot the flaw';
+  const question = hideQuestion ? null : (ctx[`question_${lang}`] || ctx.question_en || ctx.question || 'Spot the flaw');
 
   const handleTap = (id) => {
     if (selected !== null) return;
@@ -29,7 +29,7 @@ export default function DefaultListView({ puzzle, onAnswer, lang = 'en' }) {
 
   return (
     <div className="p-4">
-      <p className="font-semibold mb-3 text-[15px] text-gray-900">{question}</p>
+      {question && <p className="font-semibold mb-3 text-[15px] text-gray-900">{question}</p>}
       <div className="border border-gray-200 rounded-xl overflow-hidden">
         {rows.map((row, i) => {
           const isSelected = selected === row.id;

@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 
-export default function CapTableView({ puzzle, onAnswer, lang = 'en' }) {
+export default function CapTableView({ puzzle, onAnswer, lang = 'en', hideQuestion }) {
   const [selected, setSelected] = useState(null);
   const ctx = puzzle.context_data || {};
   const rows = ctx.rows || [];
-  const question = ctx[`question_${lang}`] || ctx.question_en || ctx.question || 'Spot the flaw in this cap table';
+  const question = hideQuestion ? null : (ctx[`question_${lang}`] || ctx.question_en || ctx.question || 'Spot the flaw in this cap table');
 
   const handleTap = (id) => {
     if (selected !== null) return;
@@ -21,7 +21,7 @@ export default function CapTableView({ puzzle, onAnswer, lang = 'en' }) {
 
   return (
     <div className="p-4">
-      <p className="font-semibold mb-3 text-[15px] text-gray-900">{question}</p>
+      {question && <p className="font-semibold mb-3 text-[15px] text-gray-900">{question}</p>}
       <div className="border border-gray-200 rounded-xl overflow-hidden">
         {/* Header */}
         <div className="grid grid-cols-3 bg-gray-700 text-gray-200 text-xs font-semibold uppercase tracking-wide">

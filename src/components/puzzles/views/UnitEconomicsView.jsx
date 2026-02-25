@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 
-export default function UnitEconomicsView({ puzzle, onAnswer, lang = 'en' }) {
+export default function UnitEconomicsView({ puzzle, onAnswer, lang = 'en', hideQuestion }) {
   const [selected, setSelected] = useState(null);
   const ctx = puzzle.context_data || {};
   const rows = ctx.rows || [];
-  const question = ctx[`question_${lang}`] || ctx.question_en || ctx.question || 'Find the misclassified cost';
+  const question = hideQuestion ? null : (ctx[`question_${lang}`] || ctx.question_en || ctx.question || 'Find the misclassified cost');
   const revenuePerUnit = ctx.revenue_per_unit || 0;
   const claimedGrossMargin = ctx[`claimed_gross_margin_${lang}`] || ctx.claimed_gross_margin || '';
 
@@ -57,7 +57,7 @@ export default function UnitEconomicsView({ puzzle, onAnswer, lang = 'en' }) {
 
   return (
     <div className="p-4">
-      <p className="font-semibold mb-3 text-[15px] text-gray-900">{question}</p>
+      {question && <p className="font-semibold mb-3 text-[15px] text-gray-900">{question}</p>}
       <div className="border border-gray-200 rounded-xl overflow-hidden">
         {/* Revenue */}
         {revenuePerUnit > 0 && (

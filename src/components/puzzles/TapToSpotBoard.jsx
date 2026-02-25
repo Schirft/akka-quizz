@@ -24,10 +24,10 @@ const VIEW_MAP = {
   comp_table: CompTableView,
 };
 
-export default function TapToSpotBoard({ puzzle, onAnswer, lang = 'en' }) {
+export default function TapToSpotBoard({ puzzle, onAnswer, lang = 'en', hideQuestion }) {
   const ctx = puzzle.context_data || {};
   const visualType = ctx.visual_type;
   const ViewComponent = VIEW_MAP[visualType] || DefaultListView;
 
-  return <ViewComponent puzzle={puzzle} onAnswer={onAnswer} lang={lang} />;
+  return <ViewComponent puzzle={puzzle} onAnswer={onAnswer} lang={lang} hideQuestion={hideQuestion} />;
 }

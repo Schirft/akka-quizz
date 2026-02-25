@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 
-export default function BarChartView({ puzzle, onAnswer, lang = 'en' }) {
+export default function BarChartView({ puzzle, onAnswer, lang = 'en', hideQuestion }) {
   const [selected, setSelected] = useState(null);
   const ctx = puzzle.context_data || {};
   const rows = ctx.rows || [];
-  const question = ctx[`question_${lang}`] || ctx.question_en || ctx.question || 'Spot the flaw';
+  const question = hideQuestion ? null : (ctx[`question_${lang}`] || ctx.question_en || ctx.question || 'Spot the flaw');
   const claim = ctx[`claim_${lang}`] || ctx.claim_en || ctx.claim || '';
 
   const handleTap = (id) => {
@@ -24,7 +24,7 @@ export default function BarChartView({ puzzle, onAnswer, lang = 'en' }) {
 
   return (
     <div className="p-4">
-      <p className="font-semibold mb-2 text-[15px] text-gray-900">{question}</p>
+      {question && <p className="font-semibold mb-2 text-[15px] text-gray-900">{question}</p>}
       {claim && (
         <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800 italic">
           "{claim}"
