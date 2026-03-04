@@ -12,10 +12,7 @@ import Card from '../../components/ui/Card'
 import Button from '../../components/ui/Button'
 import WeeklyRecapModal from '../../components/player/WeeklyRecapModal'
 import ProgressionPathModal from '../../components/player/ProgressionPathModal'
-import {
-  Flame, CheckCircle, Trophy, Loader2, RotateCcw,
-  LogOut, Shield, Medal, ChevronRight,
-} from 'lucide-react'
+import { CheckCircle, Loader2 } from 'lucide-react'
 
 const LEVEL_EMOJIS = {
   1: '🌱', 2: '📚', 3: '💰', 4: '📊', 5: '👼',
@@ -281,11 +278,6 @@ export default function HomePage() {
       {/* Streak card with 7-day circles + fire animation (B7) */}
       <Card className="mb-3">
         <div className="flex items-center gap-3 mb-3">
-          <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-            streakDays > 0 ? 'bg-orange-100 animate-streak-glow' : 'bg-orange-50'
-          }`}>
-            <Flame size={20} className={`${streakDays > 0 ? 'text-orange-500 animate-streak-fire' : 'text-orange-300'}`} />
-          </div>
           <div>
             <p className="text-2xl font-bold text-akka-text">
               {streakDays}{' '}
@@ -384,7 +376,7 @@ export default function HomePage() {
               <p className="text-[10px] font-semibold text-white/70">
                 {t('see_journey')}
               </p>
-              <ChevronRight size={12} className="text-white/50" />
+              <span className="text-white/50 text-xs">›</span>
             </div>
           </div>
         </div>
@@ -476,12 +468,9 @@ export default function HomePage() {
       {/* Leaderboard */}
       {leaders.length > 0 && (
         <Card className="mb-3">
-          <div className="flex items-center gap-2 mb-3">
-            <Trophy size={16} className="text-amber-500" />
-            <p className="text-xs font-semibold uppercase tracking-wide text-akka-text-secondary">
-              {t('ranking')}
-            </p>
-          </div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-akka-text-secondary mb-3">
+            {t('ranking')}
+          </p>
           <div className="space-y-0">
             {(() => {
               const myIndex = leaders.findIndex(l => l.id === profile?.id)
@@ -497,11 +486,7 @@ export default function HomePage() {
                     } ${i < 3 ? medalBg[i] + ' mb-0.5' : ''}`}
                   >
                     <div className="w-6 text-center flex-shrink-0">
-                      {i < 3 ? (
-                        <Medal size={16} className={medalColors[i]} />
-                      ) : (
-                        <span className="text-xs font-semibold text-akka-text-secondary">{i + 1}</span>
-                      )}
+                      <span className="text-xs font-semibold text-akka-text-secondary">{i + 1}</span>
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className={`text-sm font-medium truncate ${isMe ? 'text-[#1B3D2F] font-semibold' : 'text-akka-text'}`}>
@@ -540,12 +525,9 @@ export default function HomePage() {
       {/* Recent Badges */}
       {recentBadges.length > 0 && (
         <Card className="mb-3">
-          <div className="flex items-center gap-2 mb-3">
-            <Trophy size={16} className="text-amber-500" />
-            <p className="text-xs font-semibold uppercase tracking-wide text-akka-text-secondary">
-              {t('recent_badges')}
-            </p>
-          </div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-akka-text-secondary mb-3">
+            {t('recent_badges')}
+          </p>
           <div className="flex gap-3">
             {recentBadges.map((badge) => {
               const colors = TIER_COLORS[badge.tier] || TIER_COLORS.common
@@ -587,7 +569,6 @@ export default function HomePage() {
           onClick={() => navigate('/admin')}
           style={{ backgroundColor: '#1B3D2F' }}
         >
-          <Shield size={18} />
           {t('admin_panel')}
         </Button>
 
@@ -595,7 +576,6 @@ export default function HomePage() {
           onClick={handleSignOut}
           className="w-full flex items-center justify-center gap-2 py-3 min-h-[44px] rounded-xl border-2 border-[#E74C3C] text-[#E74C3C] font-semibold hover:bg-red-50 transition-colors"
         >
-          <LogOut size={18} />
           {t('sign_out')}
         </button>
       </div>
@@ -631,10 +611,8 @@ export default function HomePage() {
           onClick={handleReplay}
           disabled={replaying}
         >
-          {replaying ? (
+          {replaying && (
             <Loader2 size={16} className="animate-spin" />
-          ) : (
-            <RotateCcw size={16} />
           )}
           {replaying ? t('resetting') : `🔄 ${t('new_quiz_demo')}`}
         </Button>

@@ -2,14 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import Card from '../../components/ui/Card'
 import {
-  CheckCircle,
-  XCircle,
   Loader2,
-  ChevronDown,
-  ChevronUp,
-  ChevronLeft,
-  ChevronRight,
-  Package,
 } from 'lucide-react'
 
 /**
@@ -200,7 +193,7 @@ export default function DailyQuizPage() {
           disabled={autoFillWithPacks || unassignedPacks.length === 0}
           className="flex items-center gap-2 px-4 py-2 bg-[#1B3D2F] text-white text-sm font-semibold rounded-xl hover:opacity-90 disabled:opacity-50 transition-opacity shrink-0"
         >
-          {autoFillWithPacks ? <Loader2 size={16} className="animate-spin" /> : <Package size={16} />}
+          {autoFillWithPacks && <Loader2 size={16} className="animate-spin" />}
           Auto-fill Packs ({unassignedPacks.length})
         </button>
       </div>
@@ -215,7 +208,7 @@ export default function DailyQuizPage() {
           }}
           className="p-2 hover:bg-gray-100 rounded-lg cursor-pointer transition-colors"
         >
-          <ChevronLeft size={20} className="text-[#1A1A1A]" />
+          <span className="text-[#1A1A1A] text-lg">&lsaquo;</span>
         </button>
         <h3 className="text-lg font-bold text-[#1A1A1A]">
           {viewMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
@@ -228,7 +221,7 @@ export default function DailyQuizPage() {
           }}
           className="p-2 hover:bg-gray-100 rounded-lg cursor-pointer transition-colors"
         >
-          <ChevronRight size={20} className="text-[#1A1A1A]" />
+          <span className="text-[#1A1A1A] text-lg">&rsaquo;</span>
         </button>
       </div>
 
@@ -269,7 +262,6 @@ export default function DailyQuizPage() {
                 <div className="flex items-center gap-2">
                   {pack ? (
                     <span className="flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-medium">
-                      <CheckCircle size={12} />
                       Scheduled
                     </span>
                   ) : (
@@ -277,7 +269,7 @@ export default function DailyQuizPage() {
                       Empty
                     </span>
                   )}
-                  {isExpanded ? <ChevronUp size={16} className="text-[#6B7280]" /> : <ChevronDown size={16} className="text-[#6B7280]" />}
+                  <span className="text-xs text-[#6B7280]">{isExpanded ? '▲' : '▼'}</span>
                 </div>
               </div>
 
@@ -289,7 +281,7 @@ export default function DailyQuizPage() {
                     <div className="mt-3 p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
-                          <Package size={14} className="text-emerald-600" />
+                          <span className="text-xs font-bold text-emerald-600">Pack</span>
                           <span className="text-sm font-semibold text-emerald-800">{pack.theme}</span>
                           <span className="text-xs text-emerald-600 capitalize">{pack.difficulty}</span>
                           {pack.created_at && (
@@ -327,7 +319,6 @@ export default function DailyQuizPage() {
                           onClick={() => setShowPackPicker(date)}
                           className="flex items-center gap-2 w-full px-4 py-3 border-2 border-dashed border-emerald-300 rounded-xl text-sm text-emerald-700 hover:bg-emerald-50 hover:border-emerald-400 transition-colors"
                         >
-                          <Package size={16} />
                           Assign a pack to this day
                         </button>
                       ) : (
@@ -350,8 +341,8 @@ export default function DailyQuizPage() {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm">
             <div className="flex items-center justify-between px-6 py-4 border-b border-[#D1D5DB]">
               <h2 className="text-lg font-bold text-[#1A1A1A]">Auto-fill Packs</h2>
-              <button onClick={() => setShowAutoFillModal(false)} className="text-[#6B7280] hover:text-[#1A1A1A]">
-                <XCircle size={20} />
+              <button onClick={() => setShowAutoFillModal(false)} className="text-[#6B7280] hover:text-[#1A1A1A] text-xl">
+                &times;
               </button>
             </div>
             <div className="px-6 py-4">
@@ -431,7 +422,7 @@ export default function DailyQuizPage() {
                 disabled={autoFillWithPacks || unassignedPacks.length === 0}
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-[#1B3D2F] text-white text-sm font-semibold rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity"
               >
-                {autoFillWithPacks ? <Loader2 size={14} className="animate-spin" /> : <Package size={14} />}
+                {autoFillWithPacks && <Loader2 size={14} className="animate-spin" />}
                 Fill {Math.min(missingCount, unassignedPacks.length)} days
               </button>
             </div>
@@ -448,8 +439,8 @@ export default function DailyQuizPage() {
                 <h2 className="text-lg font-bold text-[#1A1A1A]">Assign Pack</h2>
                 <p className="text-xs text-[#6B7280]">{showPackPicker} — Pick a pack to assign</p>
               </div>
-              <button onClick={() => setShowPackPicker(null)} className="text-[#6B7280] hover:text-[#1A1A1A]">
-                <XCircle size={20} />
+              <button onClick={() => setShowPackPicker(null)} className="text-[#6B7280] hover:text-[#1A1A1A] text-xl">
+                &times;
               </button>
             </div>
             <div className="max-h-[60vh] overflow-y-auto divide-y divide-gray-100">
@@ -461,7 +452,6 @@ export default function DailyQuizPage() {
                   onClick={() => assignPack(showPackPicker, p.id)}
                   className="flex items-center gap-3 px-6 py-3 cursor-pointer hover:bg-emerald-50 transition-colors"
                 >
-                  <Package size={16} className="text-[#2ECC71] shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-[#1A1A1A]">{p.theme}</p>
                     <p className="text-xs text-[#6B7280]">

@@ -2,30 +2,12 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import Card from '../../components/ui/Card'
-import {
-  LayoutDashboard,
-  FileQuestion,
-  CheckCircle,
-  Clock,
-  XCircle,
-  Sparkles,
-  Globe,
-  TrendingUp,
-  Zap,
-  Newspaper,
-  Loader2,
-  Package,
-  Puzzle,
-  BookOpen,
-  DollarSign,
-  Calendar,
-  AlertTriangle,
-} from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 
 const STATUS_CONFIG = {
-  completed: { color: 'bg-green-100 text-green-700', icon: CheckCircle },
-  running: { color: 'bg-blue-100 text-blue-700', icon: Zap },
-  failed: { color: 'bg-red-100 text-red-700', icon: XCircle },
+  completed: { color: 'bg-green-100 text-green-700', icon: null },
+  running: { color: 'bg-blue-100 text-blue-700', icon: null },
+  failed: { color: 'bg-red-100 text-red-700', icon: null },
 }
 
 // E4: Category normalization map
@@ -283,13 +265,13 @@ export default function DashboardPage() {
           <button onClick={seedTestArticles} disabled={seeding}
             className="flex items-center gap-2 px-4 py-2.5 border border-[#D1D5DB] text-[#1A1A1A] text-sm font-semibold rounded-xl hover:bg-gray-50 disabled:opacity-50 transition-all"
           >
-            {seeding ? <Loader2 size={16} className="animate-spin" /> : <Newspaper size={16} />}
+            {seeding && <Loader2 size={16} className="animate-spin" />}
             {seeding ? (seedStatus || 'Seeding...') : 'Seed Test News'}
           </button>
           <button onClick={() => navigate('/admin/generate')}
             className="flex items-center gap-2 px-4 py-2.5 bg-[#1B3D2F] text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity"
           >
-            <Sparkles size={16} /> Generate
+            Generate
           </button>
         </div>
       </div>
@@ -306,47 +288,27 @@ export default function DashboardPage() {
       {/* E1: Enhanced stats row — Questions + Packs + Puzzles + Lessons */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
         <Card>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
-              <FileQuestion size={20} className="text-blue-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-[#1A1A1A]">{stats?.total || 0}</p>
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Total Questions</p>
-            </div>
+          <div>
+            <p className="text-2xl font-bold text-[#1A1A1A]">{stats?.total || 0}</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Total Questions</p>
           </div>
         </Card>
         <Card>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center">
-              <Package size={20} className="text-emerald-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-[#1A1A1A]">{stats?.totalPacks || 0}</p>
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Packs</p>
-            </div>
+          <div>
+            <p className="text-2xl font-bold text-[#1A1A1A]">{stats?.totalPacks || 0}</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Packs</p>
           </div>
         </Card>
         <Card>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-purple-50 flex items-center justify-center">
-              <Puzzle size={20} className="text-purple-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-[#1A1A1A]">{stats?.totalPuzzles || 0}</p>
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Puzzles</p>
-            </div>
+          <div>
+            <p className="text-2xl font-bold text-[#1A1A1A]">{stats?.totalPuzzles || 0}</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Puzzles</p>
           </div>
         </Card>
         <Card>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
-              <BookOpen size={20} className="text-amber-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-[#1A1A1A]">{stats?.totalLessons || 0}</p>
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Lessons</p>
-            </div>
+          <div>
+            <p className="text-2xl font-bold text-[#1A1A1A]">{stats?.totalLessons || 0}</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Lessons</p>
           </div>
         </Card>
       </div>
@@ -354,64 +316,41 @@ export default function DashboardPage() {
       {/* Second row: Approved / Pending / Rejected / Questions source */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <Card>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center">
-              <CheckCircle size={20} className="text-green-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-[#1A1A1A]">{stats?.approved || 0}</p>
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Approved</p>
-            </div>
+          <div>
+            <p className="text-2xl font-bold text-[#1A1A1A]">{stats?.approved || 0}</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Approved</p>
           </div>
         </Card>
         <Card>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
-              <Clock size={20} className="text-amber-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-[#1A1A1A]">{stats?.pending || 0}</p>
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Pending</p>
-            </div>
+          <div>
+            <p className="text-2xl font-bold text-[#1A1A1A]">{stats?.pending || 0}</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Pending</p>
           </div>
         </Card>
         <Card>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center">
-              <XCircle size={20} className="text-red-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-[#1A1A1A]">{stats?.rejected || 0}</p>
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Rejected</p>
-            </div>
+          <div>
+            <p className="text-2xl font-bold text-[#1A1A1A]">{stats?.rejected || 0}</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Rejected</p>
           </div>
         </Card>
         {/* E1: Pack vs Orphan questions */}
         <Card>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
-              <Sparkles size={20} className="text-indigo-600" />
-            </div>
-            <div>
-              <p className="text-lg font-bold text-[#1A1A1A]">
-                <span className="text-emerald-600">{stats?.packCount2 || 0}</span>
-                <span className="text-[#6B7280] text-sm font-normal"> / </span>
-                <span className="text-purple-600">{stats?.aiCount || 0}</span>
-              </p>
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Pack / AI Orphan</p>
-            </div>
+          <div>
+            <p className="text-lg font-bold text-[#1A1A1A]">
+              <span className="text-emerald-600">{stats?.packCount2 || 0}</span>
+              <span className="text-[#6B7280] text-sm font-normal"> / </span>
+              <span className="text-purple-600">{stats?.aiCount || 0}</span>
+            </p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Pack / AI Orphan</p>
           </div>
         </Card>
       </div>
 
       {/* E2: Pack Health Calendar — 14 days ahead */}
       <Card className="mb-6">
-        <div className="flex items-center gap-2 mb-4">
-          <Calendar size={16} className="text-[#2ECC71]" />
-          <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
-            Pack Health — Next 14 Days
-          </p>
-        </div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280] mb-4">
+          Pack Health — Next 14 Days
+        </p>
         <div className="flex gap-1.5 overflow-x-auto pb-2">
           {packHealth.map((day, i) => {
             const hasPack = day.packs.length > 0
@@ -429,11 +368,11 @@ export default function DashboardPage() {
                 <p className={`text-[10px] font-semibold uppercase ${isToday ? 'text-[#1B3D2F]' : 'text-[#6B7280]'}`}>
                   {day.label}
                 </p>
-                <div className="mt-1">
+                <div className="mt-1 text-center text-sm">
                   {hasPack ? (
-                    <CheckCircle size={18} className="mx-auto text-emerald-500" />
+                    <span className="text-emerald-500">&#10003;</span>
                   ) : (
-                    <AlertTriangle size={18} className="mx-auto text-red-400" />
+                    <span className="text-red-400">!</span>
                   )}
                 </div>
                 <p className="text-[10px] text-[#6B7280] mt-0.5">
@@ -445,7 +384,7 @@ export default function DashboardPage() {
         </div>
         {packHealth.filter(d => d.packs.length === 0).length > 0 && (
           <p className="text-xs text-red-600 mt-2">
-            <AlertTriangle size={12} className="inline mr-1" />
+            <span className="inline mr-1">!</span>
             {packHealth.filter(d => d.packs.length === 0).length} days without assigned packs
           </p>
         )}
@@ -454,12 +393,9 @@ export default function DashboardPage() {
       <div className="grid lg:grid-cols-3 gap-6 mb-6">
         {/* E4: Questions by Category (normalized) */}
         <Card className="lg:col-span-2">
-          <div className="flex items-center gap-2 mb-4">
-            <TrendingUp size={16} className="text-[#2ECC71]" />
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
-              Questions by Category
-            </p>
-          </div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280] mb-4">
+            Questions by Category
+          </p>
           <div className="space-y-3">
             {Object.entries(stats?.byCategory || {})
               .sort((a, b) => b[1] - a[1])
@@ -486,10 +422,7 @@ export default function DashboardPage() {
         {/* Right column: Language + Source + Cost */}
         <div className="space-y-6">
           <Card>
-            <div className="flex items-center gap-2 mb-4">
-              <Globe size={16} className="text-[#3498DB]" />
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Language Coverage</p>
-            </div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280] mb-4">Language Coverage</p>
             <div className="space-y-3">
               {[
                 { flag: '🇬🇧', label: 'English', count: stats?.total || 0 },
@@ -509,10 +442,7 @@ export default function DashboardPage() {
           </Card>
 
           <Card>
-            <div className="flex items-center gap-2 mb-4">
-              <Sparkles size={16} className="text-purple-500" />
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Source</p>
-            </div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280] mb-4">Source</p>
             <div className="flex items-center gap-3">
               <div className="flex-1 text-center p-3 bg-emerald-50 rounded-xl">
                 <p className="text-xl font-bold text-emerald-700">{stats?.packCount2 || 0}</p>
@@ -531,10 +461,7 @@ export default function DashboardPage() {
 
           {/* E3: API Cost widget */}
           <Card>
-            <div className="flex items-center gap-2 mb-4">
-              <DollarSign size={16} className="text-[#F39C12]" />
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">API Cost (this month)</p>
-            </div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280] mb-4">API Cost (this month)</p>
             <div className="text-center">
               <p className="text-3xl font-bold text-[#1A1A1A]">
                 ${(stats?.monthlyCost || 0).toFixed(2)}
@@ -548,12 +475,9 @@ export default function DashboardPage() {
       {/* E5: Recent Packs table (replaces Recent AI Batches) */}
       <Card>
         <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Package size={16} className="text-[#2ECC71]" />
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
-              Recent Packs
-            </p>
-          </div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
+            Recent Packs
+          </p>
           <button onClick={() => navigate('/admin/daily-quiz')}
             className="text-sm text-[#1B3D2F] font-medium hover:underline"
           >

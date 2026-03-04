@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useAuth } from '../../hooks/useAuth'
 import { LANGUAGES } from '../../config/constants'
 import { useLang } from '../../hooks/useLang'
-import { ArrowRight, Eye, EyeOff } from 'lucide-react'
+import { Eye, EyeOff } from 'lucide-react'
 
 /**
  * LoginPage — clean, centered, mobile-first login screen.
@@ -190,7 +190,6 @@ export default function LoginPage() {
           className="w-full flex items-center justify-center gap-2 border-2 border-akka-border text-akka-text font-semibold py-3.5 rounded-xl min-h-[52px] transition-all active:scale-[0.98] hover:border-akka-dark disabled:opacity-50"
         >
           {t('try_demo')}
-          <ArrowRight size={16} />
         </button>
 
         {/* Language picker */}

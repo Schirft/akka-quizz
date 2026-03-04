@@ -5,29 +5,7 @@ import Card from '../../components/ui/Card'
 import QuestionModal from '../../components/admin/QuestionModal'
 import ImportModal from '../../components/admin/ImportModal'
 import {
-  Search,
-  Plus,
-  CheckCircle,
-  XCircle,
-  ChevronLeft,
-  ChevronRight,
-  Filter,
-  Upload,
-  Download,
   Loader2,
-  Trash2,
-  Copy,
-  ArrowUpDown,
-  ArrowUp,
-  ArrowDown,
-  Package,
-  ChevronDown,
-  ChevronUp,
-  BookOpen,
-  Puzzle,
-  Pencil,
-  Eye,
-  EyeOff,
 } from 'lucide-react'
 
 const PAGE_SIZE = 20
@@ -195,10 +173,10 @@ export default function QuestionsPage() {
   }
 
   function SortIcon({ col }) {
-    if (sortCol !== col) return <ArrowUpDown size={12} className="text-gray-300" />
+    if (sortCol !== col) return <span className="text-gray-300 text-[10px]">↕</span>
     return sortDir === 'asc'
-      ? <ArrowUp size={12} className="text-[#1B3D2F]" />
-      : <ArrowDown size={12} className="text-[#1B3D2F]" />
+      ? <span className="text-[#1B3D2F] text-[10px]">↑</span>
+      : <span className="text-[#1B3D2F] text-[10px]">↓</span>
   }
 
   async function quickStatusChange(id, newStatus) {
@@ -655,7 +633,7 @@ export default function QuestionsPage() {
             disabled={findingDupes}
             className="flex items-center gap-1.5 px-3 py-2.5 border border-[#D1D5DB] text-[#1A1A1A] text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors"
           >
-            {findingDupes ? <Loader2 size={16} className="animate-spin" /> : <Copy size={16} />}
+            {findingDupes && <Loader2 size={16} className="animate-spin" />}
             Find Duplicates
           </button>
           <button
@@ -663,22 +641,20 @@ export default function QuestionsPage() {
             disabled={exporting}
             className="flex items-center gap-2 px-3 py-2.5 border border-[#D1D5DB] text-[#1A1A1A] text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors"
           >
-            {exporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+            {exporting && <Loader2 size={16} className="animate-spin" />}
             Export CSV
           </button>
           <button
             onClick={() => setShowImport(true)}
             className="flex items-center gap-2 px-3 py-2.5 border border-[#D1D5DB] text-[#1A1A1A] text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors"
           >
-            <Upload size={16} />
             Import
           </button>
           <button
             onClick={() => setModalQuestion({})}
             className="flex items-center gap-2 px-4 py-2.5 bg-[#1B3D2F] text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity"
           >
-            <Plus size={16} />
-            New Question
+            + New Question
           </button>
         </div>
       </div>
@@ -724,7 +700,6 @@ export default function QuestionsPage() {
                   onClick={deleteAllDuplicates}
                   className="flex items-center gap-1 px-3 py-1.5 bg-red-50 text-red-700 text-xs font-medium rounded-lg hover:bg-red-100 transition-colors"
                 >
-                  <Trash2 size={12} />
                   Delete All Duplicates
                 </button>
               )}
@@ -749,7 +724,6 @@ export default function QuestionsPage() {
                     onClick={() => deleteDuplicate(d.duplicate.id)}
                     className="flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 text-xs font-medium rounded hover:bg-red-200 transition-colors shrink-0"
                   >
-                    <Trash2 size={11} />
                     Delete
                   </button>
                 </div>
@@ -784,7 +758,6 @@ export default function QuestionsPage() {
                       className="rounded shrink-0"
                     />
                   )}
-                  <Package size={14} className="text-[#2ECC71] shrink-0" />
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-[#1A1A1A] truncate">
                       {pack.theme} — <span className="capitalize text-[#6B7280]">{pack.difficulty}</span>
@@ -807,7 +780,7 @@ export default function QuestionsPage() {
                   }`}>
                     {pack.status}
                   </span>
-                  {isExpanded ? <ChevronUp size={14} className="text-[#6B7280]" /> : <ChevronDown size={14} className="text-[#6B7280]" />}
+                  <span className="text-xs text-[#6B7280]">{isExpanded ? '▲' : '▼'}</span>
                 </div>
               </div>
 
@@ -828,16 +801,16 @@ export default function QuestionsPage() {
                                     q.difficulty === 'hard' ? 'text-red-600' : q.difficulty === 'medium' ? 'text-amber-600' : 'text-green-600'
                                   }`}>{q.difficulty}</span>
                                   <button onClick={(e) => { e.stopPropagation(); setModalQuestion(q) }} className="ml-auto p-1 rounded hover:bg-gray-200 transition-colors" title="Edit question">
-                                    <Pencil size={11} className="text-[#6B7280]" />
+                                    <span className="text-[10px] text-[#6B7280] font-medium">Edit</span>
                                   </button>
                                   {q.status !== 'approved' && (
                                     <button onClick={(e) => { e.stopPropagation(); quickStatusChange(q.id, 'approved'); details.questions = details.questions.map(dq => dq.id === q.id ? {...dq, status:'approved'} : dq); setPackDetails({...packDetails}) }} className="p-1 rounded hover:bg-green-100 transition-colors" title="Approve">
-                                      <CheckCircle size={12} className="text-green-600" />
+                                      <span className="text-[10px] text-green-600 font-medium">Approve</span>
                                     </button>
                                   )}
                                   {q.status !== 'rejected' && (
                                     <button onClick={(e) => { e.stopPropagation(); quickStatusChange(q.id, 'rejected'); details.questions = details.questions.map(dq => dq.id === q.id ? {...dq, status:'rejected'} : dq); setPackDetails({...packDetails}) }} className="p-1 rounded hover:bg-red-100 transition-colors" title="Reject">
-                                      <XCircle size={12} className="text-red-500" />
+                                      <span className="text-[10px] text-red-500 font-medium">Reject</span>
                                     </button>
                                   )}
                                   <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${STATUS_BADGE[q.status] || 'bg-gray-100 text-gray-700'}`}>
@@ -906,10 +879,10 @@ export default function QuestionsPage() {
                         <div>
                           <div className="flex items-center justify-between mb-2">
                             <p className="text-xs font-semibold text-[#6B7280] uppercase tracking-wide flex items-center gap-1">
-                              <Puzzle size={12} /> Puzzle — {details.puzzle.interaction_type}
+                              Puzzle — {details.puzzle.interaction_type}
                             </p>
                             <button onClick={() => setEditPuzzle({ ...details.puzzle, context_data: details.puzzle.context_data ? JSON.stringify(details.puzzle.context_data, null, 2) : '' })} className="text-[10px] text-amber-700 font-medium hover:underline flex items-center gap-1">
-                              <Pencil size={10} /> Edit
+                              Edit
                             </button>
                           </div>
                           <div className="px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg space-y-1.5">
@@ -967,10 +940,10 @@ export default function QuestionsPage() {
                         <div>
                           <div className="flex items-center justify-between mb-2">
                             <p className="text-xs font-semibold text-[#6B7280] uppercase tracking-wide flex items-center gap-1">
-                              <BookOpen size={12} /> Lesson
+                              Lesson
                             </p>
                             <button onClick={() => setEditLesson({ ...details.lesson })} className="text-[10px] text-blue-700 font-medium hover:underline flex items-center gap-1">
-                              <Pencil size={10} /> Edit
+                              Edit
                             </button>
                           </div>
                           <div className="px-3 py-2.5 bg-blue-50 border border-blue-200 rounded-lg space-y-1.5">
@@ -1021,13 +994,13 @@ export default function QuestionsPage() {
                               : 'bg-green-50 text-green-700 hover:bg-green-100'
                           }`}
                         >
-                          {pack.status === 'active' ? <><EyeOff size={11} /> Deactivate</> : <><Eye size={11} /> Activate</>}
+                          {pack.status === 'active' ? 'Deactivate' : 'Activate'}
                         </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); handleDeletePack(pack.id) }}
                           className="flex items-center gap-1 px-3 py-1.5 text-[10px] font-medium rounded-lg bg-red-50 text-red-700 hover:bg-red-100 transition-colors ml-auto"
                         >
-                          <Trash2 size={11} /> Delete Pack
+                          Delete Pack
                         </button>
                       </div>
                     </>
@@ -1074,7 +1047,6 @@ export default function QuestionsPage() {
               <Card className="mb-4">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
-                    <Package size={18} className="text-[#2ECC71]" />
                     <span className="text-sm font-semibold text-[#1A1A1A]">Today's Packs</span>
                     <span className="text-xs text-[#6B7280]">({todayPacks.length})</span>
                   </div>
@@ -1098,14 +1070,13 @@ export default function QuestionsPage() {
                   onClick={() => setShowPacks(!showPacks)}
                   className="flex items-center gap-2 flex-1"
                 >
-                  <Package size={18} className="text-[#1B3D2F]" />
                   <span className="text-sm font-semibold text-[#1A1A1A]">
                     {todayPacks.length > 0 ? 'Past Packs' : 'All Packs'}
                   </span>
                   <span className="text-xs text-[#6B7280]">
                     ({(todayPacks.length > 0 ? pastPacks : packs).length})
                   </span>
-                  {showPacks ? <ChevronUp size={16} className="text-[#6B7280]" /> : <ChevronDown size={16} className="text-[#6B7280]" />}
+                  <span className="text-xs text-[#6B7280]">{showPacks ? '▲' : '▼'}</span>
                 </button>
                 {todayPacks.length === 0 && (
                   <button
@@ -1137,13 +1108,12 @@ export default function QuestionsPage() {
       <Card className="mb-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative flex-1 min-w-[200px]">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280] pointer-events-none" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search questions..."
-              className="w-full pl-9 pr-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#2ECC71]"
+              className="w-full px-3 py-2 border border-[#D1D5DB] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#2ECC71]"
             />
           </div>
 
@@ -1186,7 +1156,7 @@ export default function QuestionsPage() {
               disabled={approvingAll}
               className="flex items-center gap-1.5 px-3 py-2 bg-[#2ECC71] text-white text-sm font-semibold rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity"
             >
-              {approvingAll ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+              {approvingAll && <Loader2 size={14} className="animate-spin" />}
               Approve All Pending
             </button>
           )}
@@ -1208,7 +1178,7 @@ export default function QuestionsPage() {
                   disabled={bulkLoading}
                   className="flex items-center gap-1 px-3 py-1.5 bg-red-600 text-white text-xs font-semibold rounded-lg hover:bg-red-700 transition-colors"
                 >
-                  <Trash2 size={12} /> Yes, Delete
+                  Yes, Delete
                 </button>
                 <button
                   onClick={() => setConfirmDelete(false)}
@@ -1224,21 +1194,21 @@ export default function QuestionsPage() {
                   disabled={bulkLoading}
                   className="flex items-center gap-1 px-3 py-1.5 bg-green-100 text-green-700 text-xs font-medium rounded-lg hover:bg-green-200 transition-colors"
                 >
-                  <CheckCircle size={12} /> Approve ({selected.size})
+                  Approve ({selected.size})
                 </button>
                 <button
                   onClick={() => bulkAction('rejected')}
                   disabled={bulkLoading}
                   className="flex items-center gap-1 px-3 py-1.5 bg-red-100 text-red-700 text-xs font-medium rounded-lg hover:bg-red-200 transition-colors"
                 >
-                  <XCircle size={12} /> Reject ({selected.size})
+                  Reject ({selected.size})
                 </button>
                 <button
                   onClick={() => bulkAction('delete')}
                   disabled={bulkLoading}
                   className="flex items-center gap-1 px-3 py-1.5 bg-red-100 text-red-700 text-xs font-medium rounded-lg hover:bg-red-200 transition-colors"
                 >
-                  <Trash2 size={12} /> Delete ({selected.size})
+                  Delete ({selected.size})
                 </button>
               </>
             )}
@@ -1255,7 +1225,6 @@ export default function QuestionsPage() {
           </div>
         ) : questions.length === 0 ? (
           <div className="text-center py-16">
-            <Filter size={32} className="mx-auto text-[#6B7280] mb-3" />
             <p className="text-[#6B7280]">No questions match your filters</p>
           </div>
         ) : (
@@ -1378,27 +1347,27 @@ export default function QuestionsPage() {
                         <div className="flex items-center gap-1">
                           <button
                             onClick={(e) => { e.stopPropagation(); setModalQuestion(q) }}
-                            className="p-1.5 rounded-lg text-[#6B7280] hover:text-[#1A1A1A] hover:bg-gray-100 cursor-pointer transition-colors"
+                            className="px-2 py-1 rounded-lg text-[#6B7280] hover:text-[#1A1A1A] hover:bg-gray-100 cursor-pointer transition-colors text-xs font-medium"
                             title="Edit"
                           >
-                            <Pencil size={16} className="pointer-events-none" />
+                            Edit
                           </button>
                           {(q.status === 'pending_review' || q.status === 'rejected') && (
                             <button
                               onClick={(e) => { e.stopPropagation(); quickStatusChange(q.id, 'approved') }}
-                              className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 cursor-pointer transition-colors"
+                              className="px-2 py-1 rounded-lg text-green-600 hover:bg-green-50 cursor-pointer transition-colors text-xs font-medium"
                               title="Approve"
                             >
-                              <CheckCircle size={16} className="pointer-events-none" />
+                              Approve
                             </button>
                           )}
                           {(q.status === 'pending_review' || q.status === 'approved') && (
                             <button
                               onClick={(e) => { e.stopPropagation(); quickStatusChange(q.id, 'rejected') }}
-                              className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 cursor-pointer transition-colors"
+                              className="px-2 py-1 rounded-lg text-red-500 hover:bg-red-50 cursor-pointer transition-colors text-xs font-medium"
                               title="Reject"
                             >
-                              <XCircle size={16} className="pointer-events-none" />
+                              Reject
                             </button>
                           )}
                         </div>
@@ -1423,7 +1392,7 @@ export default function QuestionsPage() {
                 disabled={page === 0}
                 className="p-1.5 rounded-lg text-[#6B7280] hover:bg-gray-100 disabled:opacity-30 transition-colors"
               >
-                <ChevronLeft size={16} className="pointer-events-none" />
+                <span className="pointer-events-none text-sm">&lsaquo;</span>
               </button>
               <span className="text-sm text-[#1A1A1A] font-medium px-2">
                 {page + 1} / {totalPages}
@@ -1433,7 +1402,7 @@ export default function QuestionsPage() {
                 disabled={page >= totalPages - 1}
                 className="p-1.5 rounded-lg text-[#6B7280] hover:bg-gray-100 disabled:opacity-30 transition-colors"
               >
-                <ChevronRight size={16} className="pointer-events-none" />
+                <span className="pointer-events-none text-sm">&rsaquo;</span>
               </button>
             </div>
           </div>

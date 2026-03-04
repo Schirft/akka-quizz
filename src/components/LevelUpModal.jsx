@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import Button from './ui/Button'
-import { Trophy, ArrowUp, Sparkles } from 'lucide-react'
 import { playLevelUp } from '../lib/sounds'
 
 /**
@@ -40,11 +39,6 @@ export default function LevelUpModal({ oldLevel, newLevel, onClose }) {
           visible ? 'scale-100 translate-y-0' : 'scale-90 translate-y-8'
         }`}
       >
-        {/* Trophy icon */}
-        <div className="w-20 h-20 rounded-full bg-amber-50 flex items-center justify-center mx-auto mb-4">
-          <Trophy size={40} className="text-amber-500" />
-        </div>
-
         {/* Title */}
         <h2 className="text-2xl font-bold text-akka-text mb-1">Level Up!</h2>
         <p className="text-akka-text-secondary text-sm mb-6">
@@ -65,7 +59,7 @@ export default function LevelUpModal({ oldLevel, newLevel, onClose }) {
 
           {/* Arrow */}
           <div className="flex flex-col items-center">
-            <ArrowUp size={24} className="text-akka-green" />
+            <span className="text-akka-green font-bold text-lg">&rarr;</span>
           </div>
 
           {/* New level */}
@@ -80,7 +74,6 @@ export default function LevelUpModal({ oldLevel, newLevel, onClose }) {
         {/* Benefit unlocked */}
         {newLevel?.benefit && (
           <div className="bg-emerald-50 rounded-xl p-3 mb-6 flex items-center gap-2">
-            <Sparkles size={16} className="text-akka-green shrink-0" />
             <p className="text-sm text-akka-text">
               <span className="font-semibold">Unlocked:</span> {newLevel.benefit}
             </p>

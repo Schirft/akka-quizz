@@ -1,5 +1,4 @@
 import { NavLink } from 'react-router-dom'
-import { House, Newspaper, Settings } from 'lucide-react'
 import { useLang } from '../../hooks/useLang'
 import { useProfile } from '../../hooks/useProfile'
 
@@ -8,13 +7,13 @@ import { useProfile } from '../../hooks/useProfile'
  * Quiz merged into Home. Labels use i18n keys resolved inside the component.
  */
 const TABS = [
-  { to: '/', labelKey: 'home', icon: House },
-  { to: '/news', labelKey: 'news', icon: Newspaper },
+  { to: '/', labelKey: 'home' },
+  { to: '/news', labelKey: 'news' },
 ]
 
 /**
  * TabBar — iOS-style bottom navigation with 3 tabs (Home, News, Admin).
- * Active tab: dark akka-green icon + text. Inactive: gray.
+ * Active tab: dark akka-green text. Inactive: gray.
  * Touch targets: 44px minimum. White background, subtle top border.
  */
 export default function TabBar() {
@@ -23,13 +22,13 @@ export default function TabBar() {
 
   const tabs = [...TABS]
   if (profile?.is_admin) {
-    tabs.push({ to: '/admin', labelKey: 'admin', icon: Settings })
+    tabs.push({ to: '/admin', labelKey: 'admin' })
   }
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-[#D1D5DB] pb-safe z-50">
       <div className="flex items-center justify-around max-w-md mx-auto">
-        {tabs.map(({ to, labelKey, icon: Icon }) => (
+        {tabs.map(({ to, labelKey }) => (
           <NavLink
             key={to}
             to={to}
@@ -42,8 +41,7 @@ export default function TabBar() {
               }`
             }
           >
-            <Icon size={22} strokeWidth={2} />
-            <span className="text-[10px] font-medium mt-0.5">{t(labelKey)}</span>
+            <span className="text-xs font-medium">{t(labelKey)}</span>
           </NavLink>
         ))}
       </div>

@@ -9,25 +9,7 @@ import Card from '../../components/ui/Card'
 import QuestionModal from '../../components/admin/QuestionModal'
 import AISettingsPanel from '../../components/admin/AISettingsPanel'
 import {
-  Sparkles,
   Loader2,
-  CheckCircle,
-  XCircle,
-  Zap,
-  ArrowRight,
-  Clock,
-  DollarSign,
-  Trash2,
-  Settings,
-  Pencil,
-  Play,
-  Check,
-  Package,
-  StopCircle,
-  Hash,
-  ChevronDown,
-  ChevronUp,
-  Eye,
 } from 'lucide-react'
 
 const STORAGE_KEY = 'akka_last_generation'
@@ -924,7 +906,6 @@ export default function GeneratePage() {
             onClick={() => setShowSettings(true)}
             className="flex items-center gap-1.5 px-3 py-2 border border-[#D1D5DB] text-[#6B7280] text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors"
           >
-            <Settings size={16} />
             AI Settings
           </button>
         </div>
@@ -933,7 +914,6 @@ export default function GeneratePage() {
       {/* ═══ Pack Generator Section (B1-B4) ═══ */}
       <Card className="mb-6">
         <div className="flex items-center gap-2 mb-4">
-          <Package size={18} className="text-[#2ECC71]" />
           <h2 className="text-lg font-bold text-[#1A1A1A]">Daily Pack Generator</h2>
           <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-medium">3 QCM + Puzzle + Lesson</span>
         </div>
@@ -972,7 +952,6 @@ export default function GeneratePage() {
 
         {/* B3: Pack count pills */}
         <label className="block mb-2 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
-          <Hash size={12} className="inline mr-1" />
           Number of Packs
         </label>
         <div className="flex flex-wrap gap-2 mb-4">
@@ -1008,7 +987,7 @@ export default function GeneratePage() {
             disabled={packGenerating}
             className="flex items-center gap-2 px-5 py-2.5 bg-[#1B3D2F] text-white font-semibold rounded-xl hover:opacity-90 disabled:opacity-50 transition-opacity"
           >
-            {packGenerating ? <Loader2 size={16} className="animate-spin" /> : <Package size={16} />}
+            {packGenerating && <Loader2 size={16} className="animate-spin" />}
             {packGenerating
               ? `Generating ${packCount > 1 ? `Pack ${packBatchProgress.current}/${packCount}` : 'Pack'}...`
               : `Generate ${packCount > 1 ? `${packCount} Packs` : 'Pack'}`}
@@ -1018,7 +997,6 @@ export default function GeneratePage() {
               onClick={() => abortPackGeneration()}
               className="flex items-center gap-1.5 px-4 py-2.5 text-sm text-red-600 font-medium border border-red-200 rounded-xl hover:bg-red-50 transition-colors"
             >
-              <StopCircle size={16} />
               Cancel
             </button>
           )}
@@ -1086,7 +1064,6 @@ export default function GeneratePage() {
         {packResult && (
           <div className="border border-[#2ECC71]/30 bg-emerald-50/50 rounded-xl p-4">
             <div className="flex items-center gap-2 mb-3">
-              <CheckCircle size={18} className="text-[#2ECC71]" />
               <p className="font-semibold text-[#1A1A1A]">
                 {packResult.packCount > 1
                   ? `${packResult.packCount} Packs Generated Successfully`
@@ -1131,7 +1108,7 @@ export default function GeneratePage() {
                     disabled={retryingTranslation || packResult.translationRetried}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-amber-700 font-medium hover:bg-amber-50 rounded-lg transition-colors disabled:opacity-50"
                   >
-                    {retryingTranslation ? <Loader2 size={12} className="animate-spin" /> : <Globe size={12} />}
+                    {retryingTranslation && <Loader2 size={12} className="animate-spin" />}
                     {packResult.translationRetried ? 'Translations Retried' : retryingTranslation ? 'Translating...' : 'Retry Translations'}
                   </button>
                 )}
@@ -1141,7 +1118,6 @@ export default function GeneratePage() {
                     onClick={() => handleDeletePack(pid)}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-red-600 font-medium hover:bg-red-50 rounded-lg transition-colors"
                   >
-                    <Trash2 size={12} />
                     {packResult.packCount > 1 ? `Delete Pack #${idx + 1}` : 'Delete Pack'}
                   </button>
                 )) : packResult.packId && (
@@ -1149,7 +1125,6 @@ export default function GeneratePage() {
                     onClick={() => handleDeletePack(packResult.packId)}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-red-600 font-medium hover:bg-red-50 rounded-lg transition-colors"
                   >
-                    <Trash2 size={12} />
                     Delete Pack
                   </button>
                 )}
@@ -1264,12 +1239,12 @@ export default function GeneratePage() {
                       <div className="flex items-center gap-2">
                         <button
                           onClick={(e) => { e.stopPropagation(); handleDeletePack(pack.id) }}
-                          className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors"
+                          className="px-2 py-1 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors text-xs font-medium"
                           title="Delete pack"
                         >
-                          <Trash2 size={14} />
+                          Delete
                         </button>
-                        {isExpanded ? <ChevronUp size={16} className="text-[#6B7280]" /> : <ChevronDown size={16} className="text-[#6B7280]" />}
+                        <span className="text-xs text-[#6B7280]">{isExpanded ? '▲' : '▼'}</span>
                       </div>
                     </div>
 
@@ -1299,10 +1274,10 @@ export default function GeneratePage() {
                                         </p>
                                         <button
                                           onClick={() => setEditQuestion(q)}
-                                          className="p-1 text-[#6B7280] hover:text-[#1A1A1A] hover:bg-gray-100 rounded transition-colors shrink-0"
+                                          className="px-1.5 py-0.5 text-[#6B7280] hover:text-[#1A1A1A] hover:bg-gray-100 rounded transition-colors shrink-0 text-[10px] font-medium"
                                           title="Edit question"
                                         >
-                                          <Pencil size={12} />
+                                          Edit
                                         </button>
                                       </div>
                                       {/* Answers with correct highlighted */}
@@ -1385,7 +1360,7 @@ export default function GeneratePage() {
                                     onClick={() => setEditPuzzle({ ...details.puzzle })}
                                     className="flex items-center gap-1 px-2 py-1 text-[10px] text-[#6B7280] hover:text-[#1A1A1A] hover:bg-gray-100 rounded transition-colors"
                                   >
-                                    <Pencil size={10} /> Edit
+                                    Edit
                                   </button>
                                 </div>
                                 <div className="bg-white rounded-lg p-3 border border-gray-100">
@@ -1452,7 +1427,7 @@ export default function GeneratePage() {
                                     onClick={() => setEditLesson({ ...details.lesson })}
                                     className="flex items-center gap-1 px-2 py-1 text-[10px] text-[#6B7280] hover:text-[#1A1A1A] hover:bg-gray-100 rounded transition-colors"
                                   >
-                                    <Pencil size={10} /> Edit
+                                    Edit
                                   </button>
                                 </div>
                                 <div className="bg-white rounded-lg p-3 border border-gray-100">
@@ -1516,17 +1491,13 @@ export default function GeneratePage() {
                                     : 'text-green-600 hover:bg-green-50 border border-green-200'
                                 }`}
                               >
-                                {pack.status === 'active' ? (
-                                  <><Eye size={12} /> Deactivate</>
-                                ) : (
-                                  <><Play size={12} /> Activate</>
-                                )}
+                                {pack.status === 'active' ? 'Deactivate' : 'Activate'}
                               </button>
                               <button
                                 onClick={() => handleDeletePack(pack.id)}
                                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 border border-red-200 rounded-lg transition-colors"
                               >
-                                <Trash2 size={12} /> Delete Pack
+                                Delete Pack
                               </button>
                             </div>
                           </>
@@ -1545,7 +1516,6 @@ export default function GeneratePage() {
         {/* Left: Generation form */}
         <Card className="lg:col-span-1">
           <div className="flex items-center gap-2 mb-4">
-            <Sparkles size={16} className="text-purple-500" />
             <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
               Settings
             </p>
@@ -1649,7 +1619,7 @@ export default function GeneratePage() {
             {generating ? (
               <><Loader2 size={18} className="animate-spin" /> Generating...</>
             ) : (
-              <><Sparkles size={18} /> Generate</>
+              'Generate'
             )}
           </button>
 
@@ -1659,7 +1629,6 @@ export default function GeneratePage() {
               onClick={() => { abortRef.current = true }}
               className="w-full mt-2 flex items-center justify-center gap-1.5 px-4 py-2 text-sm text-red-600 font-medium border border-red-200 rounded-xl hover:bg-red-50 transition-colors"
             >
-              <StopCircle size={14} />
               Cancel Generation
             </button>
           )}
@@ -1670,7 +1639,6 @@ export default function GeneratePage() {
               onClick={clearResults}
               className="w-full mt-2 flex items-center justify-center gap-1.5 px-4 py-2 text-sm text-[#6B7280] font-medium hover:bg-gray-100 rounded-lg transition-colors"
             >
-              <Trash2 size={14} />
               Clear Results
             </button>
           )}
@@ -1710,13 +1678,11 @@ export default function GeneratePage() {
                   <button onClick={handleResume}
                     className="flex items-center gap-1.5 px-4 py-2 bg-[#1B3D2F] text-white text-sm font-semibold rounded-lg hover:opacity-90 transition-opacity"
                   >
-                    <Play size={14} />
                     Resume ({resumeInfo.resumeFrom}/{resumeInfo.totalRequested})
                   </button>
                   <button onClick={keepPartial}
                     className="flex items-center gap-1.5 px-4 py-2 border border-[#D1D5DB] text-[#1A1A1A] text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
                   >
-                    <Check size={14} />
                     Keep {resumeInfo.resumeFrom} questions
                   </button>
                 </div>
@@ -1728,30 +1694,20 @@ export default function GeneratePage() {
           {summary && (
             <Card className="border-[#2ECC71]/30 bg-emerald-50/50">
               <div className="flex items-center gap-2 mb-3">
-                <CheckCircle size={18} className="text-[#2ECC71]" />
                 <p className="font-semibold text-[#1A1A1A]">Generation Complete</p>
               </div>
               <div className="grid grid-cols-3 gap-4 mb-4">
-                <div className="flex items-center gap-2">
-                  <Zap size={14} className="text-[#F39C12]" />
-                  <div>
-                    <p className="text-lg font-bold text-[#1A1A1A]">{summary.count}</p>
-                    <p className="text-xs text-[#6B7280]">Questions</p>
-                  </div>
+                <div>
+                  <p className="text-lg font-bold text-[#1A1A1A]">{summary.count}</p>
+                  <p className="text-xs text-[#6B7280]">Questions</p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Clock size={14} className="text-[#3498DB]" />
-                  <div>
-                    <p className="text-lg font-bold text-[#1A1A1A]">{summary.duration}s</p>
-                    <p className="text-xs text-[#6B7280]">Duration</p>
-                  </div>
+                <div>
+                  <p className="text-lg font-bold text-[#1A1A1A]">{summary.duration}s</p>
+                  <p className="text-xs text-[#6B7280]">Duration</p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <DollarSign size={14} className="text-[#2ECC71]" />
-                  <div>
-                    <p className="text-lg font-bold text-[#1A1A1A]">${summary.cost.toFixed(4)}</p>
-                    <p className="text-xs text-[#6B7280]">Est. Cost</p>
-                  </div>
+                <div>
+                  <p className="text-lg font-bold text-[#1A1A1A]">${summary.cost.toFixed(4)}</p>
+                  <p className="text-xs text-[#6B7280]">Est. Cost</p>
                 </div>
               </div>
               <div className="flex gap-2">
@@ -1759,13 +1715,13 @@ export default function GeneratePage() {
                   <button onClick={approveAll}
                     className="flex items-center gap-2 px-4 py-2 bg-[#2ECC71] text-white text-sm font-semibold rounded-lg hover:opacity-90 transition-opacity"
                   >
-                    <CheckCircle size={14} /> Approve All ({pendingCount})
+                    Approve All ({pendingCount})
                   </button>
                 )}
                 <button onClick={() => navigate('/admin/questions')}
                   className="flex items-center gap-2 px-4 py-2 border border-[#D1D5DB] text-[#1A1A1A] text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
                 >
-                  View in Questions <ArrowRight size={14} />
+                  View in Questions
                 </button>
               </div>
             </Card>
@@ -1783,7 +1739,7 @@ export default function GeneratePage() {
                     <button onClick={() => approveBatch(generated)}
                       className="flex items-center gap-1 px-2 py-1 text-xs text-green-600 hover:bg-green-50 rounded-lg transition-colors cursor-pointer"
                     >
-                      <CheckCircle size={12} /> Approve All
+                      Approve All
                     </button>
                   )}
                 </div>
@@ -1818,16 +1774,16 @@ export default function GeneratePage() {
                     </div>
                     <div className="flex items-center gap-1">
                       <button onClick={(e) => { e.stopPropagation(); setEditQuestion(q) }}
-                        className="p-1.5 rounded-lg text-[#6B7280] hover:bg-gray-100 transition-colors" title="Edit"
-                      ><Pencil size={14} /></button>
+                        className="px-2 py-1 rounded-lg text-[#6B7280] hover:bg-gray-100 transition-colors text-xs font-medium" title="Edit"
+                      >Edit</button>
                       {q.status === 'pending_review' && (
                         <>
                           <button onClick={(e) => { e.stopPropagation(); quickAction(q.id, 'approved') }}
-                            className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 transition-colors" title="Approve"
-                          ><CheckCircle size={16} /></button>
+                            className="px-2 py-1 rounded-lg text-green-600 hover:bg-green-50 transition-colors text-xs font-medium" title="Approve"
+                          >Approve</button>
                           <button onClick={(e) => { e.stopPropagation(); quickAction(q.id, 'rejected') }}
-                            className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition-colors" title="Reject"
-                          ><XCircle size={16} /></button>
+                            className="px-2 py-1 rounded-lg text-red-500 hover:bg-red-50 transition-colors text-xs font-medium" title="Reject"
+                          >Reject</button>
                         </>
                       )}
                     </div>
@@ -1852,14 +1808,14 @@ export default function GeneratePage() {
                     <button onClick={() => approveBatch(batch.questions)}
                       className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-green-600 hover:bg-green-50 rounded transition-colors cursor-pointer"
                     >
-                      <CheckCircle size={10} /> Approve All
+                      Approve All
                     </button>
                   )}
                   <button
                     onClick={() => setBatchHistory(prev => prev.filter((_, idx) => idx !== batchIndex))}
-                    className="p-1 text-gray-400 hover:text-red-400 transition-colors cursor-pointer"
+                    className="px-1.5 py-0.5 text-gray-400 hover:text-red-400 transition-colors cursor-pointer text-[10px] font-medium"
                   >
-                    <Trash2 size={12} />
+                    Remove
                   </button>
                 </div>
               </div>
@@ -1886,16 +1842,16 @@ export default function GeneratePage() {
                     </div>
                     <div className="flex items-center gap-1">
                       <button onClick={(e) => { e.stopPropagation(); setEditQuestion(q) }}
-                        className="p-1.5 rounded-lg text-[#6B7280] hover:bg-gray-100 transition-colors"
-                      ><Pencil size={14} /></button>
+                        className="px-2 py-1 rounded-lg text-[#6B7280] hover:bg-gray-100 transition-colors text-xs font-medium"
+                      >Edit</button>
                       {q.status === 'pending_review' && (
                         <>
                           <button onClick={(e) => { e.stopPropagation(); quickAction(q.id, 'approved') }}
-                            className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 transition-colors"
-                          ><CheckCircle size={16} /></button>
+                            className="px-2 py-1 rounded-lg text-green-600 hover:bg-green-50 transition-colors text-xs font-medium"
+                          >Approve</button>
                           <button onClick={(e) => { e.stopPropagation(); quickAction(q.id, 'rejected') }}
-                            className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition-colors"
-                          ><XCircle size={16} /></button>
+                            className="px-2 py-1 rounded-lg text-red-500 hover:bg-red-50 transition-colors text-xs font-medium"
+                          >Reject</button>
                         </>
                       )}
                     </div>
@@ -1908,9 +1864,6 @@ export default function GeneratePage() {
           {/* Empty state */}
           {!generating && generated.length === 0 && batchHistory.length === 0 && !error && (
             <Card className="py-16 text-center">
-              <div className="w-16 h-16 mx-auto rounded-2xl bg-purple-50 flex items-center justify-center mb-4">
-                <Sparkles size={32} className="text-purple-400" />
-              </div>
               <p className="text-[#6B7280] mb-1">No questions generated yet</p>
               <p className="text-sm text-[#6B7280]">Configure settings and click Generate to start</p>
             </Card>

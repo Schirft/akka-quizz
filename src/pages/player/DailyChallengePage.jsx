@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import { useLang } from '../../hooks/useLang'
 import { supabase } from '../../lib/supabase'
-import { ArrowLeft, Loader2, CheckCircle, Puzzle, BookOpen } from 'lucide-react'
+import { ArrowLeft, Loader2 } from 'lucide-react'
 
 /**
  * DailyChallengePage — orchestrates the daily flow:
@@ -224,7 +224,6 @@ export default function DailyChallengePage() {
   if (step === 'puzzle') {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center px-6">
-        <Puzzle size={48} className="text-purple-500 mb-4" />
         <h2 className="text-xl font-bold text-[#1A1A1A] mb-2">{t('the_catch')}</h2>
         <p className="text-sm text-[#6B7280] mb-6 text-center">
           {t('the_catch_subtitle')}
@@ -272,7 +271,6 @@ export default function DailyChallengePage() {
   if (step === 'lesson') {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center px-6">
-        <BookOpen size={48} className="text-amber-500 mb-4" />
         <h2 className="text-xl font-bold text-[#1A1A1A] mb-2">Lesson of the Day</h2>
         <p className="text-sm text-[#6B7280] mb-6 text-center">
           Complete your daily learning journey!

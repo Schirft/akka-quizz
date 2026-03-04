@@ -2,8 +2,7 @@ import { useState, useRef, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
 import { CATEGORIES } from '../../config/constants'
 import {
-  X, Upload, FileSpreadsheet, AlertTriangle, CheckCircle,
-  Loader2, ArrowRight, ChevronDown, ChevronUp, Check, Copy,
+  X, Loader2,
 } from 'lucide-react'
 import Papa from 'papaparse'
 import * as XLSX from 'xlsx'
@@ -405,8 +404,7 @@ export default function ImportModal({ onClose, onImported }) {
 
         <div className="px-6 py-5">
           {error && (
-            <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm flex items-start gap-2">
-              <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+            <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm">
               {error}
             </div>
           )}
@@ -432,7 +430,6 @@ export default function ImportModal({ onClose, onImported }) {
                   : 'border-[#D1D5DB] hover:border-[#2ECC71] hover:bg-gray-50'
               }`}
             >
-              <FileSpreadsheet size={48} className="mx-auto text-[#6B7280] mb-4" />
               <p className="text-base font-semibold text-[#1A1A1A] mb-1">
                 Drop your file here or click to browse
               </p>
@@ -440,7 +437,6 @@ export default function ImportModal({ onClose, onImported }) {
                 Supports .csv, .xlsx, .xls
               </p>
               <div className="inline-flex items-center gap-2 px-4 py-2 bg-[#1B3D2F] text-white text-sm font-semibold rounded-lg">
-                <Upload size={14} />
                 Choose File
               </div>
               <input
@@ -480,7 +476,7 @@ export default function ImportModal({ onClose, onImported }) {
                   <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
                     selected.size === preview.length ? 'bg-[#1B3D2F] border-[#1B3D2F]' : 'border-gray-300'
                   }`}>
-                    {selected.size === preview.length && <Check size={10} className="text-white" />}
+                    {selected.size === preview.length && <span className="text-white text-[10px] leading-none">✓</span>}
                   </div>
                   {selected.size === preview.length ? 'Deselect All' : 'Select All'}
                 </button>
@@ -511,7 +507,7 @@ export default function ImportModal({ onClose, onImported }) {
                           <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
                             isSelected ? 'bg-[#1B3D2F] border-[#1B3D2F]' : 'border-gray-300'
                           }`}>
-                            {isSelected && <Check size={10} className="text-white" />}
+                            {isSelected && <span className="text-white text-[10px] leading-none">✓</span>}
                           </div>
                         </button>
 
@@ -530,8 +526,8 @@ export default function ImportModal({ onClose, onImported }) {
                               {q.difficulty}
                             </span>
                             {isDupe && (
-                              <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-semibold flex items-center gap-0.5">
-                                <Copy size={8} /> Duplicate
+                              <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-semibold">
+                                Duplicate
                               </span>
                             )}
                           </div>
@@ -539,9 +535,9 @@ export default function ImportModal({ onClose, onImported }) {
 
                         <button
                           onClick={() => setExpandedRow(isExpanded ? null : idx)}
-                          className="text-[#6B7280] hover:text-[#1A1A1A] p-1 shrink-0"
+                          className="text-[#6B7280] hover:text-[#1A1A1A] p-1 shrink-0 text-sm"
                         >
-                          {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                          {isExpanded ? '▲' : '▼'}
                         </button>
                       </div>
 
@@ -586,7 +582,7 @@ export default function ImportModal({ onClose, onImported }) {
                                     }`}
                                     placeholder={`Answer ${ai + 1}`}
                                   />
-                                  {ai === correctIdx && <Check size={14} className="text-[#2ECC71] shrink-0" />}
+                                  {ai === correctIdx && <span className="text-[#2ECC71] shrink-0 text-sm font-bold">✓</span>}
                                 </div>
                               ))}
                             </div>
@@ -658,7 +654,7 @@ export default function ImportModal({ onClose, onImported }) {
                   disabled={importing || selected.size === 0}
                   className="flex items-center gap-2 px-5 py-2.5 bg-[#1B3D2F] text-white text-sm font-semibold rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity"
                 >
-                  {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                  {importing && <Loader2 size={14} className="animate-spin" />}
                   Import {selected.size} Question{selected.size !== 1 ? 's' : ''}
                 </button>
               </div>
@@ -684,7 +680,7 @@ export default function ImportModal({ onClose, onImported }) {
           {step === 'done' && result && (
             <div className="text-center py-10">
               <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
-                <CheckCircle size={32} className="text-[#2ECC71]" />
+                <span className="text-[#2ECC71] text-2xl font-bold">✓</span>
               </div>
               <p className="text-xl font-bold text-[#1A1A1A] mb-1">Import Complete!</p>
               <p className="text-sm text-[#6B7280] mb-6">Your questions have been added to the database</p>

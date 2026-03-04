@@ -3,14 +3,7 @@ import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useGeneration } from '../../contexts/GenerationContext'
 import {
-  LayoutDashboard,
-  FileQuestion,
-  Sparkles,
-  Calendar,
-  Newspaper,
-  ArrowLeft,
   Loader2,
-  Package,
 } from 'lucide-react'
 import TabBar from './TabBar'
 
@@ -73,30 +66,26 @@ export default function AdminLayout() {
 
   // ── Nav items ──
   const NAV_ITEMS = [
-    { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true },
+    { to: '/admin', label: 'Dashboard', end: true },
     {
       to: '/admin/questions',
       label: 'Questions',
-      icon: FileQuestion,
       badge: pendingCount > 0 ? pendingCount : null,
     },
     {
       to: '/admin/generate',
       label: 'AI Generator',
-      icon: Sparkles,
       dot: isGenerating,
     },
     {
       to: '/admin/daily',
       label: 'Daily Quiz',
-      icon: Calendar,
       badge: unplannedDays > 0 ? unplannedDays : null,
       badgeColor: 'amber',
     },
     {
       to: '/admin/news',
       label: 'News',
-      icon: Newspaper,
     },
   ]
 
@@ -121,7 +110,6 @@ export default function AdminLayout() {
               onClick={() => navigate('/')}
               className="flex items-center gap-1.5 text-sm text-[#6B7280] hover:text-[#1A1A1A] transition-colors min-h-[44px] px-3 rounded-lg hover:bg-gray-50"
             >
-              <ArrowLeft size={16} />
               <span className="hidden sm:inline">Back to Quiz</span>
               <span className="sm:hidden">App</span>
             </button>
@@ -129,7 +117,7 @@ export default function AdminLayout() {
 
           {/* Tab navigation */}
           <nav className="flex gap-1 -mb-px overflow-x-auto">
-            {NAV_ITEMS.map(({ to, label, icon: Icon, end, badge, badgeColor, dot }) => (
+            {NAV_ITEMS.map(({ to, label, end, badge, badgeColor, dot }) => (
               <NavLink
                 key={to}
                 to={to}
@@ -142,7 +130,6 @@ export default function AdminLayout() {
                   }`
                 }
               >
-                <Icon size={16} />
                 {label}
 
                 {/* Numeric badge (pending count / unplanned days) */}
@@ -182,7 +169,6 @@ export default function AdminLayout() {
               <Loader2 size={16} className="text-white animate-spin shrink-0" />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <Package size={14} className="text-white/80" />
                   <span className="text-sm font-medium text-white">
                     Generating pack {packBatchProgress.current}/{packBatchProgress.total}
                   </span>

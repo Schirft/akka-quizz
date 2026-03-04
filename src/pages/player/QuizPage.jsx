@@ -33,7 +33,6 @@ import {
   Clock,
   CheckCircle,
   XCircle,
-  ChevronRight,
   Loader2,
   AlertTriangle,
   Volume2,
@@ -1160,15 +1159,8 @@ export default function QuizPage() {
               </p>
 
               {/* Next button */}
-              <Button variant="primary" className="w-full gap-2" onClick={handleNext}>
-                {currentIndex + 1 < questions.length ? (
-                  <>
-                    {t('next_question')}
-                    <ChevronRight size={18} />
-                  </>
-                ) : (
-                  t('see_results')
-                )}
+              <Button variant="primary" className="w-full" onClick={handleNext}>
+                {currentIndex + 1 < questions.length ? t('next_question') : t('see_results')}
               </Button>
             </div>
           </div>

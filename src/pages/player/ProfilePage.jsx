@@ -3,7 +3,6 @@ import { useAuth } from '../../hooks/useAuth'
 import { useProfile } from '../../hooks/useProfile'
 import Card from '../../components/ui/Card'
 import Button from '../../components/ui/Button'
-import { LogOut, Settings, Shield } from 'lucide-react'
 
 /**
  * ProfilePage — shows user info, stats placeholder, and admin/logout actions.
@@ -93,14 +92,12 @@ export default function ProfilePage() {
           className="w-full gap-2"
           onClick={() => navigate('/admin')}
         >
-          <Shield size={18} />
           Admin Panel
         </Button>
         <button
           onClick={handleSignOut}
           className="w-full flex items-center justify-center gap-2 text-akka-red font-medium py-3 min-h-[44px] rounded-xl hover:bg-red-50 transition-colors"
         >
-          <LogOut size={18} />
           Sign Out
         </button>
       </div>

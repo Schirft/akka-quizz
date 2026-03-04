@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useRef } from 'react'
-import { X, Lock, ChevronRight } from 'lucide-react'
+import { X } from 'lucide-react'
 import { LEVELS } from '../../config/levels'
 import { useLang } from '../../hooks/useLang'
 
@@ -188,7 +188,7 @@ export default function ProgressionPathModal({ open, onClose, currentLevel, tota
                       ) : (
                         /* 🔒 Locked level — gray/dark node */
                         <div className="w-[52px] h-[52px] rounded-full bg-white/[0.05] border border-white/[0.10] flex items-center justify-center">
-                          <Lock size={16} className="text-white/30" />
+                          <span className="text-white/30 text-xs font-bold">🔒</span>
                         </div>
                       )}
                     </div>
@@ -274,10 +274,10 @@ export default function ProgressionPathModal({ open, onClose, currentLevel, tota
                     {isCurrent && (
                       <div className="absolute right-0 top-1/2 -translate-y-1/2">
                         <div
-                          className="w-6 h-6 rounded-full flex items-center justify-center"
-                          style={{ background: `${color}15` }}
+                          className="w-6 h-6 rounded-full flex items-center justify-center text-xs"
+                          style={{ background: `${color}15`, color: `${color}80` }}
                         >
-                          <ChevronRight size={14} style={{ color: `${color}80` }} />
+                          &rsaquo;
                         </div>
                       </div>
                     )}

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import Card from '../../components/ui/Card'
-import { Loader2, Puzzle, Trash2, Eye } from 'lucide-react'
+import { Loader2, Eye } from 'lucide-react'
 
 const PUZZLE_TYPE_LABELS = {
   tap_to_spot: 'Spot the Error',
@@ -54,7 +54,6 @@ export default function AdminPuzzlesPage() {
           </div>
         ) : puzzles.length === 0 ? (
           <div className="py-12 text-center">
-            <Puzzle size={32} className="mx-auto text-gray-300 mb-2" />
             <p className="text-sm text-[#6B7280]">
               No puzzles yet. Generate a Daily Pack to create puzzles.
             </p>
@@ -67,7 +66,7 @@ export default function AdminPuzzlesPage() {
                 className="flex items-center gap-3 py-3 px-1"
               >
                 <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center shrink-0">
-                  <Puzzle size={16} className="text-purple-600" />
+                  <span className="text-purple-600 text-sm font-bold">P</span>
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-gray-900 truncate">
@@ -87,10 +86,10 @@ export default function AdminPuzzlesPage() {
                 </button>
                 <button
                   onClick={() => handleDelete(puzzle.id)}
-                  className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600"
+                  className="px-2 py-1 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 text-xs font-medium"
                   title="Delete"
                 >
-                  <Trash2 size={16} />
+                  Delete
                 </button>
               </div>
             ))}

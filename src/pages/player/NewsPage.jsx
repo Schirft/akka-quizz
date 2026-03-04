@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useLang } from '../../hooks/useLang'
-import { Newspaper, Clock, ChevronRight, Loader2, Flame } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 
 const CATEGORIES = ['top_news', 'startup', 'vc', 'fintech', 'ai', 'crypto', 'markets']
 
@@ -144,7 +144,7 @@ export default function NewsPage() {
                   }`}
                 >
                   {cat === 'top_news' ? (
-                    <span className="flex items-center gap-1"><Flame size={12} /> Top News</span>
+                    <span>Top News</span>
                   ) : (
                     <span className="capitalize">{cat}</span>
                   )}
@@ -155,9 +155,6 @@ export default function NewsPage() {
             {!featured && articles.length === 0 ? (
               /* Empty state */
               <div className="flex flex-col items-center justify-center py-20">
-                <div className="w-16 h-16 rounded-2xl bg-[#1A3529]/60 flex items-center justify-center mb-4">
-                  <Newspaper size={32} className="text-[#2ECC71]" />
-                </div>
                 <h2 className="text-xl font-bold text-white mb-2">No articles in this category</h2>
                 <p className="text-white/40 text-center text-sm">
                   Try selecting a different category above.
@@ -197,10 +194,7 @@ export default function NewsPage() {
                   </h2>
                   <div className="flex items-center gap-2 text-white/50 text-xs">
                     {featured.published_at && (
-                      <span className="flex items-center gap-1">
-                        <Clock size={10} />
-                        {timeAgo(featured.published_at)}
-                      </span>
+                      <span>{timeAgo(featured.published_at)}</span>
                     )}
                   </div>
                 </div>
@@ -243,8 +237,8 @@ export default function NewsPage() {
                           </span>
                         )}
                         {article.is_top_news && (
-                          <span className="flex items-center gap-0.5 text-[10px] font-bold text-orange-400">
-                            <Flame size={10} /> Top
+                          <span className="text-[10px] font-bold text-orange-400">
+                            Top
                           </span>
                         )}
                       </div>
@@ -259,7 +253,7 @@ export default function NewsPage() {
                     </div>
                   </div>
 
-                  <ChevronRight size={16} className="text-white/20 shrink-0 self-center" />
+                  <span className="text-white/20 shrink-0 self-center">›</span>
                 </div>
               ))}
 

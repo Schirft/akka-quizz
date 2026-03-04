@@ -3,17 +3,8 @@ import { supabase } from '../../lib/supabase'
 import Card from '../../components/ui/Card'
 import {
   Loader2,
-  Sparkles,
-  Link as LinkIcon,
   Eye,
-  EyeOff,
-  ChevronDown,
-  ChevronUp,
   X,
-  Edit3,
-  Image as ImageIcon,
-  FileText,
-  ArrowUpDown,
 } from 'lucide-react'
 
 // Default prompts (from Edge Function)
@@ -456,17 +447,17 @@ export default function AdminNewsPage() {
           </button>
           <button
             onClick={() => openEditModal(article)}
-            className="p-1.5 rounded-lg text-blue-400 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+            className="px-2 py-1 rounded-lg text-blue-400 hover:bg-blue-50 hover:text-blue-600 transition-colors text-xs font-medium"
             title="Edit titles"
           >
-            <Edit3 size={16} />
+            Edit
           </button>
           <button
             onClick={() => handleUnpublish(article.id)}
-            className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+            className="px-2 py-1 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors text-xs font-medium"
             title="Unpublish"
           >
-            <EyeOff size={16} />
+            Hide
           </button>
         </div>
       </div>
@@ -492,7 +483,6 @@ export default function AdminNewsPage() {
         {/* ─── Section A: Auto Generation ─── */}
         <Card>
           <div className="flex items-center gap-2 mb-4">
-            <Sparkles size={16} className="text-purple-500" />
             <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
               Automatic Generation
             </p>
@@ -579,7 +569,6 @@ export default function AdminNewsPage() {
         {/* ─── Section B: Manual Add by URL ─── */}
         <Card>
           <div className="flex items-center gap-2 mb-4">
-            <LinkIcon size={16} className="text-blue-500" />
             <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
               Add Article by URL
             </p>
@@ -600,10 +589,8 @@ export default function AdminNewsPage() {
               disabled={addingManual || !manualUrl.trim()}
               className="flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-[#1B3D2F] text-white text-sm font-semibold rounded-xl hover:opacity-90 disabled:opacity-50 transition-opacity"
             >
-              {addingManual ? (
+              {addingManual && (
                 <Loader2 size={16} className="animate-spin" />
-              ) : (
-                <Sparkles size={16} />
               )}
               Generate Summary
             </button>
@@ -625,7 +612,6 @@ export default function AdminNewsPage() {
         {/* ─── Section B2: Paste Text ─── */}
         <Card>
           <div className="flex items-center gap-2 mb-4">
-            <FileText size={16} className="text-indigo-500" />
             <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
               Add Article from Text
             </p>
@@ -681,10 +667,8 @@ export default function AdminNewsPage() {
               disabled={addingText || !manualText.trim()}
               className="flex items-center gap-2 px-4 py-2.5 bg-[#1B3D2F] text-white text-sm font-semibold rounded-xl hover:opacity-90 disabled:opacity-50 transition-opacity"
             >
-              {addingText ? (
+              {addingText && (
                 <Loader2 size={16} className="animate-spin" />
-              ) : (
-                <Sparkles size={16} />
               )}
               Generate Summary from Text
             </button>
@@ -717,7 +701,6 @@ export default function AdminNewsPage() {
               className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-[#6B7280] hover:bg-gray-100 transition-colors"
               title={`Sort by ${sortOrder === 'newest' ? 'oldest' : 'newest'} first`}
             >
-              <ArrowUpDown size={14} />
               {sortOrder === 'newest' ? 'Newest' : 'Oldest'}
             </button>
           </div>
@@ -767,16 +750,11 @@ export default function AdminNewsPage() {
             className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50/50 transition-colors"
           >
             <div className="flex items-center gap-2">
-              <Sparkles size={16} className="text-amber-500" />
               <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
                 AI Prompts
               </p>
             </div>
-            {promptsExpanded ? (
-              <ChevronUp size={16} className="text-[#6B7280]" />
-            ) : (
-              <ChevronDown size={16} className="text-[#6B7280]" />
-            )}
+            <span className="text-xs text-[#6B7280]">{promptsExpanded ? '▲' : '▼'}</span>
           </button>
 
           {promptsExpanded && (

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { AI_SYSTEM_PROMPT, PACK_DEFAULT_PROMPT } from '../../config/aiPrompts'
-import { X, Save, RotateCcw, Loader2 } from 'lucide-react'
+import { X, Loader2 } from 'lucide-react'
 
 /**
  * AISettingsPanel — modal to edit AI prompts with separate tabs.
@@ -156,7 +156,6 @@ export default function AISettingsPanel({ onClose, currentPrompt, onPromptChange
             onClick={handleReset}
             className="flex items-center gap-1.5 px-3 py-2 text-sm text-[#6B7280] font-medium hover:bg-gray-100 rounded-lg transition-colors mb-6"
           >
-            <RotateCcw size={14} />
             Reset to Default
           </button>
 
@@ -195,7 +194,7 @@ export default function AISettingsPanel({ onClose, currentPrompt, onPromptChange
             disabled={saving}
             className="flex items-center gap-2 px-4 py-2 bg-[#1B3D2F] text-white text-sm font-semibold rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity"
           >
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+            {saving && <Loader2 size={14} className="animate-spin" />}
             Save Settings
           </button>
         </div>

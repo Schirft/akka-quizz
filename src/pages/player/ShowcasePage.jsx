@@ -31,13 +31,8 @@ import {
   Clock,
   CheckCircle,
   XCircle,
-  ChevronRight,
   Volume2,
   VolumeX,
-  Play,
-  Home,
-  Share2,
-  RotateCcw,
 } from 'lucide-react'
 
 /**
@@ -422,7 +417,6 @@ export default function ShowcasePage() {
                 </div>
                 {/* Play indicator */}
                 <div className="mt-3 flex items-center gap-1.5 text-[#1B3D2F]">
-                  <Play size={14} fill="#1B3D2F" />
                   <span className="text-xs font-bold">{txt('Play', 'Jouer')}</span>
                 </div>
               </button>
@@ -677,14 +671,12 @@ export default function ShowcasePage() {
                   onClick={backToGrid}
                   className="w-full py-4 rounded-2xl bg-[#1B3D2F] text-white font-bold text-lg hover:opacity-90 transition-colors flex items-center justify-center gap-2"
                 >
-                  <RotateCcw size={18} />
                   {txt('Back to Showcase', 'Retour a la Vitrine')}
                 </button>
                 <button
                   onClick={() => startPack(activePack)}
                   className="w-full py-3 rounded-2xl border border-white/20 text-white font-semibold hover:bg-white/5 transition-colors flex items-center justify-center gap-2"
                 >
-                  <Play size={18} />
                   {txt('Replay this Pack', 'Rejouer ce Pack')}
                 </button>
               </div>
@@ -879,7 +871,8 @@ export default function ShowcasePage() {
                 </p>
                 <Button variant="primary" className="w-full gap-2" onClick={handleNext}>
                   {currentIndex + 1 < questions.length ? (
-                    <>{txt('Next Question', 'Question suivante')} <ChevronRight size={18} /></>
+                    <>{txt('Next Question', 'Question suivante')}</>
+
                   ) : (
                     txt('Continue', 'Continuer')
                   )}

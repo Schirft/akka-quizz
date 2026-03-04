@@ -2,7 +2,6 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { useLang } from '../../hooks/useLang'
 import { supabase } from '../../lib/supabase'
-import { Zap, Lightbulb } from 'lucide-react'
 
 /** Render a paragraph with bold markdown support (**text**) */
 function RichText({ text, className }) {
@@ -114,23 +113,17 @@ export default function ArticleDetailPage() {
         {parseSummary(summary).map((block, i) => {
           if (block.type === 'key_fact') {
             return (
-              <div key={i} className="flex gap-3 p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 mb-4">
-                <Zap size={18} className="text-emerald-600 shrink-0 mt-0.5" />
-                <div>
-                  <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">{t('key_fact')}</span>
-                  <RichText text={block.text} className="text-emerald-900 text-[15px] leading-relaxed mt-1" />
-                </div>
+              <div key={i} className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 mb-4">
+                <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">{t('key_fact')}</span>
+                <RichText text={block.text} className="text-emerald-900 text-[15px] leading-relaxed mt-1" />
               </div>
             )
           }
           if (block.type === 'takeaway') {
             return (
-              <div key={i} className="flex gap-3 p-3.5 rounded-xl bg-amber-50 border border-amber-200 mb-4">
-                <Lightbulb size={18} className="text-amber-600 shrink-0 mt-0.5" />
-                <div>
-                  <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">{t('takeaway')}</span>
-                  <RichText text={block.text} className="text-amber-900 text-[15px] leading-relaxed mt-1" />
-                </div>
+              <div key={i} className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 mb-4">
+                <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">{t('takeaway')}</span>
+                <RichText text={block.text} className="text-amber-900 text-[15px] leading-relaxed mt-1" />
               </div>
             )
           }

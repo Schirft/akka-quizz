@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import { Trophy, Flame, Medal, TrendingUp } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useProfile } from '../../hooks/useProfile'
 import { useLang } from '../../hooks/useLang'
@@ -54,8 +53,8 @@ export default function LeaderboardPage() {
                   <span className="text-white font-bold text-lg">
                     {user.display_name?.charAt(0)?.toUpperCase() || '?'}
                   </span>
-                  <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-white flex items-center justify-center shadow-sm">
-                    <Medal size={14} className={medalColor[idx]} />
+                  <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-white flex items-center justify-center shadow-sm text-xs font-bold">
+                    {idx + 1}
                   </div>
                 </div>
                 <p className="text-xs font-semibold text-akka-text mt-1 text-center max-w-[80px] truncate">
@@ -91,13 +90,9 @@ export default function LeaderboardPage() {
               >
                 {/* Rank */}
                 <div className="w-8 text-center">
-                  {i < 3 ? (
-                    <Medal size={18} className={medalColor[i]} />
-                  ) : (
-                    <span className="text-sm font-semibold text-akka-text-secondary">
-                      {i + 1}
-                    </span>
-                  )}
+                  <span className="text-sm font-semibold text-akka-text-secondary">
+                    {i + 1}
+                  </span>
                 </div>
 
                 {/* Avatar */}
@@ -116,8 +111,7 @@ export default function LeaderboardPage() {
                   <p className="text-[11px] text-akka-text-secondary">
                     {t('level')} {user.level}
                     {user.current_streak > 0 && (
-                      <span className="ml-2 inline-flex items-center gap-0.5">
-                        <Flame size={11} className="text-orange-400" />
+                      <span className="ml-2">
                         {user.current_streak}
                       </span>
                     )}
@@ -140,7 +134,6 @@ export default function LeaderboardPage() {
       {/* Empty state */}
       {!loading && leaders.length === 0 && (
         <div className="flex flex-col items-center justify-center py-20">
-          <Trophy size={32} className="text-amber-500 mb-3" />
           <p className="text-akka-text-secondary">{t('loading')}</p>
         </div>
       )}

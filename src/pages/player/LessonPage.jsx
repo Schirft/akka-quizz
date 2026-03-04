@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useLang } from '../../hooks/useLang'
 import { supabase } from '../../lib/supabase'
-import { ArrowLeft, Loader2, BookOpen, Lightbulb, Play } from 'lucide-react'
+import { ArrowLeft, Loader2 } from 'lucide-react'
 
 /**
  * LessonPage — displays the "Lesson of the Day".
@@ -84,7 +84,7 @@ export default function LessonPage() {
         {/* Video placeholder */}
         <div className="w-full aspect-video bg-gradient-to-br from-[#1B3D2F] to-[#2D5A45] rounded-2xl flex flex-col items-center justify-center mb-6">
           <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center mb-2">
-            <Play size={28} className="text-white ml-1" />
+            <span className="text-white text-2xl ml-1">▶</span>
           </div>
           <p className="text-white/70 text-xs">Video coming soon</p>
         </div>
@@ -104,12 +104,9 @@ export default function LessonPage() {
         {/* Key takeaway */}
         {getLang('key_takeaway') && (
           <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
-            <div className="flex items-center gap-2 mb-2">
-              <Lightbulb size={16} className="text-amber-600" />
-              <p className="text-xs font-bold uppercase tracking-wide text-amber-700">
-                Key Takeaway
-              </p>
-            </div>
+            <p className="text-xs font-bold uppercase tracking-wide text-amber-700 mb-2">
+              Key Takeaway
+            </p>
             <p className="text-sm text-amber-900 font-medium leading-relaxed">
               {getLang('key_takeaway')}
             </p>

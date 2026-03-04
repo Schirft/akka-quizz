@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { CATEGORIES } from '../../config/constants'
 import { AI_SYSTEM_PROMPT } from '../../config/aiPrompts'
-import { X, Save, Trash2, Sparkles, Loader2, CheckCircle } from 'lucide-react'
+import { X, Loader2 } from 'lucide-react'
 
 const LANG_TABS = [
   { code: 'en', label: 'EN', flag: '🇬🇧' },
@@ -251,7 +251,6 @@ IMPORTANT: Keep the same answer order. Translations must be native-quality.`
           {/* FIX 7: Success toast */}
           {showToast && (
             <div className="mb-4 p-3 bg-green-50 text-green-700 rounded-lg text-sm flex items-center gap-2 border border-green-200">
-              <CheckCircle size={16} />
               Question saved ✓
             </div>
           )}
@@ -276,7 +275,7 @@ IMPORTANT: Keep the same answer order. Translations must be native-quality.`
               disabled={translating || !form.question_en}
               className="ml-auto flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-purple-50 text-purple-700 hover:bg-purple-100 disabled:opacity-50 transition-colors"
             >
-              {translating ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+              {translating && <Loader2 size={14} className="animate-spin" />}
               Translate with AI
             </button>
           </div>
@@ -464,7 +463,6 @@ IMPORTANT: Keep the same answer order. Translations must be native-quality.`
                 disabled={saving}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
               >
-                <Trash2 size={14} />
                 {confirmDelete ? 'Confirm Delete' : 'Delete'}
               </button>
             )}
@@ -481,7 +479,7 @@ IMPORTANT: Keep the same answer order. Translations must be native-quality.`
               disabled={saving || !form.question_en}
               className="flex items-center gap-2 px-5 py-2.5 bg-[#1B3D2F] text-white text-sm font-semibold rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity"
             >
-              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+              {saving && <Loader2 size={14} className="animate-spin" />}
               {saving ? 'Saving...' : 'Save'}
             </button>
           </div>

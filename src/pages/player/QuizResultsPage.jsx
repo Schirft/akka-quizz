@@ -13,7 +13,6 @@ import {
 import Button from '../../components/ui/Button'
 import LevelUpModal from '../../components/LevelUpModal'
 import { getScoreMessage, getQuizText } from '../../utils/quizI18n'
-import { Home, Share2, Flame, Trophy, Zap, Target } from 'lucide-react'
 import { playQuizComplete, playPerfect } from '../../lib/sounds'
 
 /**
@@ -213,7 +212,6 @@ export default function QuizResultsPage() {
             onClick={() => navigate('/', { replace: true })}
             className="w-full py-4 rounded-2xl bg-[#1B3D2F] text-white font-bold text-lg hover:opacity-90 transition-colors flex items-center justify-center gap-2"
           >
-            <Home size={18} />
             {t('back_home')}
           </button>
 
@@ -230,7 +228,6 @@ export default function QuizResultsPage() {
               }
             }}
           >
-            <Share2 size={18} />
             {t('share_results')}
           </button>
         </div>
