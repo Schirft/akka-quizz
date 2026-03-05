@@ -1,4 +1,5 @@
 #!/bin/bash
 cd /opt/akka-quizz
 git pull origin main
-docker compose up -d --build
+docker compose build --no-cache
+docker compose up -d
