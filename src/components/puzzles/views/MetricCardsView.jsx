@@ -41,7 +41,7 @@ export default function MetricCardsView({ puzzle, onAnswer, lang = 'en', hideQue
               style={{ minHeight: 44 }}
             >
               {/* Icon */}
-              <div className="text-xl mb-1">{row.icon || '📊'}</div>
+              <div className="text-xl mb-1">{row.icon || ''}</div>
               {/* Big number */}
               <div className={`text-xl font-bold font-mono ${isSelected ? 'text-green-700' : 'text-gray-900'}`}>
                 {row.value || '—'}

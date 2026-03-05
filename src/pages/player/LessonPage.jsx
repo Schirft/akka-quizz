@@ -53,7 +53,7 @@ export default function LessonPage() {
   if (!lesson) {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center px-6">
-        <p className="text-4xl mb-4">📖</p>
+        <p className="text-4xl mb-4"></p>
         <h2 className="text-lg font-bold mb-2">Lesson Not Found</h2>
         <button onClick={() => navigate('/')} className="text-sm text-[#1B3D2F] underline mt-4">
           Go Home

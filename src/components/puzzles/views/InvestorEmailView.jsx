@@ -64,7 +64,7 @@ export default function InvestorEmailView({ puzzle, onAnswer, lang = 'en', hideQ
                 </p>
                 {isSelected && (
                   <div className="flex items-center gap-1 mt-1.5">
-                    <span className="text-yellow-600 text-sm">🔍</span>
+                    <span className="text-yellow-600 text-sm"></span>
                     <span className="text-[10px] font-semibold text-yellow-700 uppercase tracking-wide">Flagged</span>
                   </div>
                 )}

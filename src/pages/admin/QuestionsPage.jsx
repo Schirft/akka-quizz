@@ -602,15 +602,15 @@ export default function QuestionsPage() {
     const d = new Date(dateStr + 'T00:00:00')
     const day = d.toLocaleDateString('en-US', { weekday: 'short' })
     const num = d.getDate()
-    return `📅 ${day} ${num}`
+    return `${day} ${num}`
   }
 
   // HOTFIX D: Get language flags for a question
   function getLangFlags(q) {
-    let flags = '🇬🇧' // EN is always present
-    if (q.question_fr) flags += '🇫🇷'
-    if (q.question_it) flags += '🇮🇹'
-    if (q.question_es) flags += '🇪🇸'
+    let flags = 'EN' // EN is always present
+    if (q.question_fr) flags += ' FR'
+    if (q.question_it) flags += ' IT'
+    if (q.question_es) flags += ' ES'
     return flags
   }
 
@@ -665,25 +665,25 @@ export default function QuestionsPage() {
           onClick={() => setFilterStatus('approved')}
           className={`text-sm font-medium transition-colors ${filterStatus === 'approved' ? 'text-green-700 underline' : 'text-[#6B7280] hover:text-green-700'}`}
         >
-          🟢 {stats.approved} Approved
+          {stats.approved} Approved
         </button>
         <button
           onClick={() => setFilterStatus('pending_review')}
           className={`text-sm font-medium transition-colors ${filterStatus === 'pending_review' ? 'text-amber-700 underline' : 'text-[#6B7280] hover:text-amber-700'}`}
         >
-          🟡 {stats.pending} Pending
+          {stats.pending} Pending
         </button>
         <button
           onClick={() => setFilterStatus('rejected')}
           className={`text-sm font-medium transition-colors ${filterStatus === 'rejected' ? 'text-red-700 underline' : 'text-[#6B7280] hover:text-red-700'}`}
         >
-          🔴 {stats.rejected} Rejected
+          {stats.rejected} Rejected
         </button>
         <button
           onClick={() => setFilterStatus('all')}
           className={`text-sm font-medium transition-colors ${filterStatus === 'all' ? 'text-[#1A1A1A] underline' : 'text-[#6B7280] hover:text-[#1A1A1A]'}`}
         >
-          📊 {stats.total} Total
+          {stats.total} Total
         </button>
       </div>
 
@@ -692,7 +692,7 @@ export default function QuestionsPage() {
         <Card className="mb-4">
           <div className="flex items-center justify-between mb-3">
             <p className="text-sm font-semibold text-[#1A1A1A]">
-              🔍 Found {duplicates.length} duplicate{duplicates.length !== 1 ? 's' : ''}
+              Found {duplicates.length} duplicate{duplicates.length !== 1 ? 's' : ''}
             </p>
             <div className="flex gap-2">
               {duplicates.length > 0 && (
@@ -712,7 +712,7 @@ export default function QuestionsPage() {
             </div>
           </div>
           {duplicates.length === 0 ? (
-            <p className="text-sm text-green-600">✅ No duplicates found!</p>
+            <p className="text-sm text-green-600">No duplicates found!</p>
           ) : (
             <div className="space-y-2 max-h-[200px] overflow-y-auto">
               {duplicates.map((d) => (
@@ -906,7 +906,7 @@ export default function QuestionsPage() {
                             )}
                             {/* Puzzle translations */}
                             <details className="mt-1.5">
-                              <summary className="text-[10px] text-amber-700 cursor-pointer font-medium">🌍 Translations</summary>
+                              <summary className="text-[10px] text-amber-700 cursor-pointer font-medium">Translations</summary>
                               <div className="mt-1 space-y-1">
                                 {['fr', 'it', 'es'].map(lng => {
                                   const hasTitle = !!details.puzzle[`title_${lng}`];
@@ -956,7 +956,7 @@ export default function QuestionsPage() {
                             )}
                             {/* Lesson translations */}
                             <details className="mt-1.5">
-                              <summary className="text-[10px] text-blue-700 cursor-pointer font-medium">🌍 Translations</summary>
+                              <summary className="text-[10px] text-blue-700 cursor-pointer font-medium">Translations</summary>
                               <div className="mt-1 space-y-1">
                                 {['fr', 'it', 'es'].map(lng => (
                                   <div key={lng} className="text-[10px] bg-white rounded p-1.5 border border-blue-100">

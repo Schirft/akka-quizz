@@ -425,10 +425,10 @@ export default function DashboardPage() {
             <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280] mb-4">Language Coverage</p>
             <div className="space-y-3">
               {[
-                { flag: '🇬🇧', label: 'English', count: stats?.total || 0 },
-                { flag: '🇫🇷', label: 'French', count: stats?.withFr || 0 },
-                { flag: '🇮🇹', label: 'Italian', count: stats?.withIt || 0 },
-                { flag: '🇪🇸', label: 'Spanish', count: stats?.withEs || 0 },
+                { flag: '', label: 'English', count: stats?.total || 0 },
+                { flag: '', label: 'French', count: stats?.withFr || 0 },
+                { flag: '', label: 'Italian', count: stats?.withIt || 0 },
+                { flag: '', label: 'Spanish', count: stats?.withEs || 0 },
               ].map(({ flag, label, count }) => (
                 <div key={label} className="flex items-center justify-between">
                   <div className="flex items-center gap-2">

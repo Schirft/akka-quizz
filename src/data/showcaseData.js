@@ -10,7 +10,7 @@ export const SHOWCASE_PACKS = [
     theme: 'Cap Tables & Dilution',
     theme_fr: 'Tables de capitalisation & Dilution',
     difficulty: 'Hard',
-    icon: '📊',
+    icon: '',
     visual_type: 'cap_table',
     questions: [
       {
@@ -91,7 +91,7 @@ export const SHOWCASE_PACKS = [
     theme: 'Revenue Growth Metrics',
     theme_fr: 'Indicateurs de croissance du chiffre d\'affaires',
     difficulty: 'Medium',
-    icon: '📈',
+    icon: '',
     visual_type: 'bar_chart',
     questions: [
       {
@@ -178,7 +178,7 @@ export const SHOWCASE_PACKS = [
     theme: 'Term Sheet Red Flags',
     theme_fr: 'Signaux d\'alerte dans les term sheets',
     difficulty: 'Hard',
-    icon: '📜',
+    icon: '',
     visual_type: 'term_sheet',
     questions: [
       {
@@ -262,7 +262,7 @@ export const SHOWCASE_PACKS = [
     theme: 'Startup KPIs Dashboard',
     theme_fr: 'Tableau de bord KPI des startups',
     difficulty: 'Easy',
-    icon: '📱',
+    icon: '',
     visual_type: 'metric_cards',
     questions: [
       {
@@ -316,11 +316,11 @@ export const SHOWCASE_PACKS = [
         question_it: 'Questa dashboard evidenzia le metriche chiave per gli investitori. Quale è una metrica vanity che nasconde la realtà?',
         question_es: 'Este panel destaca las métricas clave para los inversores. ¿Cuál es una métrica vanidosa que oculta la realidad?',
         rows: [
-          { id: 'card1', icon: '💰', label: 'MRR', value: '\u20ac45K', trend: '+12%' },
-          { id: 'card2', icon: '📊', label: 'Net Retention', value: '118%', trend: '+3%' },
-          { id: 'card3', icon: '📲', label: 'Total Downloads', value: '850K', trend: '+45%' },
-          { id: 'card4', icon: '🎯', label: 'LTV/CAC', value: '3.2x', trend: '+0.4' },
-          { id: 'card5', icon: '⏱️', label: 'CAC Payback', value: '11 mo', trend: '-2 mo' }
+          { id: 'card1', icon: '', label: 'MRR', value: '\u20ac45K', trend: '+12%' },
+          { id: 'card2', icon: '', label: 'Net Retention', value: '118%', trend: '+3%' },
+          { id: 'card3', icon: '', label: 'Total Downloads', value: '850K', trend: '+45%' },
+          { id: 'card4', icon: '', label: 'LTV/CAC', value: '3.2x', trend: '+0.4' },
+          { id: 'card5', icon: '', label: 'CAC Payback', value: '11 mo', trend: '-2 mo' }
         ]
       }
     },
@@ -344,7 +344,7 @@ export const SHOWCASE_PACKS = [
     theme: 'P&L Analysis',
     theme_fr: 'Analyse du compte de resultat',
     difficulty: 'Medium',
-    icon: '💰',
+    icon: '',
     visual_type: 'pnl_table',
     questions: [
       {
@@ -429,7 +429,7 @@ export const SHOWCASE_PACKS = [
     theme: 'Cohort Retention',
     theme_fr: 'Retention par cohorte',
     difficulty: 'Hard',
-    icon: '🔄',
+    icon: '',
     visual_type: 'cohort_grid',
     questions: [
       {
@@ -511,7 +511,7 @@ export const SHOWCASE_PACKS = [
     theme: 'Funding Rounds',
     theme_fr: 'Tours de financement',
     difficulty: 'Medium',
-    icon: '🏦',
+    icon: '',
     visual_type: 'funding_timeline',
     questions: [
       {
@@ -592,7 +592,7 @@ export const SHOWCASE_PACKS = [
     theme: 'Unit Economics',
     theme_fr: 'Economie unitaire',
     difficulty: 'Hard',
-    icon: '🧮',
+    icon: '',
     visual_type: 'unit_economics',
     questions: [
       {
@@ -678,7 +678,7 @@ export const SHOWCASE_PACKS = [
     theme: 'Investor Update Email',
     theme_fr: 'Email de mise a jour investisseur',
     difficulty: 'Medium',
-    icon: '📧',
+    icon: '',
     visual_type: 'investor_email',
     questions: [
       {
@@ -763,7 +763,7 @@ export const SHOWCASE_PACKS = [
     theme: 'Comparable Analysis',
     theme_fr: 'Analyse des comparables',
     difficulty: 'Hard',
-    icon: '🔍',
+    icon: '',
     visual_type: 'comp_table',
     questions: [
       {
@@ -949,7 +949,7 @@ export const SHOWCASE_PACKS = [
     theme: 'SAFE vs Equity',
     theme_fr: 'SAFE vs Equity',
     difficulty: 'Easy',
-    icon: '📝',
+    icon: '',
     visual_type: 'ab_choice',
     questions: [
       {
@@ -1107,11 +1107,11 @@ export const SHOWCASE_PACKS = [
         question_it: 'Esamina questo pannello di stato della due diligence. Un elemento mostra uno stato verde ma in realtà nasconde un problema critico nei dettagli.',
         question_es: 'Revisa este panel de estado de due diligence. Un elemento muestra un estado verde pero en realidad tiene un problema crítico oculto en los detalles.',
         rows: [
-          { id: 'card1', icon: '📋', label: 'Employment Contracts', value: 'All signed', trend: 'Complete' },
-          { id: 'card2', icon: '💰', label: 'Financial Audit', value: 'Clean report', trend: 'Complete' },
-          { id: 'card3', icon: '⚖️', label: 'Legal Structure', value: 'SAS registered', trend: 'Complete' },
-          { id: 'card4', icon: '🔒', label: 'IP Assignment', value: 'Verbal agreements', trend: 'Complete' },
-          { id: 'card5', icon: '📊', label: 'Customer Contracts', value: '12 active', trend: '+3 this quarter' }
+          { id: 'card1', icon: '', label: 'Employment Contracts', value: 'All signed', trend: 'Complete' },
+          { id: 'card2', icon: '', label: 'Financial Audit', value: 'Clean report', trend: 'Complete' },
+          { id: 'card3', icon: '', label: 'Legal Structure', value: 'SAS registered', trend: 'Complete' },
+          { id: 'card4', icon: '', label: 'IP Assignment', value: 'Verbal agreements', trend: 'Complete' },
+          { id: 'card5', icon: '', label: 'Customer Contracts', value: '12 active', trend: '+3 this quarter' }
         ]
       }
     },
@@ -1135,7 +1135,7 @@ export const SHOWCASE_PACKS = [
     theme: 'Burn Rate Analysis',
     theme_fr: 'Analyse du burn rate',
     difficulty: 'Medium',
-    icon: '🔥',
+    icon: '',
     visual_type: 'bar_chart',
     questions: [
       {
@@ -1222,7 +1222,7 @@ export const SHOWCASE_PACKS = [
     theme: 'Portfolio Construction',
     theme_fr: 'Construction de portefeuille',
     difficulty: 'Medium',
-    icon: '🎯',
+    icon: '',
     visual_type: 'ab_choice',
     questions: [
       {

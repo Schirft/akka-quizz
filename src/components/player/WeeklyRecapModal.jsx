@@ -1,11 +1,11 @@
 import { motion, AnimatePresence } from 'framer-motion'
 
 const weeklyTexts = {
-  title: { en: '📊 Weekly Recap', fr: '📊 Récap de la semaine', it: '📊 Riepilogo settimanale', es: '📊 Resumen semanal' },
-  quizzesPlayed: { en: '🎯 Quizzes played', fr: '🎯 Quiz joués', it: '🎯 Quiz giocati', es: '🎯 Quizzes jugados' },
-  correctAnswers: { en: '✅ Correct answers', fr: '✅ Bonnes réponses', it: '✅ Risposte corrette', es: '✅ Respuestas correctas' },
-  bestStreak: { en: '🔥 Best streak', fr: '🔥 Meilleure série', it: '🔥 Miglior serie', es: '🔥 Mejor racha' },
-  xpEarned: { en: '⭐ XP earned', fr: '⭐ XP gagnés', it: '⭐ XP guadagnati', es: '⭐ XP ganados' },
+  title: { en: 'Weekly Recap', fr: 'Récap de la semaine', it: 'Riepilogo settimanale', es: 'Resumen semanal' },
+  quizzesPlayed: { en: 'Quizzes played', fr: 'Quiz joués', it: 'Quiz giocati', es: 'Quizzes jugados' },
+  correctAnswers: { en: 'Correct answers', fr: 'Bonnes réponses', it: 'Risposte corrette', es: 'Respuestas correctas' },
+  bestStreak: { en: 'Best streak', fr: 'Meilleure série', it: 'Miglior serie', es: 'Mejor racha' },
+  xpEarned: { en: 'XP earned', fr: 'XP gagnés', it: 'XP guadagnati', es: 'XP ganados' },
   topPercent: { en: "You're in the top", fr: 'Tu es dans le top', it: 'Sei nel top', es: 'Estás en el top' },
   continueBtn: { en: 'Continue →', fr: 'Continuer →', it: 'Continua →', es: 'Continuar →' },
   days: { en: 'days', fr: 'jours', it: 'giorni', es: 'días' },

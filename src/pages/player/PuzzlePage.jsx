@@ -90,7 +90,7 @@ export default function PuzzlePage() {
   if (!puzzle) {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center px-6">
-        <p className="text-4xl mb-4">🧩</p>
+        <p className="text-4xl mb-4"></p>
         <h2 className="text-lg font-bold mb-2">Puzzle Not Found</h2>
         <button onClick={() => navigate('/')} className="text-sm text-[#1B3D2F] underline mt-4">
           Go Home
@@ -247,7 +247,7 @@ export default function PuzzlePage() {
       <PuzzleWrapper>
         <h2 className="text-lg font-bold text-[#1A1A1A] mb-2">Match the Chart</h2>
         <div className="p-4 bg-blue-50 rounded-xl text-sm text-blue-800 mb-4">
-          📈 {getLang('chart_description')}
+          {getLang('chart_description')}
         </div>
         <p className="text-sm text-[#6B7280] mb-3">What does this chart represent?</p>
         <div className="space-y-2">
@@ -324,7 +324,7 @@ export default function PuzzlePage() {
       <PuzzleWrapper>
         <h2 className="text-lg font-bold text-[#1A1A1A] mb-2">Crash Point</h2>
         <div className="p-4 bg-red-50 rounded-xl text-sm text-red-800 mb-4">
-          💥 {getLang('timeline')}
+          {getLang('timeline')}
         </div>
         <p className="text-sm font-medium text-[#1A1A1A] mb-3">{getLang('question')}</p>
         <div className="space-y-2">

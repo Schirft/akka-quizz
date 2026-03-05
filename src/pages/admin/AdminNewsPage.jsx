@@ -385,11 +385,11 @@ export default function AdminNewsPage() {
 
   function getLangFlags(article) {
     const flags = []
-    if (article.summary_en) flags.push('🇬🇧')
-    if (article.summary_fr) flags.push('🇫🇷')
-    if (article.summary_it) flags.push('🇮🇹')
-    if (article.summary_es) flags.push('🇪🇸')
-    return flags.join('')
+    if (article.summary_en) flags.push('EN')
+    if (article.summary_fr) flags.push('FR')
+    if (article.summary_it) flags.push('IT')
+    if (article.summary_es) flags.push('ES')
+    return flags.join(' ')
   }
 
   function renderArticleRow(article) {
@@ -407,7 +407,7 @@ export default function AdminNewsPage() {
           />
         ) : (
           <div className="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
-            <span className="text-lg">📰</span>
+            <span className="text-lg"></span>
           </div>
         )}
 

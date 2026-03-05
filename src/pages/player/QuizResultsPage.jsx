@@ -91,10 +91,10 @@ export default function QuizResultsPage() {
   const computedTotalXP = correctXP + comboBonus + streakBonus + dailyBonus
 
   const xpLines = [
-    { icon: '🎯', label: getQuizText('xpCorrectAnswers', lang), detail: `${score} × 10`, value: correctXP },
-    { icon: '🔥', label: getQuizText('xpComboBonus', lang), detail: `max ${maxCombo}x`, value: comboBonus },
-    { icon: '⚡', label: getQuizText('xpStreakBonus', lang), detail: '', value: streakBonus },
-    { icon: '⭐', label: getQuizText('xpDailyBonus', lang), detail: '', value: dailyBonus },
+    { icon: '', label: getQuizText('xpCorrectAnswers', lang), detail: `${score} × 10`, value: correctXP },
+    { icon: '', label: getQuizText('xpComboBonus', lang), detail: `max ${maxCombo}x`, value: comboBonus },
+    { icon: '', label: getQuizText('xpStreakBonus', lang), detail: '', value: streakBonus },
+    { icon: '', label: getQuizText('xpDailyBonus', lang), detail: '', value: dailyBonus },
   ]
 
   return (

@@ -37,19 +37,19 @@ function parsePartialJSON(text) {
 
 // Animated status messages
 const STEP1_MESSAGES = [
-  { icon: '🧠', text: 'Analyzing startup ecosystem knowledge...' },
-  { icon: '📚', text: 'Reviewing VC terminology database...' },
-  { icon: '✍️', text: 'Crafting questions with real-world examples...' },
-  { icon: '🔍', text: 'Validating answer plausibility...' },
-  { icon: '⚡', text: 'Quality checking explanations...' },
-  { icon: '🎯', text: 'Ensuring difficulty calibration...' },
+  { icon: '', text: 'Analyzing startup ecosystem knowledge...' },
+  { icon: '', text: 'Reviewing VC terminology database...' },
+  { icon: '', text: 'Crafting questions with real-world examples...' },
+  { icon: '', text: 'Validating answer plausibility...' },
+  { icon: '', text: 'Quality checking explanations...' },
+  { icon: '', text: 'Ensuring difficulty calibration...' },
 ]
 const STEP2_MESSAGES = [
-  { icon: '🌍', text: 'Translating to target languages...' },
-  { icon: '🇫🇷', text: 'Generating French translations...' },
-  { icon: '🇮🇹', text: 'Generating Italian translations...' },
-  { icon: '🇪🇸', text: 'Generating Spanish translations...' },
-  { icon: '✨', text: 'Polishing native-quality translations...' },
+  { icon: '', text: 'Translating to target languages...' },
+  { icon: '', text: 'Generating French translations...' },
+  { icon: '', text: 'Generating Italian translations...' },
+  { icon: '', text: 'Generating Spanish translations...' },
+  { icon: '', text: 'Polishing native-quality translations...' },
 ]
 
 // ── Pack generation themes and difficulties (B3: pill arrays) ──
@@ -64,11 +64,11 @@ const PACK_DIFFICULTIES = ['random', ...ALL_DIFFICULTIES]
 
 // B1: Pack step definitions for 4-function sequential flow
 const PACK_STEPS = [
-  { label: 'Generating 3 QCM questions...', icon: '🧠' },
-  { label: 'Creating puzzle "Problem of the Day"...', icon: '🧩' },
-  { label: 'Writing lesson of the day...', icon: '📚' },
-  { label: 'Translating to FR/IT/ES...', icon: '🌍' },
-  { label: 'Assembling pack record...', icon: '💾' },
+  { label: 'Generating 3 QCM questions...', icon: '' },
+  { label: 'Creating puzzle "Problem of the Day"...', icon: '' },
+  { label: 'Writing lesson of the day...', icon: '' },
+  { label: 'Translating to FR/IT/ES...', icon: '' },
+  { label: 'Assembling pack record...', icon: '' },
 ]
 
 export default function GeneratePage() {
@@ -381,7 +381,7 @@ export default function GeneratePage() {
     abortRef.current = false
 
     const needsTranslation = languages.some(l => l !== 'en')
-    const label = needsTranslation ? 'Step 1/2 — 🧠 Generating questions in English...' : '🧠 Generating questions in English...'
+    const label = needsTranslation ? 'Step 1/2 — Generating questions in English...' : 'Generating questions in English...'
     startStreamingUX(STEP1_MESSAGES, label)
 
     const startTime = Date.now()
@@ -439,8 +439,8 @@ export default function GeneratePage() {
         const requestCount = wantCount + 1
 
         const subLabel = needsTranslation
-          ? `Step 1/2 — 🧠 Generating questions (batch ${sIdx + 1}/${subBatches.length})...`
-          : `🧠 Generating questions (batch ${sIdx + 1}/${subBatches.length})...`
+          ? `Step 1/2 — Generating questions (batch ${sIdx + 1}/${subBatches.length})...`
+          : `Generating questions (batch ${sIdx + 1}/${subBatches.length})...`
         if (sIdx === 0) switchStreamingUX(STEP1_MESSAGES, subLabel)
         else setStepLabel(subLabel)
 
@@ -453,7 +453,7 @@ export default function GeneratePage() {
 
         if (subQuestions.length < wantCount && !abortRef.current) {
           const missing = wantCount - subQuestions.length
-          setStepLabel(`⚠️ Got ${subQuestions.length}/${wantCount}, generating ${missing} more...`)
+          setStepLabel(`Got ${subQuestions.length}/${wantCount}, generating ${missing} more...`)
           try {
             const retry = await generateSubBatch({ requestCount: missing + 1, systemPrompt, maxTokens: 6000 })
             totalInputTokens += retry.inputTokens
@@ -473,7 +473,7 @@ export default function GeneratePage() {
 
       // Translate
       if (needsTranslation && allEnQuestions.length > 0 && !abortRef.current) {
-        const langLabels = { fr: '🇫🇷 FR', it: '🇮🇹 IT', es: '🇪🇸 ES' }
+        const langLabels = { fr: 'FR', it: 'IT', es: 'ES' }
         const targetLangs = languages.filter(l => l !== 'en')
         const langList = targetLangs.map(l => langLabels[l] || l).join(', ')
 
@@ -486,7 +486,7 @@ export default function GeneratePage() {
         for (let c = 0; c < transChunks.length; c++) {
           if (abortRef.current) break
           const chunkLabel = transChunks.length > 1 ? ` (batch ${c + 1}/${transChunks.length})` : ''
-          switchStreamingUX(STEP2_MESSAGES, `Step 2/2 — 🌍 Translating to ${langList}${chunkLabel}...`)
+          switchStreamingUX(STEP2_MESSAGES, `Step 2/2 — Translating to ${langList}${chunkLabel}...`)
 
           const translationPromises = targetLangs.map(async (lang) => {
             try {
@@ -899,7 +899,7 @@ export default function GeneratePage() {
             <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
               customPrompt ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'
             }`}>
-              {customPrompt ? '✏️ Custom Prompt' : '✅ Default Prompt'}
+              {customPrompt ? 'Custom Prompt' : 'Default Prompt'}
             </span>
           )}
           <button
@@ -929,7 +929,7 @@ export default function GeneratePage() {
               onClick={setPackTheme}
               disabled={packGenerating}
             >
-              {t === 'random' ? '🔀 Random' : t.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+              {t === 'random' ? 'Random' : t.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
             </Pill>
           ))}
         </div>
@@ -945,7 +945,7 @@ export default function GeneratePage() {
               onClick={setPackDifficulty}
               disabled={packGenerating}
             >
-              {d === 'random' ? '🔀 Random' : d.charAt(0).toUpperCase() + d.slice(1)}
+              {d === 'random' ? 'Random' : d.charAt(0).toUpperCase() + d.slice(1)}
             </Pill>
           ))}
         </div>
@@ -1053,7 +1053,7 @@ export default function GeneratePage() {
             {packBatchProgress.errors.length > 0 && (
               <div className="mt-2 text-xs text-red-600 space-y-0.5">
                 {packBatchProgress.errors.map((e, i) => (
-                  <p key={i}>⚠️ Pack #{e.index}: {e.message}</p>
+                  <p key={i}>Pack #{e.index}: {e.message}</p>
                 ))}
               </div>
             )}
@@ -1216,14 +1216,14 @@ export default function GeneratePage() {
                             className="rounded shrink-0"
                           />
                         )}
-                        <span className="text-lg">{isToday ? '🟢' : '⚪'}</span>
+                        <span className="text-lg">{isToday ? '' : ''}</span>
                         <div className="min-w-0">
                           <p className="text-sm font-semibold text-[#1A1A1A] truncate">
                             {(pack.theme || 'unknown').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
                             <span className="ml-2 text-xs font-normal text-[#6B7280]">
                               {pack.difficulty || '—'} · {pack.question_ids?.length || 0} Q
-                              {pack.puzzle_id ? ' · 🧩' : ''}
-                              {pack.lesson_id ? ' · 📚' : ''}
+                              {pack.puzzle_id ? ' · Puzzle' : ''}
+                              {pack.lesson_id ? ' · Lesson' : ''}
                             </span>
                           </p>
                           <p className="text-xs text-[#6B7280]">
@@ -1262,7 +1262,7 @@ export default function GeneratePage() {
                             {details.questions?.length > 0 && (
                               <div>
                                 <p className="text-xs font-bold uppercase tracking-wide text-[#6B7280] mb-2">
-                                  🧠 Questions ({details.questions.length})
+                                  Questions ({details.questions.length})
                                 </p>
                                 <div className="space-y-2">
                                   {details.questions.map((q, qi) => (
@@ -1354,7 +1354,7 @@ export default function GeneratePage() {
                               <div>
                                 <div className="flex items-center justify-between mb-2">
                                   <p className="text-xs font-bold uppercase tracking-wide text-[#6B7280]">
-                                    🧩 Puzzle — Problem of the Day
+                                    Puzzle — Problem of the Day
                                   </p>
                                   <button
                                     onClick={() => setEditPuzzle({ ...details.puzzle })}
@@ -1396,9 +1396,9 @@ export default function GeneratePage() {
                                     </summary>
                                     <div className="mt-1 space-y-2">
                                       {[
-                                        { lang: 'FR', flag: '\u{1F1EB}\u{1F1F7}', title: details.puzzle.title_fr, hint: details.puzzle.hint_fr, expl: details.puzzle.explanation_fr },
-                                        { lang: 'IT', flag: '\u{1F1EE}\u{1F1F9}', title: details.puzzle.title_it, hint: details.puzzle.hint_it, expl: details.puzzle.explanation_it },
-                                        { lang: 'ES', flag: '\u{1F1EA}\u{1F1F8}', title: details.puzzle.title_es, hint: details.puzzle.hint_es, expl: details.puzzle.explanation_es },
+                                        { lang: 'FR', flag: '', title: details.puzzle.title_fr, hint: details.puzzle.hint_fr, expl: details.puzzle.explanation_fr },
+                                        { lang: 'IT', flag: '', title: details.puzzle.title_it, hint: details.puzzle.hint_it, expl: details.puzzle.explanation_it },
+                                        { lang: 'ES', flag: '', title: details.puzzle.title_es, hint: details.puzzle.hint_es, expl: details.puzzle.explanation_es },
                                       ].filter(t => t.title).map(t => (
                                         <div key={t.lang} className="bg-indigo-50 rounded p-2 space-y-0.5">
                                           <p className="text-[10px] font-semibold text-indigo-700">{t.flag} {t.lang}</p>
@@ -1413,7 +1413,7 @@ export default function GeneratePage() {
                               </div>
                             )}
                             {pack.puzzle_id && !details.puzzle && (
-                              <p className="text-xs text-amber-600">⚠️ Puzzle not found</p>
+                              <p className="text-xs text-amber-600">Puzzle not found</p>
                             )}
 
                             {/* Lesson */}
@@ -1421,7 +1421,7 @@ export default function GeneratePage() {
                               <div>
                                 <div className="flex items-center justify-between mb-2">
                                   <p className="text-xs font-bold uppercase tracking-wide text-[#6B7280]">
-                                    📚 Lesson of the Day
+                                    Lesson of the Day
                                   </p>
                                   <button
                                     onClick={() => setEditLesson({ ...details.lesson })}
@@ -1434,7 +1434,7 @@ export default function GeneratePage() {
                                   <p className="text-sm font-semibold text-[#1A1A1A] mb-1">{details.lesson.title}</p>
                                   {details.lesson.key_takeaway && (
                                     <p className="text-xs text-emerald-700 bg-emerald-50 px-2 py-1 rounded mb-1.5">
-                                      💡 {details.lesson.key_takeaway}
+                                      {details.lesson.key_takeaway}
                                     </p>
                                   )}
                                   {details.lesson.content && (
@@ -1456,9 +1456,9 @@ export default function GeneratePage() {
                                     </summary>
                                     <div className="mt-1 space-y-2">
                                       {[
-                                        { lang: 'FR', flag: '\u{1F1EB}\u{1F1F7}', title: details.lesson.title_fr, content: details.lesson.content_fr, takeaway: details.lesson.key_takeaway_fr },
-                                        { lang: 'IT', flag: '\u{1F1EE}\u{1F1F9}', title: details.lesson.title_it, content: details.lesson.content_it, takeaway: details.lesson.key_takeaway_it },
-                                        { lang: 'ES', flag: '\u{1F1EA}\u{1F1F8}', title: details.lesson.title_es, content: details.lesson.content_es, takeaway: details.lesson.key_takeaway_es },
+                                        { lang: 'FR', flag: '', title: details.lesson.title_fr, content: details.lesson.content_fr, takeaway: details.lesson.key_takeaway_fr },
+                                        { lang: 'IT', flag: '', title: details.lesson.title_it, content: details.lesson.content_it, takeaway: details.lesson.key_takeaway_it },
+                                        { lang: 'ES', flag: '', title: details.lesson.title_es, content: details.lesson.content_es, takeaway: details.lesson.key_takeaway_es },
                                       ].filter(t => t.title).map(t => (
                                         <div key={t.lang} className="bg-indigo-50 rounded p-2 space-y-0.5">
                                           <p className="text-[10px] font-semibold text-indigo-700">{t.flag} {t.lang}</p>
@@ -1478,7 +1478,7 @@ export default function GeneratePage() {
                               </div>
                             )}
                             {pack.lesson_id && !details.lesson && (
-                              <p className="text-xs text-amber-600">⚠️ Lesson not found</p>
+                              <p className="text-xs text-amber-600">Lesson not found</p>
                             )}
 
                             {/* B1: Pack action buttons — Activate/Deactivate + Delete */}
@@ -1593,10 +1593,10 @@ export default function GeneratePage() {
           <label className="block mb-2 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Languages</label>
           <div className="flex gap-2 mb-6 flex-wrap">
             {[
-              { code: 'en', flag: '🇬🇧' },
-              { code: 'fr', flag: '🇫🇷' },
-              { code: 'it', flag: '🇮🇹' },
-              { code: 'es', flag: '🇪🇸' },
+              { code: 'en', flag: '' },
+              { code: 'fr', flag: '' },
+              { code: 'it', flag: '' },
+              { code: 'es', flag: '' },
             ].map(({ code, flag }) => (
               <button
                 key={code} onClick={() => toggleLang(code)}
@@ -1763,7 +1763,7 @@ export default function GeneratePage() {
                           q.difficulty === 'hard' ? 'text-red-600' : q.difficulty === 'medium' ? 'text-amber-600' : 'text-green-600'
                         }`}>{q.difficulty}</span>
                         <span className="text-xs">
-                          🇬🇧{q.question_fr && ' 🇫🇷'}{q.question_it && ' 🇮🇹'}{q.question_es && ' 🇪🇸'}
+                          EN{q.question_fr && ' FR'}{q.question_it && ' IT'}{q.question_es && ' ES'}
                         </span>
                         <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
                           q.status === 'approved' ? 'bg-green-100 text-green-700'

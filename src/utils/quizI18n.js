@@ -5,20 +5,20 @@ const quizTexts = {
   // Speech bubble encouragements (shown after correct answers)
   encouragements: {
     en: [
-      "🔥 On fire!", "💪 Keep going!", "🎯 Nailed it!", "🧠 Smart move!",
-      "⚡ Brilliant!", "🏆 Champion!", "✨ Impressive!", "🚀 Unstoppable!"
+      "On fire!", "Keep going!", "Nailed it!", "Smart move!",
+      "Brilliant!", "Champion!", "Impressive!", "Unstoppable!"
     ],
     fr: [
-      "🔥 En feu !", "💪 Continue !", "🎯 Dans le mille !", "🧠 Bien joué !",
-      "⚡ Brillant !", "🏆 Champion !", "✨ Impressionnant !", "🚀 Inarrêtable !"
+      "En feu !", "Continue !", "Dans le mille !", "Bien joué !",
+      "Brillant !", "Champion !", "Impressionnant !", "Inarrêtable !"
     ],
     it: [
-      "🔥 In fiamme!", "💪 Continua così!", "🎯 Perfetto!", "🧠 Ben fatto!",
-      "⚡ Brillante!", "🏆 Campione!", "✨ Impressionante!", "🚀 Inarrestabile!"
+      "In fiamme!", "Continua così!", "Perfetto!", "Ben fatto!",
+      "Brillante!", "Campione!", "Impressionante!", "Inarrestabile!"
     ],
     es: [
-      "🔥 ¡En racha!", "💪 ¡Sigue así!", "🎯 ¡Diana!", "🧠 ¡Bien pensado!",
-      "⚡ ¡Brillante!", "🏆 ¡Campeón!", "✨ ¡Impresionante!", "🚀 ¡Imparable!"
+      "¡En racha!", "¡Sigue así!", "¡Diana!", "¡Bien pensado!",
+      "¡Brillante!", "¡Campeón!", "¡Impresionante!", "¡Imparable!"
     ],
   },
 
@@ -49,28 +49,28 @@ const quizTexts = {
   // Results page — score messages
   scoreMessages: {
     5: {
-      en: "Perfect Score! 🏆", fr: "Score parfait ! 🏆",
-      it: "Punteggio perfetto! 🏆", es: "¡Puntuación perfecta! 🏆",
+      en: "Perfect Score!", fr: "Score parfait !",
+      it: "Punteggio perfetto!", es: "¡Puntuación perfecta!",
     },
     4: {
-      en: "Almost perfect! 🎯", fr: "Presque parfait ! 🎯",
-      it: "Quasi perfetto! 🎯", es: "¡Casi perfecto! 🎯",
+      en: "Almost perfect!", fr: "Presque parfait !",
+      it: "Quasi perfetto!", es: "¡Casi perfecto!",
     },
     3: {
-      en: "Good job! 💪", fr: "Bien joué ! 💪",
-      it: "Ben fatto! 💪", es: "¡Buen trabajo! 💪",
+      en: "Good job!", fr: "Bien joué !",
+      it: "Ben fatto!", es: "¡Buen trabajo!",
     },
     2: {
-      en: "Keep learning! 📚", fr: "Continue d'apprendre ! 📚",
-      it: "Continua a imparare! 📚", es: "¡Sigue aprendiendo! 📚",
+      en: "Keep learning!", fr: "Continue d'apprendre !",
+      it: "Continua a imparare!", es: "¡Sigue aprendiendo!",
     },
     1: {
-      en: "Try again tomorrow! 🌱", fr: "Réessaie demain ! 🌱",
-      it: "Riprova domani! 🌱", es: "¡Inténtalo mañana! 🌱",
+      en: "Try again tomorrow!", fr: "Réessaie demain !",
+      it: "Riprova domani!", es: "¡Inténtalo mañana!",
     },
     0: {
-      en: "Don't give up! 🌱", fr: "N'abandonne pas ! 🌱",
-      it: "Non mollare! 🌱", es: "¡No te rindas! 🌱",
+      en: "Don't give up!", fr: "N'abandonne pas !",
+      it: "Non mollare!", es: "¡No te rindas!",
     },
   },
 
@@ -84,10 +84,10 @@ const quizTexts = {
     it: "dei membri Akka", es: "de los miembros de Akka",
   },
   comeBackTomorrow: {
-    en: "Come back tomorrow for your next quiz! 🚀",
-    fr: "Reviens demain pour ton prochain quiz ! 🚀",
-    it: "Torna domani per il prossimo quiz! 🚀",
-    es: "¡Vuelve mañana para tu próximo quiz! 🚀",
+    en: "Come back tomorrow for your next quiz!",
+    fr: "Reviens demain pour ton prochain quiz !",
+    it: "Torna domani per il prossimo quiz!",
+    es: "¡Vuelve mañana para tu próximo quiz!",
   },
 
   // XP Breakdown

@@ -312,12 +312,12 @@ export default function QuizPage() {
       // Timer pressure messages — use i18n via imported t function with current lang
       if (remaining === 5) {
         const currentLang = localStorage.getItem('akka_lang') || 'en'
-        setTimerMessage({ text: `⏳ ${tRaw('hurry_up', currentLang)}`, type: 'warning' })
+        setTimerMessage({ text: `${tRaw('hurry_up', currentLang)}`, type: 'warning' })
         setTimeout(() => setTimerMessage(null), 1500)
       }
       if (remaining === 3) {
         const currentLang = localStorage.getItem('akka_lang') || 'en'
-        setTimerMessage({ text: `🔥 ${tRaw('last_chance', currentLang)}`, type: 'critical' })
+        setTimerMessage({ text: `${tRaw('last_chance', currentLang)}`, type: 'critical' })
         setTimeout(() => setTimerMessage(null), 1500)
       }
 
@@ -702,12 +702,12 @@ export default function QuizPage() {
           <div className="relative mb-6">
             <div className="absolute inset-0 rounded-full bg-[#2ECC71] opacity-20 blur-2xl scale-150" />
             <div className="relative w-24 h-24 rounded-3xl bg-[#2ECC71]/15 flex items-center justify-center border border-[#2ECC71]/20">
-              <span className="text-5xl drop-shadow-lg">🧠</span>
+              <span className="text-5xl drop-shadow-lg"></span>
             </div>
           </div>
           {practiceMode && (
             <div className="flex items-center gap-2 mb-3 px-4 py-2 rounded-full bg-amber-400/20 border border-amber-400/30">
-              <span className="text-lg">🎯</span>
+              <span className="text-lg"></span>
               <span className="text-sm font-bold text-amber-300">Practice Mode</span>
             </div>
           )}
@@ -737,7 +737,7 @@ export default function QuizPage() {
           {/* Streak badge */}
           {streak > 0 && (
             <div className="flex items-center gap-2 mb-6 px-4 py-2 rounded-full bg-[#2ECC71]/10 border border-[#2ECC71]/20">
-              <span className="text-lg">🔥</span>
+              <span className="text-lg"></span>
               <span className="text-sm font-bold text-[#2ECC71]">{streak} {t('days')}</span>
             </div>
           )}
@@ -786,7 +786,7 @@ export default function QuizPage() {
           )}
           {puzzleLangFallback && (
             <div className="mb-3 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-1.5">
-              <span className="text-amber-600 text-xs font-semibold">⚠️ {lang.toUpperCase()} translation unavailable — showing English</span>
+              <span className="text-amber-600 text-xs font-semibold">{lang.toUpperCase()} translation unavailable — showing English</span>
             </div>
           )}
           <PuzzleRenderer puzzle={puzzleData} onAnswer={handlePuzzleAnswer} lang={lang} />
@@ -850,11 +850,11 @@ export default function QuizPage() {
 
     return (
       <div className="min-h-screen bg-akka-bg flex flex-col pb-24">
-        <QuizHeader onBack={() => navigate('/')} muted={muted} onToggleMute={handleToggleMute} title="📖 Lesson of the Day" />
+        <QuizHeader onBack={() => navigate('/')} muted={muted} onToggleMute={handleToggleMute} title="Lesson of the Day" />
         <div className="flex-1 px-4 pt-6">
           {/* Header: centered icon + title + optional theme badge */}
           <div className="text-center mb-5">
-            <span className="text-4xl mb-2 block">📖</span>
+            <span className="text-4xl mb-2 block"></span>
             <h2 className="text-xl font-bold text-akka-text">{lessonTitle}</h2>
             {lessonTheme && (
               <span className="inline-block mt-2 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">
@@ -871,7 +871,7 @@ export default function QuizPage() {
           {/* Key Takeaway card — dark green */}
           {lessonTakeaway && (
             <div className="bg-[#1B3D2F] rounded-2xl p-4 mb-6">
-              <p className="text-xs font-semibold text-emerald-300 uppercase tracking-wide mb-1">💡 Key Takeaway</p>
+              <p className="text-xs font-semibold text-emerald-300 uppercase tracking-wide mb-1">Key Takeaway</p>
               <p className="text-sm font-medium text-white leading-relaxed">{lessonTakeaway}</p>
             </div>
           )}
@@ -990,7 +990,7 @@ export default function QuizPage() {
       {/* Language fallback badge */}
       {langFallback && (
         <div className="mx-4 mt-2 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-1.5">
-          <span className="text-amber-600 text-xs font-semibold">⚠️ {lang.toUpperCase()} translation unavailable — showing English</span>
+          <span className="text-amber-600 text-xs font-semibold">{lang.toUpperCase()} translation unavailable — showing English</span>
         </div>
       )}
 
@@ -1155,7 +1155,7 @@ export default function QuizPage() {
               </p>
               <p className={`text-xs font-semibold mb-4 ${isCorrect ? 'text-[#166534]' : 'text-[#991B1B]'}`}>
                 {tp('answered_in', { time: timeSpentSec })}
-                {answers[answers.length - 1]?.speedBonus > 0 && ` · ⚡ ${t('speed_bonus')}`}
+                {answers[answers.length - 1]?.speedBonus > 0 && ` · ${t('speed_bonus')}`}
               </p>
 
               {/* Next button */}

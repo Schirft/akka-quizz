@@ -15,8 +15,8 @@ import ProgressionPathModal from '../../components/player/ProgressionPathModal'
 import { CheckCircle, Loader2 } from 'lucide-react'
 
 const LEVEL_EMOJIS = {
-  1: '🌱', 2: '📚', 3: '💰', 4: '📊', 5: '👼',
-  6: '♟️', 7: '🎯', 8: '🔮', 9: '⭐', 10: '🐋',
+  1: '', 2: '', 3: '', 4: '', 5: '',
+  6: '', 7: '', 8: '', 9: '', 10: '',
 }
 
 const DAY_LABELS_I18N = {
@@ -247,7 +247,7 @@ export default function HomePage() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-xl bg-[#2ECC71]/20 flex items-center justify-center">
-              <span className="text-2xl">🧠</span>
+              <span className="text-2xl"></span>
             </div>
             <div>
               <p className="font-bold text-base">{t('quiz_of_the_day')}</p>
@@ -270,7 +270,7 @@ export default function HomePage() {
         </div>
         {quizPlayedToday && streakDays > 0 && (
           <p className="text-xs text-white/50 mt-2">
-            🔥 {t('keep_streak')}
+            {t('keep_streak')}
           </p>
         )}
       </div>
@@ -335,7 +335,7 @@ export default function HomePage() {
             <div className="flex items-center gap-3">
               {/* Level badge with emoji */}
               <div className="w-12 h-12 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center shadow-inner">
-                <span className="text-2xl">{LEVEL_EMOJIS[level?.level] || '🌱'}</span>
+                <span className="text-2xl">{LEVEL_EMOJIS[level?.level] || ''}</span>
               </div>
               <div>
                 <p className="text-[10px] text-white/40 uppercase tracking-widest font-semibold">
@@ -370,7 +370,7 @@ export default function HomePage() {
                 {(nextLevel.xpRequired - totalXP).toLocaleString()} XP → {t('level')} {nextLevel.level}
               </p>
             ) : (
-              <p className="text-[10px] text-white/35">🏆 Max level!</p>
+              <p className="text-[10px] text-white/35">Max level!</p>
             )}
             <div className="flex items-center gap-1 bg-white/10 rounded-full px-2.5 py-1">
               <p className="text-[10px] font-semibold text-white/70">
@@ -386,21 +386,21 @@ export default function HomePage() {
       <div className="flex gap-2 mb-3">
         <Card className="flex-1 flex flex-col items-center py-3 px-2">
           <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center mb-1">
-            <span className="text-xl">📊</span>
+            <span className="text-xl"></span>
           </div>
           <p className="text-xl font-bold text-[#1B3D2F]">{avgScore}</p>
           <p className="text-[10px] text-akka-text-secondary">{t('avg_score')}</p>
         </Card>
         <Card className="flex-1 flex flex-col items-center py-3 px-2">
           <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center mb-1">
-            <span className="text-xl">🎯</span>
+            <span className="text-xl"></span>
           </div>
           <p className="text-xl font-bold text-[#1B3D2F]">{accuracy}%</p>
           <p className="text-[10px] text-akka-text-secondary">{t('accuracy')}</p>
         </Card>
         <Card className="flex-1 flex flex-col items-center py-3 px-2">
           <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center mb-1">
-            <span className="text-xl">🏆</span>
+            <span className="text-xl"></span>
           </div>
           <p className="text-xl font-bold text-[#1B3D2F]">{profile.longest_streak || 0}</p>
           <p className="text-[10px] text-akka-text-secondary">{t('best_streak')}</p>
@@ -446,15 +446,15 @@ export default function HomePage() {
                 onClick={() => setShowScoreTooltip(!showScoreTooltip)}
                 className="text-gray-400 hover:text-gray-600"
               >
-                ℹ️
+                i
               </button>
             </div>
             <p className="text-sm font-semibold leading-snug">
               {(profile.investor_score || 0) >= 700
-                ? <span className="text-[#1B3D2F]">🟢 {t('score_excellent')}</span>
+                ? <span className="text-[#1B3D2F]">{t('score_excellent')}</span>
                 : (profile.investor_score || 0) >= 400
-                  ? <span className="text-[#F39C12]">🟡 {t('score_good')}</span>
-                  : <span className="text-[#E74C3C]">🔴 {t('score_improving')}</span>}
+                  ? <span className="text-[#F39C12]">{t('score_good')}</span>
+                  : <span className="text-[#E74C3C]">{t('score_improving')}</span>}
             </p>
           </div>
         </div>
@@ -551,7 +551,7 @@ export default function HomePage() {
       <Card className="mb-3 cursor-pointer active:scale-[0.98] transition-transform" onClick={() => navigate('/showcase')}>
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#1B3D2F] to-[#2ECC71] flex items-center justify-center">
-            <span className="text-2xl">🎓</span>
+            <span className="text-2xl"></span>
           </div>
           <div className="flex-1">
             <p className="text-sm font-bold text-[#1B3D2F]">Showcase</p>
@@ -614,7 +614,7 @@ export default function HomePage() {
           {replaying && (
             <Loader2 size={16} className="animate-spin" />
           )}
-          {replaying ? t('resetting') : `🔄 ${t('new_quiz_demo')}`}
+          {replaying ? t('resetting') : t('new_quiz_demo')}
         </Button>
         {replayResult && !replayResult.success && (
           <p className="text-xs text-center text-akka-red">

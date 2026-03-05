@@ -5,10 +5,10 @@ import { AI_SYSTEM_PROMPT } from '../../config/aiPrompts'
 import { X, Loader2 } from 'lucide-react'
 
 const LANG_TABS = [
-  { code: 'en', label: 'EN', flag: '🇬🇧' },
-  { code: 'fr', label: 'FR', flag: '🇫🇷' },
-  { code: 'it', label: 'IT', flag: '🇮🇹' },
-  { code: 'es', label: 'ES', flag: '🇪🇸' },
+  { code: 'en', label: 'EN', flag: '' },
+  { code: 'fr', label: 'FR', flag: '' },
+  { code: 'it', label: 'IT', flag: '' },
+  { code: 'es', label: 'ES', flag: '' },
 ]
 
 const DIFFICULTIES = ['easy', 'medium', 'hard']

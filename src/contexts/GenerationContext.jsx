@@ -93,7 +93,7 @@ export function GenerationProvider({ children }) {
       })
     } catch (tErr) {
       console.error('[Pack] Translation failed:', tErr.message)
-      translationNote = `⚠️ Translation failed: ${tErr.message}. Pack created in English only.`
+      translationNote = `Translation failed: ${tErr.message}. Pack created in English only.`
     }
     if (packAbortRef.current) return null
 

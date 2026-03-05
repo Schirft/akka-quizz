@@ -376,10 +376,10 @@ export default function ImportModal({ onClose, onImported }) {
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#D1D5DB]">
           <div className="flex items-center gap-3">
             <h2 className="text-lg font-bold text-[#1A1A1A]">
-              {step === 'upload' && '📤 Import Questions'}
-              {step === 'preview' && '👀 Preview & Edit'}
-              {step === 'importing' && '⏳ Importing...'}
-              {step === 'done' && '✅ Import Complete'}
+              {step === 'upload' && 'Import Questions'}
+              {step === 'preview' && 'Preview & Edit'}
+              {step === 'importing' && 'Importing...'}
+              {step === 'done' && 'Import Complete'}
             </h2>
             {/* Step indicator */}
             {step !== 'done' && step !== 'importing' && (
@@ -455,7 +455,7 @@ export default function ImportModal({ onClose, onImported }) {
               {/* Stats bar */}
               <div className="flex flex-wrap items-center gap-3 mb-4">
                 <span className="text-sm text-[#6B7280]">
-                  📄 <span className="font-medium text-[#1A1A1A]">{fileName}</span>
+                  <span className="font-medium text-[#1A1A1A]">{fileName}</span>
                 </span>
                 <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">
                   {stats.total} questions
@@ -465,7 +465,7 @@ export default function ImportModal({ onClose, onImported }) {
                 </span>
                 {stats.duplicates > 0 && (
                   <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-xs font-semibold">
-                    ⚠️ {stats.duplicates} duplicates
+                    {stats.duplicates} duplicates
                   </span>
                 )}
               </div>
@@ -631,7 +631,7 @@ export default function ImportModal({ onClose, onImported }) {
                           {/* Duplicate warning */}
                           {isDupe && (
                             <div className="p-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
-                              ⚠️ Similar question exists in DB: "{duplicates[idx]?.question_en?.slice(0, 80)}..."
+                              Similar question exists in DB: "{duplicates[idx]?.question_en?.slice(0, 80)}..."
                             </div>
                           )}
                         </div>

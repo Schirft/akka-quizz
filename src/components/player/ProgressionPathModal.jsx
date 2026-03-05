@@ -5,8 +5,8 @@ import { LEVELS } from '../../config/levels'
 import { useLang } from '../../hooks/useLang'
 
 const LEVEL_EMOJIS = {
-  1: '🌱', 2: '📚', 3: '💰', 4: '📊', 5: '👼',
-  6: '♟️', 7: '🎯', 8: '🔮', 9: '⭐', 10: '🐋',
+  1: '', 2: '', 3: '', 4: '', 5: '',
+  6: '', 7: '', 8: '', 9: '', 10: '',
 }
 
 const LEVEL_COLORS = {
@@ -92,7 +92,7 @@ export default function ProgressionPathModal({ open, onClose, currentLevel, tota
           <div className="sticky top-0 z-20 px-5 py-4 flex items-center justify-between backdrop-blur-md bg-[#071A12]/80 border-b border-white/5">
             <div>
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                🗺️ {t('progression_path') || 'Your Journey'}
+                {t('progression_path') || 'Your Journey'}
               </h2>
               <p className="text-[11px] text-white/30 mt-0.5">
                 {t('climb_ranks') || 'Climb the ranks — unlock rewards'}
@@ -186,9 +186,9 @@ export default function ProgressionPathModal({ open, onClose, currentLevel, tota
                           <span className="text-xl opacity-80">{emoji}</span>
                         </div>
                       ) : (
-                        /* 🔒 Locked level — gray/dark node */
+                        /* Locked level — gray/dark node */
                         <div className="w-[52px] h-[52px] rounded-full bg-white/[0.05] border border-white/[0.10] flex items-center justify-center">
-                          <span className="text-white/30 text-xs font-bold">🔒</span>
+                          <span className="text-white/30 text-xs font-bold"></span>
                         </div>
                       )}
                     </div>
@@ -235,7 +235,7 @@ export default function ProgressionPathModal({ open, onClose, currentLevel, tota
                           isCurrent ? 'text-white/50' : isUnlocked ? 'text-white/30' : 'text-white/30'
                         }`}
                       >
-                        🎁 {lvl.benefit}
+                        {lvl.benefit}
                       </p>
 
                       {/* XP requirement */}
@@ -293,7 +293,7 @@ export default function ProgressionPathModal({ open, onClose, currentLevel, tota
                 className="text-center pt-6 pb-4"
               >
                 <p className="text-[11px] text-white/20">
-                  🚀 Keep playing daily to level up!
+                  Keep playing daily to level up!
                 </p>
               </motion.div>
             </div>

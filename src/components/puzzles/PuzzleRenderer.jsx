@@ -72,7 +72,7 @@ export default function PuzzleRenderer({ puzzle, onAnswer, lang = 'en' }) {
           background: '#fffbeb', border: '1px solid #fde68a',
           borderRadius: 8, fontSize: 12, color: '#92400e',
         }}>
-          <strong>💡 Hint:</strong> {langHint}
+          <strong>Hint:</strong> {langHint}
         </div>
       )}
 

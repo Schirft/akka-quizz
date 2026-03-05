@@ -217,12 +217,12 @@ export default function NewsPage() {
                         alt=""
                         className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                         onError={(e) => {
-                          e.target.parentNode.innerHTML = `<div class="w-full h-full bg-gradient-to-br ${CATEGORY_GRADIENTS[article.category] || 'from-emerald-600 to-teal-700'} flex items-center justify-center"><span class="text-white/60 text-2xl">📰</span></div>`
+                          e.target.parentNode.innerHTML = `<div class="w-full h-full bg-gradient-to-br ${CATEGORY_GRADIENTS[article.category] || 'from-emerald-600 to-teal-700'} flex items-center justify-center"><span class="text-white/60 text-2xl"></span></div>`
                         }}
                       />
                     ) : (
                       <div className={`w-full h-full bg-gradient-to-br ${CATEGORY_GRADIENTS[article.category] || 'from-emerald-600 to-teal-700'} flex items-center justify-center`}>
-                        <span className="text-white/60 text-2xl">📰</span>
+                        <span className="text-white/60 text-2xl"></span>
                       </div>
                     )}
                   </div>

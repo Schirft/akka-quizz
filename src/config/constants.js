@@ -37,10 +37,10 @@ export const CATEGORIES = [
 
 // Supported languages
 export const LANGUAGES = [
-  { code: 'en', label: 'English', flag: '🇬🇧' },
-  { code: 'fr', label: 'Francais', flag: '🇫🇷' },
-  { code: 'it', label: 'Italiano', flag: '🇮🇹' },
-  { code: 'es', label: 'Espanol', flag: '🇪🇸' },
+  { code: 'en', label: 'English', flag: '' },
+  { code: 'fr', label: 'Francais', flag: '' },
+  { code: 'it', label: 'Italiano', flag: '' },
+  { code: 'es', label: 'Espanol', flag: '' },
 ]
 
 // Demo account

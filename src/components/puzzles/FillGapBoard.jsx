@@ -49,7 +49,7 @@ export default function FillGapBoard({ puzzle, onAnswer, lang = 'en', hideQuesti
               <span className={`font-semibold font-mono ${
                 isMissing ? 'text-amber-600' : 'text-gray-900'
               }`}>
-                {isMissing ? '❓' : (typeof displayValue === 'number' ? displayValue.toLocaleString() : displayValue)}
+                {isMissing ? '?' : (typeof displayValue === 'number' ? displayValue.toLocaleString() : displayValue)}
               </span>
             </div>
           );

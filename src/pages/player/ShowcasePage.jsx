@@ -365,7 +365,7 @@ export default function ShowcasePage() {
                 onClick={() => setLang(l => l === 'en' ? 'fr' : 'en')}
                 className="px-3 py-1.5 rounded-full bg-white/10 text-white text-sm font-bold hover:bg-white/20 transition-colors"
               >
-                {lang === 'en' ? '🇬🇧 EN' : '🇫🇷 FR'}
+                {lang === 'en' ? 'EN' : 'FR'}
               </button>
             </div>
 
@@ -441,7 +441,7 @@ export default function ShowcasePage() {
               </div>
             </div>
             <div className="flex items-center gap-2 mb-3 px-4 py-2 rounded-full bg-amber-400/20 border border-amber-400/30">
-              <span className="text-lg">🎯</span>
+              <span className="text-lg"></span>
               <span className="text-sm font-bold text-amber-300">Showcase</span>
             </div>
             <h2 className="text-2xl font-bold text-white mb-2 text-center">
@@ -526,7 +526,7 @@ export default function ShowcasePage() {
           <ShowcaseHeader onBack={backToGrid} muted={muted} onToggleMute={handleToggleMute} title={txt('Lesson', 'Lecon')} />
           <div className="flex-1 px-4 pt-6">
             <div className="text-center mb-5">
-              <span className="text-4xl mb-2 block">{activePack?.icon || '📖'}</span>
+              <span className="text-4xl mb-2 block">{activePack?.icon || ''}</span>
               <h2 className="text-xl font-bold text-akka-text">{lessonTitle}</h2>
               {lessonTheme && (
                 <span className="inline-block mt-2 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">
@@ -566,10 +566,10 @@ export default function ShowcasePage() {
     const percentile = Math.min(99, Math.round((score / totalQuestions) * 80 + Math.random() * 15))
 
     const xpLines = [
-      { icon: '🎯', label: getQuizText('xpCorrectAnswers', lang), detail: `${score} x 10`, value: correctXP },
-      { icon: '🔥', label: getQuizText('xpComboBonus', lang), detail: `max ${maxCombo}x`, value: comboBonus },
-      { icon: '⚡', label: getQuizText('xpStreakBonus', lang), detail: '', value: streakBonus },
-      { icon: '⭐', label: getQuizText('xpDailyBonus', lang), detail: '', value: dailyBonus },
+      { icon: '', label: getQuizText('xpCorrectAnswers', lang), detail: `${score} x 10`, value: correctXP },
+      { icon: '', label: getQuizText('xpComboBonus', lang), detail: `max ${maxCombo}x`, value: comboBonus },
+      { icon: '', label: getQuizText('xpStreakBonus', lang), detail: '', value: streakBonus },
+      { icon: '', label: getQuizText('xpDailyBonus', lang), detail: '', value: dailyBonus },
     ]
 
     return (
@@ -867,7 +867,7 @@ export default function ShowcasePage() {
                 <p className="text-sm text-[#1A1A1A] leading-relaxed font-medium mb-2">{explanation}</p>
                 <p className={`text-xs font-semibold mb-4 ${isCorrect ? 'text-[#166534]' : 'text-[#991B1B]'}`}>
                   {txt('Answered in', 'Repondu en')} {timeSpentSec}s
-                  {answers[answers.length - 1]?.speedBonus > 0 && ` · ⚡ ${txt('Speed bonus!', 'Bonus de rapidite !')}`}
+                  {answers[answers.length - 1]?.speedBonus > 0 && ` · ${txt('Speed bonus!', 'Bonus de rapidite !')}`}
                 </p>
                 <Button variant="primary" className="w-full gap-2" onClick={handleNext}>
                   {currentIndex + 1 < questions.length ? (

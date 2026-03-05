@@ -116,7 +116,7 @@ export default function DailyChallengePage() {
   if (!dailyQuiz) {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center px-6">
-        <p className="text-6xl mb-4">📅</p>
+        <p className="text-6xl mb-4"></p>
         <h2 className="text-xl font-bold text-[#1A1A1A] mb-2">No Challenge Today</h2>
         <p className="text-sm text-[#6B7280] mb-6 text-center">
           Today's daily challenge hasn't been generated yet. Try the regular quiz instead!
@@ -248,7 +248,7 @@ export default function DailyChallengePage() {
   if (step === 'celebration') {
     return (
       <div className="min-h-screen bg-gradient-to-b from-[#1B3D2F] to-[#2D5A45] flex flex-col items-center justify-center px-6 text-white">
-        <div className="text-6xl mb-4">🎉</div>
+        <div className="text-6xl mb-4"></div>
         <h2 className="text-2xl font-bold mb-2">Challenge Complete!</h2>
         <p className="text-white/70 mb-2">
           Quiz: {score}/{questions.length} correct

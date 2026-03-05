@@ -301,13 +301,13 @@ export default function DailyQuizPage() {
                       </div>
                       <div className="space-y-1">
                         <p className="text-xs text-emerald-700 flex items-center gap-1.5">
-                          <span className="font-medium">🧠 Questions:</span> {pack.question_ids?.length || 0}
+                          <span className="font-medium">Questions:</span> {pack.question_ids?.length || 0}
                         </p>
                         <p className="text-xs text-emerald-700 flex items-center gap-1.5">
-                          <span className="font-medium">🧩 Puzzle:</span> {pack.puzzle_id ? 'Yes' : 'No'}
+                          <span className="font-medium">Puzzle:</span> {pack.puzzle_id ? 'Yes' : 'No'}
                         </p>
                         <p className="text-xs text-emerald-700 flex items-center gap-1.5">
-                          <span className="font-medium">📚 Lesson:</span> {pack.lesson_id ? 'Yes' : 'No'}
+                          <span className="font-medium">Lesson:</span> {pack.lesson_id ? 'Yes' : 'No'}
                         </p>
                       </div>
                     </div>
@@ -397,7 +397,7 @@ export default function DailyQuizPage() {
                 </p>
                 {missingCount > unassignedPacks.length && (
                   <p className="text-xs text-red-600 font-semibold mt-1">
-                    ⚠️ Not enough packs! Generate {missingCount - unassignedPacks.length} more.
+                    Not enough packs! Generate {missingCount - unassignedPacks.length} more.
                   </p>
                 )}
               </div>
@@ -407,7 +407,7 @@ export default function DailyQuizPage() {
                 href="/admin/generate"
                 className="flex items-center justify-center gap-2 w-full px-4 py-2.5 mb-4 border-2 border-dashed border-[#2ECC71] rounded-xl text-sm font-semibold text-[#2ECC71] hover:bg-emerald-50 transition-colors"
               >
-                🤖 Go to AI Generator
+                Go to AI Generator
               </a>
             </div>
             <div className="flex items-center gap-2 px-6 py-4 border-t border-[#D1D5DB]">
