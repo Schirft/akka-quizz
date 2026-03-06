@@ -15,6 +15,9 @@ import GeneratePage from './pages/admin/GeneratePage'
 import DailyQuizPage from './pages/admin/DailyQuizPage'
 import AdminNewsPage from './pages/admin/AdminNewsPage'
 import ShowcasePage from './pages/player/ShowcasePage'
+import ChallengePage from './pages/player/ChallengePage'
+import ValuationGamePage from './pages/player/ValuationGamePage'
+import PortfolioGamePage from './pages/player/PortfolioGamePage'
 
 /**
  * PlayerShell — centered mobile container for standalone player pages.
@@ -85,8 +88,31 @@ export default function App() {
         }
       >
         <Route index element={<HomePage />} />
+        <Route path="challenge" element={<ChallengePage />} />
         <Route path="news" element={<NewsPage />} />
       </Route>
+
+      {/* Challenge game routes — no TabBar (fullscreen like quiz) */}
+      <Route
+        path="/challenge/valuation"
+        element={
+          <ProtectedRoute>
+            <PlayerShell>
+              <ValuationGamePage />
+            </PlayerShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/challenge/portfolio"
+        element={
+          <ProtectedRoute>
+            <PlayerShell>
+              <PortfolioGamePage />
+            </PlayerShell>
+          </ProtectedRoute>
+        }
+      />
 
       {/* Article detail route — no TabBar */}
       <Route

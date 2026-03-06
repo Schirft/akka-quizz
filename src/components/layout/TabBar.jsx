@@ -8,6 +8,7 @@ import { useProfile } from '../../hooks/useProfile'
  */
 const TABS = [
   { to: '/', labelKey: 'home' },
+  { to: '/challenge', labelKey: 'challenge' },
   { to: '/news', labelKey: 'news' },
 ]
 
